@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { FaqAccordion } from "@/components/faq-accordion";
@@ -8,6 +9,17 @@ const PHONE_HREF = "+639473533060";
 const TIKTOK_HANDLE = "@pepper.pan.taiwan";
 const TIKTOK_URL = "https://tiktok.com/@pepper.pan.taiwan";
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`Pepper Pan, ${ADDRESS}`)}`;
+
+const IMG_BASE = "https://djxcwbxahmtoglinsaaz.supabase.co/storage/v1/object/public/PepperPan";
+
+const favorites = [
+  { name: "Pork Noodles", price: "₱179", image: `${IMG_BASE}/FB.jpg` },
+  { name: "Chicken Noodles", price: "₱179", image: `${IMG_BASE}/FB%20(2).jpg` },
+  { name: "Pork Rice", price: "₱135", image: `${IMG_BASE}/9.jpg` },
+  { name: "Giant Ji Pai", price: "₱155", image: `${IMG_BASE}/21.jpg` },
+  { name: "Ji Pai Burger", price: "₱85 – ₱99", image: `${IMG_BASE}/7.jpg` },
+  { name: "Taiwan Milktea", price: "₱99", image: `${IMG_BASE}/26.jpg` },
+];
 
 async function getMenuCount(): Promise<number | null> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -24,28 +36,6 @@ async function getMenuCount(): Promise<number | null> {
     return count ?? null;
   } catch (err) {
     console.error("Failed to load menu count:", err);
-    return null;
-  }
-}
-
-async function getFeaturedItem(): Promise<{ name: string; price: number } | null> {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return null;
-  }
-  try {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("meals")
-      .select("name, price")
-      .eq("is_public", true)
-      .eq("is_available", true)
-      .ilike("name", "%BP Pork Noodles%")
-      .limit(1)
-      .maybeSingle();
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.error("Failed to load featured item:", err);
     return null;
   }
 }
@@ -77,7 +67,7 @@ const faqs = [
 ];
 
 export default async function Home() {
-  const [menuCount, featuredItem] = await Promise.all([getMenuCount(), getFeaturedItem()]);
+  const menuCount = await getMenuCount();
 
   return (
     <main className="flex-1">
@@ -95,35 +85,43 @@ export default async function Home() {
           aria-hidden
           className="pointer-events-none absolute -right-16 top-20 -z-10 h-56 w-56 rounded-full bg-brand-400/40 blur-3xl dark:bg-brand-600/30"
         />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute bottom-0 left-1/3 -z-10 h-40 w-40 rounded-full bg-brand-500/20 blur-3xl dark:bg-brand-500/20"
-        />
 
-        <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-24 sm:py-32">
-          <span className="rounded-full bg-brand-900/10 px-4 py-1 text-sm font-medium text-brand-800 dark:bg-brand-50/10 dark:text-brand-200">
-            Taiwan-Style Food
-          </span>
-          <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-brand-950 dark:text-brand-50 sm:text-6xl">
-            Home of Taiwan-Style Black Pepper Noodles
-          </h1>
-          <p className="max-w-xl text-lg text-brand-800/80 dark:text-brand-100/70">
-            New flavors, real cravings — you don&apos;t need to fly to Taiwan
-            to taste it. Just come to Pepper Pan. 🔥
-          </p>
-          <div className="flex flex-wrap gap-4 pt-2">
-            <Link
-              href="/menu"
-              className="rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
-            >
-              View Menu
-            </Link>
-            <a
-              href="#story"
-              className="rounded-full border border-brand-300 px-6 py-3 font-medium text-brand-900 transition-colors hover:bg-brand-900/5 dark:border-brand-700 dark:text-brand-100 dark:hover:bg-brand-50/5"
-            >
-              Our Story
-            </a>
+        <div className="mx-auto grid max-w-5xl items-center gap-10 px-6 py-20 sm:py-28 lg:grid-cols-2">
+          <div className="flex flex-col items-start gap-6">
+            <span className="rounded-full bg-brand-900/10 px-4 py-1 text-sm font-medium text-brand-800 dark:bg-brand-50/10 dark:text-brand-200">
+              Taiwan-Style Food
+            </span>
+            <h1 className="max-w-xl text-4xl font-semibold tracking-tight text-brand-950 dark:text-brand-50 sm:text-6xl">
+              Home of Taiwan-Style Black Pepper Noodles
+            </h1>
+            <p className="max-w-xl text-lg text-brand-800/80 dark:text-brand-100/70">
+              New flavors, real cravings — you don&apos;t need to fly to Taiwan
+              to taste it. Just come to Pepper Pan. 🔥
+            </p>
+            <div className="flex flex-wrap gap-4 pt-2">
+              <Link
+                href="/menu"
+                className="rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
+              >
+                View Menu
+              </Link>
+              <a
+                href="#story"
+                className="rounded-full border border-brand-300 px-6 py-3 font-medium text-brand-900 transition-colors hover:bg-brand-900/5 dark:border-brand-700 dark:text-brand-100 dark:hover:bg-brand-50/5"
+              >
+                Our Story
+              </a>
+            </div>
+          </div>
+          <div className="relative mx-auto aspect-square w-full max-w-sm lg:max-w-none">
+            <Image
+              src={`${IMG_BASE}/8.png`}
+              alt="Pepper Pan sizzling pork rice"
+              fill
+              sizes="(min-width: 1024px) 40vw, 80vw"
+              className="object-contain drop-shadow-2xl"
+              priority
+            />
           </div>
         </div>
       </section>
@@ -172,32 +170,31 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Featured item */}
-      {featuredItem && (
-        <section className="mx-auto max-w-5xl px-6 pb-16">
-          <div className="flex flex-col items-start justify-between gap-6 rounded-2xl border-2 border-brand-900 bg-white/70 px-8 py-8 dark:border-brand-100 dark:bg-brand-900/60 sm:flex-row sm:items-center">
-            <div>
-              <span className="inline-block rounded-full bg-brand-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-50 dark:bg-brand-100 dark:text-brand-950">
-                Must Try
-              </span>
-              <p className="mt-3 text-2xl font-semibold text-brand-950 dark:text-brand-50">
-                {featuredItem.name}
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-2xl font-semibold text-brand-900 dark:text-brand-100">
-                ₱{Number(featuredItem.price).toFixed(0)}
-              </span>
-              <Link
-                href="/menu"
-                className="whitespace-nowrap rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
-              >
-                Order now
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
+      {/* Fan favorites */}
+      <section className="mx-auto max-w-5xl px-6 pb-16">
+        <h2 className="mb-6 text-2xl font-semibold tracking-tight text-brand-950 dark:text-brand-50">
+          Fan Favorites
+        </h2>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {favorites.map((item) => (
+            <Link
+              key={item.name}
+              href="/menu"
+              className="group overflow-hidden rounded-xl border border-brand-200/60 bg-white/60 shadow-sm transition-shadow hover:shadow-md dark:border-brand-800 dark:bg-brand-900/60"
+            >
+              <div className="relative aspect-[3/4] w-full">
+                <Image
+                  src={item.image}
+                  alt={item.name}
+                  fill
+                  sizes="(min-width: 640px) 33vw, 50vw"
+                  className="object-cover transition-transform group-hover:scale-105"
+                />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       {/* Story */}
       <section id="story" className="mx-auto max-w-5xl scroll-mt-16 px-6 py-16">
@@ -220,11 +217,13 @@ export default async function Home() {
             </p>
           </div>
           <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-gradient-to-br from-brand-300 to-brand-600 dark:from-brand-800 dark:to-brand-600">
-            <div className="flex h-full w-full items-center justify-center p-8 text-center text-brand-50/90">
-              <span className="text-lg font-medium">
-                📸 Your photo here — send it over and we&apos;ll drop it in.
-              </span>
-            </div>
+            <Image
+              src={`${IMG_BASE}/5.png`}
+              alt="Pepper Pan black pepper noodles with egg"
+              fill
+              sizes="(min-width: 640px) 50vw, 100vw"
+              className="object-contain p-6"
+            />
           </div>
         </div>
       </section>
