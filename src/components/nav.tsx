@@ -17,6 +17,9 @@ export function Nav({ userEmail }: { userEmail: string | null }) {
           Pepper Pan
         </Link>
         <nav className="flex items-center gap-5 text-sm font-medium text-brand-800 dark:text-brand-200">
+          <Link href="/menu" className="hover:underline">
+            Menu
+          </Link>
           {userEmail && (
             <Link href="/orders" className="hover:underline">
               My orders

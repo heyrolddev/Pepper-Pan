@@ -68,7 +68,7 @@ export default async function OrdersPage() {
       {typedOrders.length === 0 ? (
         <p className="text-brand-800/80 dark:text-brand-100/70">
           No orders yet.{" "}
-          <Link href="/#menu" className="font-medium underline">
+          <Link href="/menu" className="font-medium underline">
             Browse the menu
           </Link>
           .

@@ -15,7 +15,7 @@ export default function CartPage() {
       {items.length === 0 ? (
         <p className="text-brand-800/80 dark:text-brand-100/70">
           Your cart is empty.{" "}
-          <Link href="/#menu" className="font-medium underline">
+          <Link href="/menu" className="font-medium underline">
             Browse the menu
           </Link>
           .
