@@ -10,7 +10,7 @@ function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(searchParams.get("error"));
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
