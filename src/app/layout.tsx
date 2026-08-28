@@ -47,17 +47,15 @@ async function getUserEmail(): Promise<string | null> {
 }
 
 /**
- * Runs before first paint so the intro overlay never flashes for repeat
- * visitors, and never lets the real page flash before the overlay on a
- * first visit. Marks the visit as seen here (rather than in React) so the
- * decision is made once, synchronously.
+ * Runs before first paint so the real page never flashes before the
+ * overlay. The intro plays on every page load; only a reduced-motion
+ * preference skips it. Client-side route changes don't re-run this, so
+ * navigating between pages stays instant.
  */
 const introScript = `(function(){try{
 var d=document.documentElement;
-var seen=sessionStorage.getItem('pepperpan_intro_seen')==='1';
-var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-if(seen||reduce){d.setAttribute('data-intro','skip');}
-else{d.classList.add('intro-lock');sessionStorage.setItem('pepperpan_intro_seen','1');}
+if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){d.setAttribute('data-intro','skip');}
+else{d.classList.add('intro-lock');}
 }catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

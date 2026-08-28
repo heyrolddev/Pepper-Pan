@@ -5,12 +5,13 @@ import { useEffect, useState } from "react";
 import { Logo } from "@/components/logo";
 
 /**
- * First-visit intro overlay.
+ * Intro overlay, shown on every page load (but not on client-side route
+ * changes, since the layout persists across those).
  *
  * The markup is rendered server-side so it covers the page from the very
  * first paint (otherwise you'd see the real page, then the loader drop on
  * top of it once React hydrated). A blocking script in <head> decides
- * whether this visit gets the intro and, for repeat visits, hides the
+ * whether this load gets the intro and, when it shouldn't, hides the
  * overlay via CSS before it ever paints — see `introScript` in layout.tsx.
  */
 export function Preloader() {
