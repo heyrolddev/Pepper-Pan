@@ -2,6 +2,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { FaqAccordion } from "@/components/faq-accordion";
 
+const ADDRESS = "In front of Palengkeni (New Apalit Public Market), beside Osave!, Apalit, Philippines";
+const PHONE = "+63 947 353 3060";
+const PHONE_HREF = "+639473533060";
+const TIKTOK_HANDLE = "@pepper.pan.taiwan";
+const TIKTOK_URL = "https://tiktok.com/@pepper.pan.taiwan";
+const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`Pepper Pan, ${ADDRESS}`)}`;
+
 async function getMenuCount(): Promise<number | null> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return null;
@@ -17,6 +24,28 @@ async function getMenuCount(): Promise<number | null> {
     return count ?? null;
   } catch (err) {
     console.error("Failed to load menu count:", err);
+    return null;
+  }
+}
+
+async function getFeaturedItem(): Promise<{ name: string; price: number } | null> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return null;
+  }
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("meals")
+      .select("name, price")
+      .eq("is_public", true)
+      .eq("is_available", true)
+      .ilike("name", "%BP Pork Noodles%")
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error("Failed to load featured item:", err);
     return null;
   }
 }
@@ -48,7 +77,7 @@ const faqs = [
 ];
 
 export default async function Home() {
-  const menuCount = await getMenuCount();
+  const [menuCount, featuredItem] = await Promise.all([getMenuCount(), getFeaturedItem()]);
 
   return (
     <main className="flex-1">
@@ -73,14 +102,14 @@ export default async function Home() {
 
         <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-24 sm:py-32">
           <span className="rounded-full bg-brand-900/10 px-4 py-1 text-sm font-medium text-brand-800 dark:bg-brand-50/10 dark:text-brand-200">
-            Taiwanese Street Food & Milktea
+            Taiwan-Style Food
           </span>
           <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-brand-950 dark:text-brand-50 sm:text-6xl">
-            Real Taiwanese flavor, made fresh every day.
+            Home of Taiwan-Style Black Pepper Noodles
           </h1>
           <p className="max-w-xl text-lg text-brand-800/80 dark:text-brand-100/70">
-            From crispy Ji Pai to hand-shaken milktea — order ahead for
-            pickup or delivery, or come see us in person.
+            New flavors, real cravings — you don&apos;t need to fly to Taiwan
+            to taste it. Just come to Pepper Pan. 🔥
           </p>
           <div className="flex flex-wrap gap-4 pt-2">
             <Link
@@ -105,9 +134,9 @@ export default async function Home() {
           {[
             {
               label: menuCount ? `${menuCount}+ menu items` : "Dozens of menu items",
-              detail: "Mains, snacks, and milktea",
+              detail: "Noodles, rice meals, and more",
             },
-            { label: "Made fresh daily", detail: "Nothing sits around" },
+            { label: "Loved by repeat customers", detail: "Once you try it, you'll be back" },
             { label: "Pickup & delivery", detail: "Order ahead, skip the wait" },
           ].map((item) => (
             <div key={item.label} className="flex flex-col gap-1">
@@ -127,10 +156,11 @@ export default async function Home() {
         <div className="flex flex-col items-start justify-between gap-6 rounded-2xl bg-brand-900 px-8 py-10 text-brand-50 dark:bg-brand-100 dark:text-brand-950 sm:flex-row sm:items-center">
           <div>
             <p className="text-sm font-medium uppercase tracking-wide opacity-80">
-              This week
+              Dine-in special
             </p>
-            <p className="mt-1 text-2xl font-semibold">
-              Try our signature milktea combo
+            <p className="mt-1 text-2xl font-semibold">Get a FREE coffee when you dine in 🎉</p>
+            <p className="mt-1 text-sm opacity-80">
+              Coming soon: Chicken Wings & Chicken Pops 🔥
             </p>
           </div>
           <Link
@@ -142,6 +172,33 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* Featured item */}
+      {featuredItem && (
+        <section className="mx-auto max-w-5xl px-6 pb-16">
+          <div className="flex flex-col items-start justify-between gap-6 rounded-2xl border-2 border-brand-900 bg-white/70 px-8 py-8 dark:border-brand-100 dark:bg-brand-900/60 sm:flex-row sm:items-center">
+            <div>
+              <span className="inline-block rounded-full bg-brand-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-brand-50 dark:bg-brand-100 dark:text-brand-950">
+                Must Try
+              </span>
+              <p className="mt-3 text-2xl font-semibold text-brand-950 dark:text-brand-50">
+                {featuredItem.name}
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-2xl font-semibold text-brand-900 dark:text-brand-100">
+                ₱{Number(featuredItem.price).toFixed(0)}
+              </span>
+              <Link
+                href="/menu"
+                className="whitespace-nowrap rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
+              >
+                Order now
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Story */}
       <section id="story" className="mx-auto max-w-5xl scroll-mt-16 px-6 py-16">
         <div className="grid gap-10 sm:grid-cols-2 sm:items-center">
@@ -150,15 +207,16 @@ export default async function Home() {
               Our story
             </h2>
             <p className="text-brand-800/80 dark:text-brand-100/70">
-              Pepper Pan started with a simple idea: bring the bold, comforting
-              flavors of Taiwanese street food to our neighborhood, made the
-              same way you&apos;d find it at a night market stall — fresh,
-              fast, and full of flavor.
+              Taiwan-style food, done right — no passport required. We wanted
+              people to experience bold, new flavors without booking a
+              flight, so we brought Taiwan&apos;s street food culture straight
+              to Apalit.
             </p>
             <p className="text-brand-800/80 dark:text-brand-100/70">
-              Every dish is made in-house daily, from our marinated Ji Pai to
-              our hand-shaken milktea. No shortcuts, just good food made with
-              care.
+              From our signature Black Pepper Noodles to everything else on
+              the menu, it&apos;s made fresh daily — the kind of food that
+              stays on your mind long after the last bite. Ask any of our
+              regulars.
             </p>
           </div>
           <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-gradient-to-br from-brand-300 to-brand-600 dark:from-brand-800 dark:to-brand-600">
@@ -179,8 +237,8 @@ export default async function Home() {
               Our mission
             </h3>
             <p className="mt-3 text-brand-800/80 dark:text-brand-100/70">
-              To bring the vibrant flavors and comforting warmth of Taiwanese
-              street food to our community, made fresh every single day.
+              To bring the bold flavors of Taiwan-style food to our community
+              in Apalit, made fresh every single day.
             </p>
           </div>
           <div className="rounded-2xl border border-brand-200/60 bg-white/60 p-8 dark:border-brand-800 dark:bg-brand-900/60">
@@ -188,8 +246,8 @@ export default async function Home() {
               Our vision
             </h3>
             <p className="mt-3 text-brand-800/80 dark:text-brand-100/70">
-              To become the neighborhood&apos;s go-to spot for authentic,
-              affordable Taiwanese bites and milktea.
+              To be the neighborhood&apos;s go-to spot for Taiwan-style
+              cravings — no flight required.
             </p>
           </div>
         </div>
@@ -201,10 +259,31 @@ export default async function Home() {
           <h2 className="text-2xl font-semibold tracking-tight text-brand-950 dark:text-brand-50">
             Visit us
           </h2>
-          <p className="mt-3 text-brand-800/80 dark:text-brand-100/70">
-            Address and hours coming soon — check back here or follow us on
-            social media for the latest.
-          </p>
+          <p className="mt-3 text-brand-800/80 dark:text-brand-100/70">{ADDRESS}</p>
+          <div className="mt-5 flex flex-wrap gap-4">
+            <a
+              href={MAPS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full bg-brand-900 px-5 py-2.5 text-sm font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
+            >
+              Get Directions
+            </a>
+            <a
+              href={`tel:${PHONE_HREF}`}
+              className="rounded-full border border-brand-300 px-5 py-2.5 text-sm font-medium text-brand-900 transition-colors hover:bg-brand-900/5 dark:border-brand-700 dark:text-brand-100 dark:hover:bg-brand-50/5"
+            >
+              {PHONE}
+            </a>
+            <a
+              href={TIKTOK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full border border-brand-300 px-5 py-2.5 text-sm font-medium text-brand-900 transition-colors hover:bg-brand-900/5 dark:border-brand-700 dark:text-brand-100 dark:hover:bg-brand-50/5"
+            >
+              TikTok {TIKTOK_HANDLE}
+            </a>
+          </div>
         </div>
       </section>
 
