@@ -1,11 +1,15 @@
 @import "tailwindcss";
 
 /*
- * Pepper Pan brand palette: bold red + gold, the classic
- * high-appetite street-food combo, anchored on the owner's exact
- * red (#b91313, brand-600) and yellow (#ffcf00, gold-400).
+ * Pepper Pan design system.
+ *
+ * Core brand: red #b91313 + gold #ffcf00 on warm ink / cream.
+ * Accents: jade (complementary to red — reads fresh herbs/scallion) and
+ * chili orange (bridges red→gold so the two primaries never sit flat
+ * next to each other).
  */
 @theme {
+  /* Brand red */
   --color-brand-50: #fef2f2;
   --color-brand-100: #fde0de;
   --color-brand-200: #fac2be;
@@ -18,6 +22,7 @@
   --color-brand-900: #4a0a0a;
   --color-brand-950: #1a0808;
 
+  /* Gold */
   --color-gold-50: #fffbeb;
   --color-gold-100: #fff3c4;
   --color-gold-200: #ffe68a;
@@ -28,12 +33,71 @@
   --color-gold-700: #806600;
   --color-gold-800: #4d3d00;
   --color-gold-900: #332900;
-  --color-gold-950: #1a1500;
+
+  /* Jade — fresh, complementary counterweight to all that red */
+  --color-jade-50: #eefbf4;
+  --color-jade-100: #d3f5e3;
+  --color-jade-200: #a8ebc9;
+  --color-jade-300: #6dd9a7;
+  --color-jade-400: #34bf85;
+  --color-jade-500: #16a06b;
+  --color-jade-600: #0c8156;
+  --color-jade-700: #0a6746;
+  --color-jade-800: #0a5138;
+  --color-jade-900: #08402d;
+
+  /* Chili — the red↔gold bridge */
+  --color-chili-300: #fdba74;
+  --color-chili-400: #fb923c;
+  --color-chili-500: #f2761d;
+  --color-chili-600: #d95f0e;
+  --color-chili-700: #b04709;
+
+  /* Warm ink — near-black with a red undertone, never a cold grey */
+  --color-ink-700: #3d2620;
+  --color-ink-800: #2a1a16;
+  --color-ink-900: #1c110e;
+  --color-ink-950: #120a08;
+
+  /* Cream — warm paper, replaces clinical white for page ground */
+  --color-cream-50: #fffaf2;
+  --color-cream-100: #fdf1e0;
+  --color-cream-200: #f8e3c9;
+  --color-cream-300: #f0d0a8;
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-jakarta);
   --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  /* Height of the unscrolled sticky nav. */
+  --nav-h: 73px;
+}
+
+/*
+ * Pulls a dark masthead up behind the transparent sticky nav, so the
+ * nav's light type always sits on dark. Every page's first section uses
+ * this, which is what lets the nav flip light→dark purely on scroll.
+ */
+.under-nav {
+  margin-top: calc(-1 * var(--nav-h));
+  padding-top: var(--nav-h);
+}
+
+/* ---------------------------------------------------------------- */
+/* Motion                                                            */
+/* ---------------------------------------------------------------- */
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 @keyframes grid-move {
@@ -45,12 +109,71 @@
   }
 }
 
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -18px, 0) scale(1.05);
+  }
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(8px);
+  }
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 32s linear infinite;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+.marquee-track--fast {
+  animation-duration: 20s;
+}
+.marquee-track--reverse {
+  animation-direction: reverse;
+}
+
 .hero-grid {
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+    linear-gradient(to right, rgba(255, 207, 0, 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 207, 0, 0.14) 1px, transparent 1px);
   background-size: 56px 56px;
   animation: grid-move 4s linear infinite;
+}
+
+.drift {
+  animation: drift 9s ease-in-out infinite;
+}
+
+.bob {
+  animation: bob 2s ease-in-out infinite;
+}
+
+/* Fine film grain so big flat colour fields read as printed, not digital. */
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.text-outline {
+  -webkit-text-stroke: 2px currentColor;
+  color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {
