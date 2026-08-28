@@ -61,9 +61,9 @@ export function Cursor() {
       }}
     >
       <motion.div
-        animate={{ width: hovering ? 48 : 16, height: hovering ? 48 : 16 }}
+        animate={{ width: hovering ? 52 : 14, height: hovering ? 52 : 14 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className="rounded-full bg-white"
+        className="rounded-full bg-gold-400"
       />
     </motion.div>
   );

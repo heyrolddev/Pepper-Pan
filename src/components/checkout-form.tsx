@@ -2,8 +2,14 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import { placeOrder } from "@/app/checkout/actions";
+
+const fieldClass =
+  "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
+const labelClass =
+  "flex flex-col gap-2 text-xs font-bold uppercase tracking-widest text-ink-800";
 
 export function CheckoutForm() {
   const { items, total, clear } = useCart();
@@ -18,9 +24,17 @@ export function CheckoutForm() {
 
   if (items.length === 0) {
     return (
-      <p className="text-brand-800/80 dark:text-brand-100/70">
-        Your cart is empty.
-      </p>
+      <div className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-10 text-center">
+        <p className="font-display text-2xl font-bold text-ink-950">
+          Your cart is empty
+        </p>
+        <Link
+          href="/menu"
+          className="mt-6 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
+        >
+          Browse the menu →
+        </Link>
+      </div>
     );
   }
 
@@ -48,63 +62,108 @@ export function CheckoutForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-md flex-col gap-4">
-      <label className="flex flex-col gap-1 text-sm font-medium text-brand-900 dark:text-brand-100">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      {/* Order summary */}
+      <div className="rounded-3xl bg-cream-100 p-6 ring-1 ring-ink-950/10">
+        <p className="text-xs font-bold uppercase tracking-widest text-ink-800/60">
+          Your order
+        </p>
+        <ul className="mt-3 flex flex-col gap-2 text-sm">
+          {items.map((item) => (
+            <li key={item.mealId} className="flex justify-between gap-4">
+              <span className="text-ink-800">
+                {item.qty} × {item.name}
+              </span>
+              <span className="shrink-0 font-semibold text-ink-950">
+                ₱{(item.price * item.qty).toFixed(2)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <label className={labelClass}>
         Name
         <input
           required
           value={contactName}
           onChange={(e) => setContactName(e.target.value)}
-          className="rounded border border-brand-300 bg-white px-4 py-2 font-normal dark:border-brand-800 dark:bg-brand-900"
+          placeholder="Juan dela Cruz"
+          className={fieldClass}
         />
       </label>
 
-      <label className="flex flex-col gap-1 text-sm font-medium text-brand-900 dark:text-brand-100">
+      <label className={labelClass}>
         Phone
         <input
           required
           value={contactPhone}
           onChange={(e) => setContactPhone(e.target.value)}
-          className="rounded border border-brand-300 bg-white px-4 py-2 font-normal dark:border-brand-800 dark:bg-brand-900"
+          placeholder="09XX XXX XXXX"
+          className={fieldClass}
         />
       </label>
 
-      <label className="flex flex-col gap-1 text-sm font-medium text-brand-900 dark:text-brand-100">
-        Fulfillment
-        <select
-          value={fulfillment}
-          onChange={(e) => setFulfillment(e.target.value as "pickup" | "delivery")}
-          className="rounded border border-brand-300 bg-white px-4 py-2 font-normal dark:border-brand-800 dark:bg-brand-900"
-        >
-          <option value="pickup">Pickup</option>
-          <option value="delivery">Delivery</option>
-        </select>
-      </label>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-800">
+          Fulfillment
+        </legend>
+        <div className="grid grid-cols-2 gap-3">
+          {(["pickup", "delivery"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setFulfillment(option)}
+              className={`rounded-2xl border-2 px-4 py-3 font-bold capitalize transition-colors ${
+                fulfillment === option
+                  ? "border-brand-600 bg-brand-600 text-cream-50"
+                  : "border-ink-950/15 bg-cream-100 text-ink-800 hover:border-brand-600"
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      </fieldset>
 
-      <label className="flex flex-col gap-1 text-sm font-medium text-brand-900 dark:text-brand-100">
-        Notes (optional)
+      <label className={labelClass}>
+        Notes {fulfillment === "delivery" ? "(include your address)" : "(optional)"}
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          className="rounded border border-brand-300 bg-white px-4 py-2 font-normal dark:border-brand-800 dark:bg-brand-900"
+          placeholder={
+            fulfillment === "delivery"
+              ? "Delivery address, landmarks, special requests…"
+              : "Any special requests?"
+          }
+          className={fieldClass}
         />
       </label>
 
-      <div className="flex items-center justify-between border-t border-brand-200/60 pt-4 text-lg font-semibold text-brand-950 dark:border-brand-800 dark:text-brand-50">
-        <span>Total</span>
-        <span>₱{total.toFixed(2)}</span>
+      <div className="flex items-center justify-between rounded-3xl bg-ink-950 px-6 py-5 text-cream-50">
+        <span className="font-display text-lg font-bold">Total</span>
+        <span className="font-display text-2xl font-black text-gold-400">
+          ₱{total.toFixed(2)}
+        </span>
       </div>
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && (
+        <p className="rounded-2xl bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700">
+          {error}
+        </p>
+      )}
 
       <button
         type="submit"
         disabled={submitting}
-        className="rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 disabled:opacity-60 dark:bg-gold-400 dark:text-brand-950 dark:hover:bg-gold-300"
+        className="rounded-full bg-brand-600 px-7 py-4 font-bold text-cream-50 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
       >
-        {submitting ? "Placing order…" : "Place order"}
+        {submitting ? "Placing order…" : "Place order →"}
       </button>
+      <p className="text-center text-xs text-ink-800/50">
+        Cash on pickup or delivery. We&apos;ll confirm your order shortly.
+      </p>
     </form>
   );
 }

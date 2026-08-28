@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 
 type FaqItem = { question: string; answer: string };
@@ -8,28 +9,44 @@ export function FaqAccordion({ items }: { items: FaqItem[] }) {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
-    <div className="flex flex-col divide-y divide-brand-200/60 rounded-xl border border-brand-200/60 bg-white/60 dark:divide-brand-800 dark:border-brand-800 dark:bg-brand-900/60">
+    <div className="flex flex-col gap-3">
       {items.map((item, index) => {
         const open = openIndex === index;
         return (
-          <div key={item.question}>
+          <div
+            key={item.question}
+            className={`overflow-hidden rounded-2xl border-2 transition-colors ${
+              open ? "border-brand-600 bg-cream-100" : "border-ink-950/10 bg-cream-100/60"
+            }`}
+          >
             <button
               onClick={() => setOpenIndex(open ? null : index)}
-              className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left font-medium text-brand-950 dark:text-brand-50"
+              className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left font-display text-lg font-bold text-ink-950"
               aria-expanded={open}
             >
               {item.question}
-              <span
-                className={`shrink-0 text-brand-700 transition-transform dark:text-brand-300 ${open ? "rotate-45" : ""}`}
+              <motion.span
+                animate={{ rotate: open ? 135 : 0 }}
+                transition={{ duration: 0.25 }}
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none ${
+                  open ? "bg-brand-600 text-cream-50" : "bg-ink-950/10 text-ink-800"
+                }`}
               >
                 +
-              </span>
+              </motion.span>
             </button>
-            {open && (
-              <p className="px-5 pb-4 text-brand-800/80 dark:text-brand-100/70">
-                {item.answer}
-              </p>
-            )}
+            <AnimatePresence initial={false}>
+              {open && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <p className="px-6 pb-5 text-ink-800/80">{item.answer}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         );
       })}

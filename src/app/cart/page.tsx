@@ -1,80 +1,127 @@
 "use client";
 
 import Link from "next/link";
+import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
+import { PageHeader } from "@/components/page-header";
 
 export default function CartPage() {
   const { items, setQty, removeItem, total } = useCart();
 
   return (
-    <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-16">
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-brand-950 dark:text-brand-50">
-        Your cart
-      </h1>
+    <main className="flex-1">
+      <PageHeader
+        eyebrow="Almost there"
+        title="Your Cart"
+        subtitle={
+          items.length > 0
+            ? "Review your order, then check out — pickup or delivery."
+            : undefined
+        }
+      />
 
-      {items.length === 0 ? (
-        <p className="text-brand-800/80 dark:text-brand-100/70">
-          Your cart is empty.{" "}
-          <Link href="/menu" className="font-medium underline">
-            Browse the menu
-          </Link>
-          .
-        </p>
-      ) : (
-        <>
-          <ul className="flex flex-col divide-y divide-brand-200/60 dark:divide-brand-800">
-            {items.map((item) => (
-              <li
-                key={item.mealId}
-                className="flex items-center justify-between gap-4 py-4"
-              >
-                <div>
-                  <p className="font-medium text-brand-950 dark:text-brand-50">
-                    {item.name}
-                  </p>
-                  <p className="text-sm text-brand-800/70 dark:text-brand-100/60">
-                    ₱{item.price.toFixed(2)} each
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min={1}
-                    value={item.qty}
-                    onChange={(e) => setQty(item.mealId, Number(e.target.value))}
-                    className="w-16 rounded border border-brand-300 bg-white px-2 py-1 text-center dark:border-brand-800 dark:bg-brand-900"
-                  />
-                  <span className="w-20 text-right font-medium text-brand-900 dark:text-brand-100">
-                    ₱{(item.price * item.qty).toFixed(2)}
-                  </span>
-                  <button
-                    onClick={() => removeItem(item.mealId)}
-                    className="text-sm text-brand-700 hover:underline dark:text-brand-300"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <div className="flex items-center justify-between border-t border-brand-200/60 py-6 dark:border-brand-800">
-            <span className="text-lg font-semibold text-brand-950 dark:text-brand-50">
-              Total
-            </span>
-            <span className="text-lg font-semibold text-brand-950 dark:text-brand-50">
-              ₱{total.toFixed(2)}
-            </span>
+      <section className="mx-auto max-w-3xl px-6 py-14">
+        {items.length === 0 ? (
+          <div className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-10 text-center">
+            <p className="font-display text-2xl font-bold text-ink-950">
+              Your cart is empty
+            </p>
+            <p className="mt-2 text-ink-800/70">
+              Nothing here yet — let&apos;s fix that.
+            </p>
+            <Link
+              href="/menu"
+              className="mt-6 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
+            >
+              Browse the menu →
+            </Link>
           </div>
+        ) : (
+          <>
+            <ul className="flex flex-col gap-3">
+              <AnimatePresence mode="popLayout">
+                {items.map((item) => (
+                  <motion.li
+                    key={item.mealId}
+                    layout
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -40 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex items-center justify-between gap-4 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-display text-lg font-bold text-ink-950">
+                        {item.name}
+                      </p>
+                      <p className="text-sm text-ink-800/60">
+                        ₱{item.price.toFixed(2)} each
+                      </p>
+                    </div>
 
-          <Link
-            href="/checkout"
-            className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-gold-400 dark:text-brand-950 dark:hover:bg-gold-300"
-          >
-            Checkout
-          </Link>
-        </>
-      )}
+                    <div className="flex shrink-0 items-center gap-4">
+                      <div className="flex items-center gap-1 rounded-full bg-cream-50 p-1 ring-1 ring-ink-950/10">
+                        <button
+                          onClick={() => setQty(item.mealId, item.qty - 1)}
+                          aria-label={`Decrease quantity of ${item.name}`}
+                          className="grid h-8 w-8 place-items-center rounded-full font-bold text-ink-800 transition-colors hover:bg-brand-600 hover:text-cream-50"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center font-bold text-ink-950">
+                          {item.qty}
+                        </span>
+                        <button
+                          onClick={() => setQty(item.mealId, item.qty + 1)}
+                          aria-label={`Increase quantity of ${item.name}`}
+                          className="grid h-8 w-8 place-items-center rounded-full font-bold text-ink-800 transition-colors hover:bg-brand-600 hover:text-cream-50"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <span className="hidden w-24 text-right font-display text-lg font-black text-brand-600 sm:block">
+                        ₱{(item.price * item.qty).toFixed(2)}
+                      </span>
+
+                      <button
+                        onClick={() => removeItem(item.mealId)}
+                        className="text-sm font-semibold text-ink-800/50 transition-colors hover:text-brand-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </motion.li>
+                ))}
+              </AnimatePresence>
+            </ul>
+
+            <motion.div
+              layout
+              className="mt-8 flex flex-col gap-5 rounded-3xl bg-ink-950 p-7 text-cream-50"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-display text-xl font-bold">Total</span>
+                <span className="font-display text-3xl font-black text-gold-400">
+                  ₱{total.toFixed(2)}
+                </span>
+              </div>
+              <Link
+                href="/checkout"
+                className="rounded-full bg-gold-400 px-7 py-4 text-center font-bold text-ink-950 transition-transform hover:scale-[1.02]"
+              >
+                Checkout →
+              </Link>
+              <Link
+                href="/menu"
+                className="text-center text-sm font-semibold text-cream-100/60 transition-colors hover:text-gold-400"
+              >
+                ← Add more items
+              </Link>
+            </motion.div>
+          </>
+        )}
+      </section>
     </main>
   );
 }

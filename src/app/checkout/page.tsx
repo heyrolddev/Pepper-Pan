@@ -1,14 +1,18 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { CheckoutForm } from "@/components/checkout-form";
+import { PageHeader } from "@/components/page-header";
 
 export default async function CheckoutPage() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return (
-      <main className="mx-auto w-full max-w-md flex-1 px-6 py-16">
-        <p className="text-brand-800/80 dark:text-brand-100/70">
-          Ordering isn&apos;t set up yet.
-        </p>
+      <main className="flex-1">
+        <PageHeader title="Checkout" />
+        <section className="mx-auto max-w-md px-6 py-14">
+          <p className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80">
+            Ordering isn&apos;t set up yet.
+          </p>
+        </section>
       </main>
     );
   }
@@ -20,26 +24,34 @@ export default async function CheckoutPage() {
 
   if (!user) {
     return (
-      <main className="mx-auto w-full max-w-md flex-1 px-6 py-16">
-        <h1 className="mb-4 text-2xl font-semibold tracking-tight text-brand-950 dark:text-brand-50">
-          Sign in to check out
-        </h1>
-        <Link
-          href="/login?next=/checkout"
-          className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-gold-400 dark:text-brand-950 dark:hover:bg-gold-300"
-        >
-          Sign in
-        </Link>
+      <main className="flex-1">
+        <PageHeader
+          eyebrow="One quick step"
+          title="Sign in to check out"
+          subtitle="We'll email you a one-time link — no password to remember."
+        />
+        <section className="mx-auto max-w-md px-6 py-14 text-center">
+          <Link
+            href="/login?next=/checkout"
+            className="inline-block rounded-full bg-brand-600 px-8 py-4 font-bold text-cream-50 transition-transform hover:scale-105"
+          >
+            Sign in →
+          </Link>
+        </section>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-md flex-1 px-6 py-16">
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-brand-950 dark:text-brand-50">
-        Checkout
-      </h1>
-      <CheckoutForm />
+    <main className="flex-1">
+      <PageHeader
+        eyebrow="Last step"
+        title="Checkout"
+        subtitle="Tell us where this is going and we'll start cooking."
+      />
+      <section className="mx-auto max-w-md px-6 py-14">
+        <CheckoutForm />
+      </section>
     </main>
   );
 }

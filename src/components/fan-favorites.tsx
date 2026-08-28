@@ -10,18 +10,18 @@ type Favorite = { name: string; image: string };
 
 export function FanFavorites({ items }: { items: Favorite[] }) {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+    <div className="grid grid-cols-2 gap-5 sm:grid-cols-3">
       {items.map((item, i) => (
         <MotionLink
           key={item.name}
           href="/menu"
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
-          transition={{ duration: 0.4, delay: i * 0.06 }}
-          whileHover={{ scale: 1.04, rotate: i % 2 === 0 ? -1 : 1 }}
+          transition={{ duration: 0.5, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+          whileHover={{ scale: 1.05, rotate: i % 2 === 0 ? -1.5 : 1.5 }}
           whileTap={{ scale: 0.98 }}
-          className="block overflow-hidden rounded-xl border-2 border-brand-950 bg-white shadow-md dark:border-gold-400"
+          className="group relative block overflow-hidden rounded-2xl ring-2 ring-gold-400/70"
         >
           <div className="relative aspect-[3/4] w-full">
             <Image
@@ -31,6 +31,14 @@ export function FanFavorites({ items }: { items: Favorite[] }) {
               sizes="(min-width: 640px) 33vw, 50vw"
               className="object-cover"
             />
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-full bg-gradient-to-t from-ink-950 via-ink-950/80 to-transparent px-4 pb-4 pt-10 transition-transform duration-300 group-hover:translate-y-0">
+            <span className="font-display text-lg font-bold text-cream-50">
+              {item.name}
+            </span>
+            <span className="mt-0.5 block text-sm font-semibold text-gold-400">
+              Order now →
+            </span>
           </div>
         </MotionLink>
       ))}

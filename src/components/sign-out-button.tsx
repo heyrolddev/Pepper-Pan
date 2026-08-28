@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export function SignOutButton() {
+export function SignOutButton({ scrolled = true }: { scrolled?: boolean }) {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
 
@@ -19,7 +19,11 @@ export function SignOutButton() {
     <button
       onClick={handleSignOut}
       disabled={signingOut}
-      className="text-brand-800 hover:underline dark:text-brand-200"
+      className={`rounded-full px-3 py-2 transition-colors disabled:opacity-60 ${
+        scrolled
+          ? "text-ink-800 hover:text-brand-600"
+          : "text-cream-100/80 hover:text-gold-400"
+      }`}
     >
       {signingOut ? "Signing out…" : "Sign out"}
     </button>

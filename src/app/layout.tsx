@@ -1,25 +1,32 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
 import { Nav } from "@/components/nav";
 import { Cursor } from "@/components/cursor";
+import { ScrollProgress } from "@/components/scroll-progress";
+import { Marquee } from "@/components/marquee";
 import { createClient } from "@/lib/supabase/server";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Warm display serif — reads artisanal and appetising rather than corporate.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// Friendly geometric sans for body copy and UI.
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Pepper Pan",
+  title: "Pepper Pan — Home of Taiwan-Style Black Pepper Noodles",
   description:
-    "Home of Taiwan-Style Black Pepper Noodles — order ahead for pickup or delivery.",
+    "Taiwan-style black pepper noodles, rice meals and milktea, made fresh daily in Apalit. Order ahead for pickup or delivery.",
 };
 
 async function getUserEmail(): Promise<string | null> {
@@ -43,29 +50,96 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${jakarta.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-brand-50 font-sans dark:bg-brand-950">
+      <body className="flex min-h-full flex-col bg-cream-50 font-sans text-ink-900">
         <CartProvider>
           <Cursor />
+          <ScrollProgress />
           <Nav userEmail={userEmail} />
           {children}
-          <footer className="border-t border-brand-200/60 py-8 text-center text-sm text-brand-700/70 dark:border-brand-800 dark:text-brand-200/50">
-            <p>© {new Date().getFullYear()} Pepper Pan</p>
-            <p className="mt-1">
-              <a href="tel:+639473533060" className="hover:underline">
-                +63 947 353 3060
-              </a>
-              {" · "}
-              <a
-                href="https://tiktok.com/@pepper.pan.taiwan"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-              >
-                TikTok @pepper.pan.taiwan
-              </a>
-            </p>
+
+          <footer className="grain relative overflow-hidden bg-ink-950 text-cream-100">
+            <Marquee
+              className="border-y border-white/10 py-3 text-sm font-bold uppercase tracking-widest text-gold-400"
+              trackClassName="marquee-track--reverse"
+              items={[
+                "Made fresh daily",
+                "Free coffee when you dine in",
+                "Black pepper noodles",
+                "Pickup & delivery",
+                "Chicken wings coming soon",
+              ]}
+            />
+
+            <div className="mx-auto grid max-w-5xl gap-10 px-6 py-14 sm:grid-cols-3">
+              <div>
+                <p className="font-display text-2xl font-black text-cream-50">
+                  Pepper Pan
+                </p>
+                <p className="mt-2 text-sm text-cream-100/60">
+                  Home of Taiwan-Style Black Pepper Noodles.
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-gold-400">
+                  Explore
+                </p>
+                <ul className="mt-3 flex flex-col gap-2 text-sm">
+                  <li>
+                    <Link href="/menu" className="hover:text-gold-300">
+                      Menu
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/#story" className="hover:text-gold-300">
+                      Our story
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/#visit" className="hover:text-gold-300">
+                      Visit us
+                    </Link>
+                  </li>
+                  <li>
+                    <Link href="/orders" className="hover:text-gold-300">
+                      My orders
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-gold-400">
+                  Say hello
+                </p>
+                <ul className="mt-3 flex flex-col gap-2 text-sm">
+                  <li>
+                    <a href="tel:+639473533060" className="hover:text-gold-300">
+                      +63 947 353 3060
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://tiktok.com/@pepper.pan.taiwan"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-gold-300"
+                    >
+                      TikTok @pepper.pan.taiwan
+                    </a>
+                  </li>
+                  <li className="text-cream-100/60">
+                    In front of Palengkeni, beside Osave! — Apalit
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="border-t border-white/10 py-5 text-center text-xs text-cream-100/40">
+              © {new Date().getFullYear()} Pepper Pan
+            </div>
           </footer>
         </CartProvider>
       </body>
