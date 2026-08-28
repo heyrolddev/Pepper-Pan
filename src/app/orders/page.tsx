@@ -43,7 +43,7 @@ export default async function OrdersPage() {
         </p>
         <Link
           href="/login?next=/orders"
-          className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
+          className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-gold-400 dark:text-brand-950 dark:hover:bg-gold-300"
         >
           Sign in
         </Link>
@@ -92,13 +92,13 @@ export default async function OrdersPage() {
                     <span>
                       {line.qty} × {line.meals?.name ?? "Item"}
                     </span>
-                    <span>${(line.qty * Number(line.price_at_sale)).toFixed(2)}</span>
+                    <span>₱{(line.qty * Number(line.price_at_sale)).toFixed(2)}</span>
                   </li>
                 ))}
               </ul>
               <div className="mt-3 flex justify-between border-t border-brand-200/60 pt-3 font-semibold text-brand-950 dark:border-brand-800 dark:text-brand-50">
                 <span>Total</span>
-                <span>${Number(order.revenue).toFixed(2)}</span>
+                <span>₱{Number(order.revenue).toFixed(2)}</span>
               </div>
             </li>
           ))}

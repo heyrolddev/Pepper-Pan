@@ -26,7 +26,7 @@ export default async function CheckoutPage() {
         </h1>
         <Link
           href="/login?next=/checkout"
-          className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
+          className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-gold-400 dark:text-brand-950 dark:hover:bg-gold-300"
         >
           Sign in
         </Link>

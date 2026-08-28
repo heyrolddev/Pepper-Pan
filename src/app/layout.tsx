@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
 import { Nav } from "@/components/nav";
+import { Cursor } from "@/components/cursor";
 import { createClient } from "@/lib/supabase/server";
 
 const geistSans = Geist({
@@ -46,6 +47,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col bg-brand-50 font-sans dark:bg-brand-950">
         <CartProvider>
+          <Cursor />
           <Nav userEmail={userEmail} />
           {children}
           <footer className="border-t border-brand-200/60 py-8 text-center text-sm text-brand-700/70 dark:border-brand-800 dark:text-brand-200/50">
