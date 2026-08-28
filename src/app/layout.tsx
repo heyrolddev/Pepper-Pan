@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Pepper Pan",
   description:
-    "Taiwanese bites & milktea, made fresh daily — order ahead for pickup or delivery.",
+    "Home of Taiwan-Style Black Pepper Noodles — order ahead for pickup or delivery.",
 };
 
 async function getUserEmail(): Promise<string | null> {
@@ -49,7 +49,21 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <Nav userEmail={userEmail} />
           {children}
           <footer className="border-t border-brand-200/60 py-8 text-center text-sm text-brand-700/70 dark:border-brand-800 dark:text-brand-200/50">
-            © {new Date().getFullYear()} Pepper Pan
+            <p>© {new Date().getFullYear()} Pepper Pan</p>
+            <p className="mt-1">
+              <a href="tel:+639473533060" className="hover:underline">
+                +63 947 353 3060
+              </a>
+              {" · "}
+              <a
+                href="https://tiktok.com/@pepper.pan.taiwan"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                TikTok @pepper.pan.taiwan
+              </a>
+            </p>
           </footer>
         </CartProvider>
       </body>
