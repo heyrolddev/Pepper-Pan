@@ -133,13 +133,20 @@ const waste = data.waste.map((w) => ({
 await upsert('waste_log', waste, 'waste_log');
 
 // ---- consumption log ----
-const consumption = data.consumptionLog.map((c) => ({
-  id: c.id,
-  ingredient_id: c.invId,
-  date: c.date,
-  qty: c.qty,
-  type: c.type || null,
-}));
+const knownIngredientIds = new Set(data.inventory.map((i) => i.id));
+const consumptionSkipped = data.consumptionLog.filter((c) => !knownIngredientIds.has(c.invId));
+const consumption = data.consumptionLog
+  .filter((c) => knownIngredientIds.has(c.invId))
+  .map((c) => ({
+    id: c.id,
+    ingredient_id: c.invId,
+    date: c.date,
+    qty: c.qty,
+    type: c.type || null,
+  }));
+if (consumptionSkipped.length) {
+  console.log(`- consumption_log: skipping ${consumptionSkipped.length} entr${consumptionSkipped.length === 1 ? 'y' : 'ies'} referencing a deleted ingredient`);
+}
 await upsert('consumption_log', consumption, 'consumption_log');
 
 // ---- purchase log / cash ledger / receivables / cycle counts / oe templates (empty today, imported if present) ----
