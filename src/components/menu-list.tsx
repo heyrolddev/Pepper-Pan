@@ -107,7 +107,7 @@ export function MenuList({ meals }: { meals: Meal[] }) {
   return (
     <div className="flex flex-col gap-8">
       {/* Sticky filter bar */}
-      <div className="sticky top-[var(--nav-h)] z-30 -mx-6 flex flex-col gap-4 border-b border-ink-950/10 bg-cream-50/90 px-6 py-4 backdrop-blur-md">
+      <div className="sticky top-[var(--nav-h)] z-30 -mx-6 flex flex-col gap-4 border-b border-ink-950/10 bg-cream-50 px-6 py-4">
         <div className="flex flex-wrap items-center gap-3">
           <input
             type="search"

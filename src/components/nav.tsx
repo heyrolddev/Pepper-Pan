@@ -33,24 +33,22 @@ export function Nav({ userEmail }: { userEmail: string | null }) {
 
   return (
     <header
-      className={`sticky top-0 z-40 transition-all duration-300 ${
+      // An inset shadow rather than a border, so the nav's box is exactly
+      // --nav-h tall and nothing else has to account for a stray pixel.
+      // Opaque rather than translucent+blur: a backdrop-filter over
+      // scrolling content costs a GPU pass every frame.
+      className={`sticky top-0 z-40 transition-colors duration-300 ${
         scrolled
-          ? "border-b border-ink-950/10 bg-cream-50/90 backdrop-blur-md"
-          : "border-b border-transparent bg-transparent"
+          ? "bg-cream-50 shadow-[inset_0_-1px_0_rgb(28_17_14/0.12)]"
+          : "bg-transparent"
       }`}
     >
-      <div
-        className={`mx-auto flex max-w-6xl items-center justify-between px-6 transition-all duration-300 ${
-          scrolled ? "py-3" : "py-5"
-        }`}
-      >
+      <div className="mx-auto flex h-[var(--nav-h)] max-w-6xl items-center justify-between px-6">
         <Link href="/" aria-label="Pepper Pan — home" className="group block">
           <Logo
             priority
             width={220}
-            className={`h-auto transition-all duration-300 group-hover:scale-105 ${
-              scrolled ? "w-[130px]" : "w-[150px]"
-            }`}
+            className="h-auto w-[120px] transition-transform duration-300 group-hover:scale-105 sm:w-[150px]"
           />
         </Link>
 
