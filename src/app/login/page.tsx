@@ -36,15 +36,15 @@ function LoginForm() {
 
   return (
     <main className="mx-auto w-full max-w-md flex-1 px-6 py-16">
-      <h1 className="mb-2 text-2xl font-semibold tracking-tight text-amber-950 dark:text-amber-50">
+      <h1 className="mb-2 text-2xl font-semibold tracking-tight text-brand-950 dark:text-brand-50">
         Sign in
       </h1>
-      <p className="mb-8 text-amber-800/80 dark:text-amber-100/70">
+      <p className="mb-8 text-brand-800/80 dark:text-brand-100/70">
         We&apos;ll email you a link — no password needed.
       </p>
 
       {sent ? (
-        <p className="rounded-lg border border-dashed border-amber-300 bg-white/60 p-6 text-amber-700 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-amber-200">
+        <p className="rounded-lg border border-dashed border-brand-300 bg-white/60 p-6 text-brand-700 dark:border-brand-800 dark:bg-brand-900/60 dark:text-brand-200">
           Check your email for a sign-in link.
         </p>
       ) : (
@@ -55,13 +55,13 @@ function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="rounded border border-amber-300 bg-white px-4 py-2 dark:border-neutral-700 dark:bg-neutral-900"
+            className="rounded border border-brand-300 bg-white px-4 py-2 dark:border-brand-800 dark:bg-brand-900"
           />
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-full bg-amber-900 px-6 py-3 font-medium text-amber-50 transition-colors hover:bg-amber-800 disabled:opacity-60 dark:bg-amber-100 dark:text-amber-950 dark:hover:bg-amber-200"
+            className="rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 disabled:opacity-60 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
           >
             {submitting ? "Sending…" : "Send magic link"}
           </button>

@@ -20,7 +20,7 @@ export default async function OrdersPage() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return (
       <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16">
-        <p className="text-amber-800/80 dark:text-amber-100/70">
+        <p className="text-brand-800/80 dark:text-brand-100/70">
           Ordering isn&apos;t set up yet.
         </p>
       </main>
@@ -35,15 +35,15 @@ export default async function OrdersPage() {
   if (!user) {
     return (
       <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16">
-        <h1 className="mb-4 text-2xl font-semibold tracking-tight text-amber-950 dark:text-amber-50">
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight text-brand-950 dark:text-brand-50">
           Your orders
         </h1>
-        <p className="mb-4 text-amber-800/80 dark:text-amber-100/70">
+        <p className="mb-4 text-brand-800/80 dark:text-brand-100/70">
           Sign in to see your order history.
         </p>
         <Link
           href="/login?next=/orders"
-          className="inline-block rounded-full bg-amber-900 px-6 py-3 font-medium text-amber-50 transition-colors hover:bg-amber-800 dark:bg-amber-100 dark:text-amber-950 dark:hover:bg-amber-200"
+          className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
         >
           Sign in
         </Link>
@@ -61,12 +61,12 @@ export default async function OrdersPage() {
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16">
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-amber-950 dark:text-amber-50">
+      <h1 className="mb-8 text-2xl font-semibold tracking-tight text-brand-950 dark:text-brand-50">
         Your orders
       </h1>
 
       {typedOrders.length === 0 ? (
-        <p className="text-amber-800/80 dark:text-amber-100/70">
+        <p className="text-brand-800/80 dark:text-brand-100/70">
           No orders yet.{" "}
           <Link href="/#menu" className="font-medium underline">
             Browse the menu
@@ -78,15 +78,15 @@ export default async function OrdersPage() {
           {typedOrders.map((order) => (
             <li
               key={order.id}
-              className="rounded-lg border border-amber-200/60 bg-white/60 p-5 dark:border-neutral-800 dark:bg-neutral-900/60"
+              className="rounded-lg border border-brand-200/60 bg-white/60 p-5 dark:border-brand-800 dark:bg-brand-900/60"
             >
-              <div className="flex items-center justify-between text-sm text-amber-800/70 dark:text-amber-100/60">
+              <div className="flex items-center justify-between text-sm text-brand-800/70 dark:text-brand-100/60">
                 <span>{new Date(order.created_at).toLocaleString()}</span>
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium capitalize text-amber-900 dark:bg-neutral-800 dark:text-amber-100">
+                <span className="rounded-full bg-brand-100 px-2 py-0.5 font-medium capitalize text-brand-900 dark:bg-brand-800 dark:text-brand-100">
                   {order.status}
                 </span>
               </div>
-              <ul className="mt-3 flex flex-col gap-1 text-sm text-amber-900 dark:text-amber-100">
+              <ul className="mt-3 flex flex-col gap-1 text-sm text-brand-900 dark:text-brand-100">
                 {order.order_lines.map((line, idx) => (
                   <li key={idx} className="flex justify-between">
                     <span>
@@ -96,7 +96,7 @@ export default async function OrdersPage() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-3 flex justify-between border-t border-amber-200/60 pt-3 font-semibold text-amber-950 dark:border-neutral-800 dark:text-amber-50">
+              <div className="mt-3 flex justify-between border-t border-brand-200/60 pt-3 font-semibold text-brand-950 dark:border-brand-800 dark:text-brand-50">
                 <span>Total</span>
                 <span>${Number(order.revenue).toFixed(2)}</span>
               </div>

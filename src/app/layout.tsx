@@ -17,7 +17,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Pepper Pan",
-  description: "Fresh bakes, made daily — order ahead for pickup or delivery.",
+  description:
+    "Taiwanese bites & milktea, made fresh daily — order ahead for pickup or delivery.",
 };
 
 async function getUserEmail(): Promise<string | null> {
@@ -43,11 +44,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-amber-50 dark:bg-neutral-950">
+      <body className="min-h-full flex flex-col bg-brand-50 font-sans dark:bg-brand-950">
         <CartProvider>
           <Nav userEmail={userEmail} />
           {children}
-          <footer className="border-t border-amber-200/60 py-8 text-center text-sm text-amber-700/70 dark:border-neutral-800 dark:text-amber-200/50">
+          <footer className="border-t border-brand-200/60 py-8 text-center text-sm text-brand-700/70 dark:border-brand-800 dark:text-brand-200/50">
             © {new Date().getFullYear()} Pepper Pan
           </footer>
         </CartProvider>
