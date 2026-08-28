@@ -33,7 +33,7 @@ export default function CartPage() {
                     {item.name}
                   </p>
                   <p className="text-sm text-brand-800/70 dark:text-brand-100/60">
-                    ${item.price.toFixed(2)} each
+                    ₱{item.price.toFixed(2)} each
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -45,7 +45,7 @@ export default function CartPage() {
                     className="w-16 rounded border border-brand-300 bg-white px-2 py-1 text-center dark:border-brand-800 dark:bg-brand-900"
                   />
                   <span className="w-20 text-right font-medium text-brand-900 dark:text-brand-100">
-                    ${(item.price * item.qty).toFixed(2)}
+                    ₱{(item.price * item.qty).toFixed(2)}
                   </span>
                   <button
                     onClick={() => removeItem(item.mealId)}
@@ -63,13 +63,13 @@ export default function CartPage() {
               Total
             </span>
             <span className="text-lg font-semibold text-brand-950 dark:text-brand-50">
-              ${total.toFixed(2)}
+              ₱{total.toFixed(2)}
             </span>
           </div>
 
           <Link
             href="/checkout"
-            className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
+            className="inline-block rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-gold-400 dark:text-brand-950 dark:hover:bg-gold-300"
           >
             Checkout
           </Link>

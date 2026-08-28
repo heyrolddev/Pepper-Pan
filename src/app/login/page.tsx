@@ -61,7 +61,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 disabled:opacity-60 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
+            className="rounded-full bg-brand-900 px-6 py-3 font-medium text-brand-50 transition-colors hover:bg-brand-800 disabled:opacity-60 dark:bg-gold-400 dark:text-brand-950 dark:hover:bg-gold-300"
           >
             {submitting ? "Sending…" : "Send magic link"}
           </button>

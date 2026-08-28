@@ -1,24 +1,65 @@
 @import "tailwindcss";
 
 /*
- * Pepper Pan brand palette: warm cream (milk tea au lait) through deep
- * brick-red/maroon, used for both light and dark mode across the app.
+ * Pepper Pan brand palette: bold red + gold, the classic
+ * high-appetite street-food combo, anchored on the owner's exact
+ * red (#b91313, brand-600) and yellow (#ffcf00, gold-400).
  */
 @theme {
-  --color-brand-50: #fbf1e6;
-  --color-brand-100: #f5dfc0;
-  --color-brand-200: #eac090;
-  --color-brand-300: #dc9f63;
-  --color-brand-400: #c97d3e;
-  --color-brand-500: #ad5c2a;
-  --color-brand-600: #8c4322;
-  --color-brand-700: #71301b;
-  --color-brand-800: #4f2015;
-  --color-brand-900: #331610;
-  --color-brand-950: #1d0f0a;
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fde0de;
+  --color-brand-200: #fac2be;
+  --color-brand-300: #f29891;
+  --color-brand-400: #e36158;
+  --color-brand-500: #cc3226;
+  --color-brand-600: #b91313;
+  --color-brand-700: #94100f;
+  --color-brand-800: #700d0d;
+  --color-brand-900: #4a0a0a;
+  --color-brand-950: #1a0808;
+
+  --color-gold-50: #fffbeb;
+  --color-gold-100: #fff3c4;
+  --color-gold-200: #ffe68a;
+  --color-gold-300: #ffdb4d;
+  --color-gold-400: #ffcf00;
+  --color-gold-500: #e6bb00;
+  --color-gold-600: #b38f00;
+  --color-gold-700: #806600;
+  --color-gold-800: #4d3d00;
+  --color-gold-900: #332900;
+  --color-gold-950: #1a1500;
 }
 
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+@keyframes grid-move {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 56px;
+  }
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 56px 56px;
+  animation: grid-move 4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
