@@ -29,7 +29,12 @@ back office for staff (inventory, batches, orders, waste, finance).
    node --env-file=.env.local scripts/seed.mjs
    ```
 
-5. Run the dev server:
+5. In Supabase, go to Authentication → URL Configuration and add your site's
+   URL (and `http://localhost:3000` for local dev) to both the Site URL and
+   Redirect URLs — customer sign-in uses email magic links that redirect to
+   `/auth/callback` on whichever origin the app is running on.
+
+6. Run the dev server:
 
    ```bash
    npm run dev
@@ -37,10 +42,18 @@ back office for staff (inventory, batches, orders, waste, finance).
 
    Open [http://localhost:3000](http://localhost:3000) — the homepage renders
    the public menu (meals marked `is_public` and `is_available` in Supabase).
+   Customers can add items to a cart, sign in with an emailed magic link, place
+   an order, and see their order history at `/orders`.
 
 ## Project structure
 
-- `src/app` — Next.js App Router pages.
+- `src/app` — Next.js App Router pages: `/` (menu), `/cart`, `/login`
+  (magic-link sign-in), `/checkout`, `/orders` (order history), and
+  `/auth/callback` (exchanges the magic-link code for a session).
+- `src/app/checkout/actions.ts` — server-side order placement; re-fetches
+  current menu prices rather than trusting the client-side cart total.
+- `src/lib/cart-context.tsx` — client-side cart state, persisted to
+  `localStorage`.
 - `src/lib/supabase` — Supabase client factories: `client.ts` (browser),
   `server.ts` (server components/actions, respects RLS), `admin.ts`
   (service-role, server-only, bypasses RLS — used by `scripts/seed.mjs`).
