@@ -1,59 +1,118 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useCart } from "@/lib/cart-context";
 
-type Meal = {
+export type Meal = {
   id: string;
   name: string;
   price: number;
   description: string | null;
   categories: string[];
+  image_url: string | null;
 };
 
-export function MenuList({ groups }: { groups: [string, Meal[]][] }) {
+function MealCard({ meal }: { meal: Meal }) {
   const { addItem } = useCart();
 
   return (
-    <>
-      {groups.map(([category, meals]) => (
+    <li className="flex flex-col overflow-hidden rounded-xl border border-brand-200/60 bg-white/70 shadow-sm transition-shadow hover:shadow-md dark:border-brand-800 dark:bg-brand-900/60">
+      <div className="relative aspect-[4/3] w-full bg-gradient-to-br from-brand-200 to-brand-400 dark:from-brand-800 dark:to-brand-700">
+        {meal.image_url ? (
+          <Image
+            src={meal.image_url}
+            alt={meal.name}
+            fill
+            sizes="(min-width: 768px) 33vw, 50vw"
+            className="object-cover"
+          />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center text-3xl font-semibold text-brand-50/90 dark:text-brand-50/80">
+            {meal.name.charAt(0).toUpperCase()}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col gap-2 p-4">
+        <p className="font-medium text-brand-950 dark:text-brand-50">{meal.name}</p>
+        {meal.description && (
+          <p className="line-clamp-2 text-sm text-brand-800/70 dark:text-brand-100/60">
+            {meal.description}
+          </p>
+        )}
+        <div className="mt-auto flex items-center justify-between pt-2">
+          <span className="font-semibold text-brand-900 dark:text-brand-100">
+            ${Number(meal.price).toFixed(2)}
+          </span>
+          <button
+            onClick={() =>
+              addItem({ mealId: meal.id, name: meal.name, price: Number(meal.price) })
+            }
+            className="whitespace-nowrap rounded-full bg-brand-900 px-3 py-1.5 text-sm font-medium text-brand-50 transition-colors hover:bg-brand-800 dark:bg-brand-100 dark:text-brand-950 dark:hover:bg-brand-200"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+export function MenuList({ meals }: { meals: Meal[] }) {
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return meals;
+    return meals.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        (m.description ?? "").toLowerCase().includes(q)
+    );
+  }, [meals, query]);
+
+  const groups = useMemo(() => {
+    const map = new Map<string, Meal[]>();
+    for (const meal of filtered) {
+      const category = meal.categories[0] || "Menu";
+      if (!map.has(category)) map.set(category, []);
+      map.get(category)!.push(meal);
+    }
+    return [...map.entries()];
+  }, [filtered]);
+
+  const showCategoryHeaders = groups.length > 1;
+
+  return (
+    <div className="flex flex-col gap-8">
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search the menu…"
+        className="w-full max-w-sm rounded-full border border-brand-300 bg-white px-4 py-2 text-sm dark:border-brand-800 dark:bg-brand-900"
+      />
+
+      {filtered.length === 0 && (
+        <p className="text-brand-800/70 dark:text-brand-100/60">
+          No items match &ldquo;{query}&rdquo;.
+        </p>
+      )}
+
+      {groups.map(([category, items]) => (
         <div key={category} className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-            {category}
-          </h2>
-          <ul className="flex flex-col divide-y divide-amber-200/60 dark:divide-neutral-800">
-            {meals.map((meal) => (
-              <li
-                key={meal.id}
-                className="flex items-center justify-between gap-6 py-4"
-              >
-                <div>
-                  <p className="font-medium text-amber-950 dark:text-amber-50">
-                    {meal.name}
-                  </p>
-                  {meal.description && (
-                    <p className="mt-1 text-sm text-amber-800/70 dark:text-amber-100/60">
-                      {meal.description}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="whitespace-nowrap font-medium text-amber-900 dark:text-amber-100">
-                    ${Number(meal.price).toFixed(2)}
-                  </span>
-                  <button
-                    onClick={() =>
-                      addItem({ mealId: meal.id, name: meal.name, price: Number(meal.price) })
-                    }
-                    className="whitespace-nowrap rounded-full bg-amber-900 px-3 py-1.5 text-sm font-medium text-amber-50 transition-colors hover:bg-amber-800 dark:bg-amber-100 dark:text-amber-950 dark:hover:bg-amber-200"
-                  >
-                    Add
-                  </button>
-                </div>
-              </li>
+          {showCategoryHeaders && (
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+              {category}
+            </h2>
+          )}
+          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {items.map((meal) => (
+              <MealCard key={meal.id} meal={meal} />
             ))}
           </ul>
         </div>
       ))}
-    </>
+    </div>
   );
 }
