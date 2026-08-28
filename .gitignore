@@ -40,3 +40,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 data/pepperpan_backup.json
+supabase/seed_real_data.sql
