@@ -73,8 +73,19 @@
 }
 
 :root {
-  /* Height of the unscrolled sticky nav. */
-  --nav-h: 73px;
+  /*
+   * The nav is a fixed height at each breakpoint and only changes its
+   * background on scroll — never its size. Everything that offsets against
+   * the nav (`.under-nav`, the menu page's sticky filter bar) reads this,
+   * so there is exactly one source of truth.
+   */
+  --nav-h: 72px;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --nav-h: 88px;
+  }
 }
 
 /*
@@ -100,12 +111,16 @@
   }
 }
 
+/*
+ * Animating `background-position` repaints the whole full-screen layer
+ * every frame; translating an over-tall layer stays on the compositor.
+ */
 @keyframes grid-move {
   from {
-    background-position: 0 0;
+    transform: translate3d(0, 0, 0);
   }
   to {
-    background-position: 0 56px;
+    transform: translate3d(0, -56px, 0);
   }
 }
 
@@ -189,11 +204,23 @@ html.intro-lock body {
     linear-gradient(to right, rgba(255, 207, 0, 0.14) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 207, 0, 0.14) 1px, transparent 1px);
   background-size: 56px 56px;
+  /* One tile taller than the box, so the translate never reveals an edge. */
+  height: calc(100% + 56px);
   animation: grid-move 4s linear infinite;
+  will-change: transform;
 }
 
 .drift {
   animation: drift 9s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Ambient motion is a nice-to-have; skip it on phones to save battery. */
+@media (max-width: 640px) {
+  .drift,
+  .hero-grid {
+    animation: none;
+  }
 }
 
 .bob {

@@ -25,12 +25,12 @@ const IMG_BASE =
   "https://djxcwbxahmtoglinsaaz.supabase.co/storage/v1/object/public/PepperPan";
 
 const favorites = [
-  { name: "Pork Noodles", image: `${IMG_BASE}/FB.jpg` },
-  { name: "Chicken Noodles", image: `${IMG_BASE}/FB%20(2).jpg` },
-  { name: "Pork Rice", image: `${IMG_BASE}/9.jpg` },
-  { name: "Giant Ji Pai", image: `${IMG_BASE}/21.jpg` },
-  { name: "Ji Pai Burger", image: `${IMG_BASE}/7.jpg` },
-  { name: "Taiwan Milktea", image: `${IMG_BASE}/26.jpg` },
+  { name: "Pork Noodles", image: `${IMG_BASE}/opt/FB.webp` },
+  { name: "Chicken Noodles", image: `${IMG_BASE}/opt/FB%20(2).webp` },
+  { name: "Pork Rice", image: `${IMG_BASE}/opt/9.webp` },
+  { name: "Giant Ji Pai", image: `${IMG_BASE}/opt/21.webp` },
+  { name: "Ji Pai Burger", image: `${IMG_BASE}/opt/7.webp` },
+  { name: "Taiwan Milktea", image: `${IMG_BASE}/opt/26.webp` },
 ];
 
 async function getMenuCount(): Promise<number | null> {
@@ -196,7 +196,7 @@ export default async function Home() {
           </div>
 
           <HeroVisual
-            src={`${IMG_BASE}/8.png`}
+            src={`${IMG_BASE}/opt/8.webp`}
             alt="Pepper Pan sizzling black pepper pork rice"
           />
         </div>
@@ -329,7 +329,7 @@ export default async function Home() {
           <Parallax distance={40}>
             <div className="grain relative aspect-square w-full overflow-hidden rounded-[2rem] bg-gradient-to-br from-gold-300 via-chili-400 to-brand-600">
               <Image
-                src={`${IMG_BASE}/5.png`}
+                src={`${IMG_BASE}/opt/5.webp`}
                 alt="Pepper Pan black pepper noodles topped with a fried egg"
                 fill
                 sizes="(min-width: 1024px) 45vw, 90vw"
