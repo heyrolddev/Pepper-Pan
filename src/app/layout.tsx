@@ -7,6 +7,8 @@ import { Nav } from "@/components/nav";
 import { Cursor } from "@/components/cursor";
 import { ScrollProgress } from "@/components/scroll-progress";
 import { Marquee } from "@/components/marquee";
+import { Preloader } from "@/components/preloader";
+import { Logo } from "@/components/logo";
 import { createClient } from "@/lib/supabase/server";
 
 // Warm display serif — reads artisanal and appetising rather than corporate.
@@ -44,16 +46,37 @@ async function getUserEmail(): Promise<string | null> {
   }
 }
 
+/**
+ * Runs before first paint so the intro overlay never flashes for repeat
+ * visitors, and never lets the real page flash before the overlay on a
+ * first visit. Marks the visit as seen here (rather than in React) so the
+ * decision is made once, synchronously.
+ */
+const introScript = `(function(){try{
+var d=document.documentElement;
+var seen=sessionStorage.getItem('pepperpan_intro_seen')==='1';
+var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(seen||reduce){d.setAttribute('data-intro','skip');}
+else{d.classList.add('intro-lock');sessionStorage.setItem('pepperpan_intro_seen','1');}
+}catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
+
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const userEmail = await getUserEmail();
 
   return (
     <html
       lang="en"
+      // The intro script below sets a class/attribute on <html> before
+      // hydration, which React would otherwise flag as a mismatch.
+      suppressHydrationWarning
       className={`${fraunces.variable} ${jakarta.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: introScript }} />
+      </head>
       <body className="flex min-h-full flex-col bg-cream-50 font-sans text-ink-900">
         <CartProvider>
+          <Preloader />
           <Cursor />
           <ScrollProgress />
           <Nav userEmail={userEmail} />
@@ -74,10 +97,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
 
             <div className="mx-auto grid max-w-5xl gap-10 px-6 py-14 sm:grid-cols-3">
               <div>
-                <p className="font-display text-2xl font-black text-cream-50">
-                  Pepper Pan
-                </p>
-                <p className="mt-2 text-sm text-cream-100/60">
+                <Logo width={220} className="h-auto w-[180px]" />
+                <p className="mt-4 text-sm text-cream-100/60">
                   Home of Taiwan-Style Black Pepper Noodles.
                 </p>
               </div>

@@ -6,6 +6,7 @@ import { motion, useMotionValueEvent, useScroll } from "motion/react";
 import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { SignOutButton } from "@/components/sign-out-button";
+import { Logo } from "@/components/logo";
 
 const links = [
   { href: "/menu", label: "Menu" },
@@ -43,17 +44,14 @@ export function Nav({ userEmail }: { userEmail: string | null }) {
           scrolled ? "py-3" : "py-5"
         }`}
       >
-        <Link href="/" className="group flex items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-brand-600 font-display text-lg font-black text-gold-400 transition-transform group-hover:rotate-12">
-            P
-          </span>
-          <span
-            className={`font-display text-xl font-black tracking-tight transition-colors ${
-              scrolled ? "text-ink-950" : "text-cream-50"
+        <Link href="/" aria-label="Pepper Pan — home" className="group block">
+          <Logo
+            priority
+            width={220}
+            className={`h-auto transition-all duration-300 group-hover:scale-105 ${
+              scrolled ? "w-[130px]" : "w-[150px]"
             }`}
-          >
-            Pepper Pan
-          </span>
+          />
         </Link>
 
         <nav className="flex items-center gap-1 text-sm font-semibold sm:gap-2">

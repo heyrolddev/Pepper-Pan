@@ -129,6 +129,46 @@
   }
 }
 
+/* Intro overlay — CSS-driven so it paints correctly before hydration. */
+@keyframes intro-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translateY(-12px);
+    opacity: 1;
+  }
+}
+
+@keyframes intro-fill {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.intro-dot {
+  animation: intro-hop 0.9s ease-in-out infinite;
+}
+
+.intro-bar {
+  animation: intro-fill 1.9s ease-in-out forwards;
+}
+
+/* Set by the blocking script for repeat visits / reduced motion. */
+html[data-intro="skip"] .intro-overlay {
+  display: none !important;
+}
+
+html.intro-lock,
+html.intro-lock body {
+  overflow: hidden;
+}
+
 .marquee-track {
   display: flex;
   width: max-content;
