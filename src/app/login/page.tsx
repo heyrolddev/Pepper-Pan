@@ -5,11 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/page-header";
-
-const fieldClass =
-  "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
-const labelClass =
-  "flex flex-col gap-2 text-xs font-bold uppercase tracking-widest text-ink-800";
+import { PasswordField } from "@/components/password-field";
+import { fieldClass, labelClass, submitClass, errorClass } from "@/lib/form-styles";
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -19,22 +16,30 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(searchParams.get("error"));
+  const [showResetHint, setShowResetHint] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    setShowResetHint(false);
 
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError(
-        error.message === "Invalid login credentials"
-          ? "That email and password don't match. Double-check and try again."
-          : error.message
-      );
+      if (/invalid login credentials/i.test(error.message)) {
+        // Supabase deliberately can't tell us apart "wrong password" from
+        // "this account has no password yet" (e.g. it was created by an old
+        // magic link), so offer the reset path either way.
+        setError("That email and password didn't work.");
+        setShowResetHint(true);
+      } else if (/email not confirmed/i.test(error.message)) {
+        setError("Please confirm your email first — check your inbox for the link.");
+      } else {
+        setError(error.message);
+      }
       setSubmitting(false);
       return;
     }
@@ -53,9 +58,10 @@ function LoginForm() {
 
       <section className="mx-auto max-w-md px-6 py-14">
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <label className={labelClass}>
-            Email
+          <div className={labelClass}>
+            <label htmlFor="email">Email</label>
             <input
+              id="email"
               type="email"
               required
               autoComplete="email"
@@ -64,45 +70,57 @@ function LoginForm() {
               placeholder="you@example.com"
               className={fieldClass}
             />
-          </label>
+          </div>
 
-          <label className={labelClass}>
-            Password
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Your password"
-              className={fieldClass}
-            />
-          </label>
+          <PasswordField
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+            placeholder="Your password"
+          />
 
-          {error && (
-            <p className="rounded-2xl bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700">
-              {error}
-            </p>
+          {error && <p className={errorClass}>{error}</p>}
+
+          {showResetHint && (
+            <div className="rounded-2xl bg-gold-400 px-5 py-4 text-sm text-ink-950">
+              <p className="font-bold">Never set a password?</p>
+              <p className="mt-1">
+                If your account was made with an emailed sign-in link, it has
+                no password yet.{" "}
+                <Link
+                  href={`/forgot-password?email=${encodeURIComponent(email)}`}
+                  className="font-bold underline"
+                >
+                  Set one now
+                </Link>
+                .
+              </p>
+            </div>
           )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-full bg-brand-600 px-7 py-4 font-bold text-cream-50 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
-          >
+          <button type="submit" disabled={submitting} className={submitClass}>
             {submitting ? "Signing in…" : "Sign in →"}
           </button>
         </form>
 
-        <p className="mt-8 text-center text-sm text-ink-800/70">
-          New here?{" "}
+        <div className="mt-8 flex flex-col gap-2 text-center text-sm text-ink-800/70">
           <Link
-            href={`/signup?next=${encodeURIComponent(next)}`}
+            href={`/forgot-password?email=${encodeURIComponent(email)}`}
             className="font-bold text-brand-600 hover:underline"
           >
-            Create an account
+            Forgot your password?
           </Link>
-        </p>
+          <p>
+            New here?{" "}
+            <Link
+              href={`/signup?next=${encodeURIComponent(next)}`}
+              className="font-bold text-brand-600 hover:underline"
+            >
+              Create an account
+            </Link>
+          </p>
+        </div>
       </section>
     </>
   );

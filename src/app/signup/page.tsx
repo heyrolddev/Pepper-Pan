@@ -5,11 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/page-header";
-
-const fieldClass =
-  "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
-const labelClass =
-  "flex flex-col gap-2 text-xs font-bold uppercase tracking-widest text-ink-800";
+import { PasswordField } from "@/components/password-field";
+import { fieldClass, labelClass, submitClass, errorClass } from "@/lib/form-styles";
 
 function SignupForm() {
   const searchParams = useSearchParams();
@@ -20,9 +17,13 @@ function SignupForm() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const mismatch = confirm.length > 0 && password !== confirm;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -30,8 +31,14 @@ function SignupForm() {
       setError("Please use a password of at least 8 characters.");
       return;
     }
+    if (password !== confirm) {
+      setError("The two passwords don't match.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
+    setAlreadyRegistered(false);
 
     const supabase = createClient();
     const { data, error } = await supabase.auth.signUp({
@@ -43,17 +50,27 @@ function SignupForm() {
       },
     });
 
+    setSubmitting(false);
+
     if (error) {
+      if (/already registered|already exists/i.test(error.message)) {
+        setAlreadyRegistered(true);
+        return;
+      }
       setError(error.message);
-      setSubmitting(false);
       return;
     }
 
-    // With email confirmation switched on, Supabase returns a user but no
-    // session until they click the link.
+    // With email-enumeration protection on, Supabase returns a *success* for
+    // an existing address but with no identities attached — the only way to
+    // tell that the address is already taken.
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      setAlreadyRegistered(true);
+      return;
+    }
+
     if (!data.session) {
       setNeedsConfirmation(true);
-      setSubmitting(false);
       return;
     }
 
@@ -88,9 +105,10 @@ function SignupForm() {
 
       <section className="mx-auto max-w-md px-6 py-14">
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <label className={labelClass}>
-            Full name
+          <div className={labelClass}>
+            <label htmlFor="fullName">Full name</label>
             <input
+              id="fullName"
               required
               autoComplete="name"
               value={fullName}
@@ -98,11 +116,12 @@ function SignupForm() {
               placeholder="Juan dela Cruz"
               className={fieldClass}
             />
-          </label>
+          </div>
 
-          <label className={labelClass}>
-            Mobile number
+          <div className={labelClass}>
+            <label htmlFor="phone">Mobile number</label>
             <input
+              id="phone"
               required
               inputMode="tel"
               autoComplete="tel"
@@ -111,11 +130,12 @@ function SignupForm() {
               placeholder="09XX XXX XXXX"
               className={fieldClass}
             />
-          </label>
+          </div>
 
-          <label className={labelClass}>
-            Email
+          <div className={labelClass}>
+            <label htmlFor="email">Email</label>
             <input
+              id="email"
               type="email"
               required
               autoComplete="email"
@@ -124,32 +144,59 @@ function SignupForm() {
               placeholder="you@example.com"
               className={fieldClass}
             />
-          </label>
+          </div>
 
-          <label className={labelClass}>
-            Password
-            <input
-              type="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-              className={fieldClass}
-            />
-          </label>
+          <PasswordField
+            label="Password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            minLength={8}
+            placeholder="At least 8 characters"
+          />
 
-          {error && (
-            <p className="rounded-2xl bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700">
-              {error}
-            </p>
+          <PasswordField
+            label="Confirm password"
+            value={confirm}
+            onChange={setConfirm}
+            autoComplete="new-password"
+            placeholder="Type it once more"
+            hint={mismatch ? undefined : "Make sure both boxes match exactly."}
+          />
+
+          {mismatch && (
+            <p className={errorClass}>The two passwords don&apos;t match yet.</p>
           )}
+
+          {alreadyRegistered && (
+            <div className="rounded-2xl bg-gold-400 px-5 py-4 text-sm text-ink-950">
+              <p className="font-bold">That email already has an account.</p>
+              <p className="mt-1">
+                Try{" "}
+                <Link
+                  href={`/login?next=${encodeURIComponent(next)}`}
+                  className="font-bold underline"
+                >
+                  signing in
+                </Link>
+                . If your password doesn&apos;t work — or you never set one —{" "}
+                <Link
+                  href={`/forgot-password?email=${encodeURIComponent(email)}`}
+                  className="font-bold underline"
+                >
+                  set a new password
+                </Link>
+                .
+              </p>
+            </div>
+          )}
+
+          {error && <p className={errorClass}>{error}</p>}
 
           <button
             type="submit"
-            disabled={submitting}
-            className="rounded-full bg-brand-600 px-7 py-4 font-bold text-cream-50 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
+            disabled={submitting || mismatch}
+            className={submitClass}
           >
             {submitting ? "Creating account…" : "Create account →"}
           </button>
