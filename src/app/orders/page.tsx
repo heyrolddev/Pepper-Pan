@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { OrderTracker, type TrackedOrder } from "@/components/order-tracker";
+import { PAYMENT_STATUSES, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
 
 type OrderLine = {
   id: number;
@@ -20,6 +21,9 @@ type Order = {
   cancelled_reason: string | null;
   delivery_address: string | null;
   delivery_fee: number;
+  payment_method: string;
+  payment_status: string;
+  payment_reference: string | null;
   order_lines: OrderLine[];
 };
 
@@ -65,7 +69,7 @@ export default async function OrdersPage() {
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, delivery_address, delivery_fee, order_lines(id, qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, order_lines(id, qty, price_at_sale, meals(name))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
@@ -82,6 +86,11 @@ export default async function OrdersPage() {
     cancelled_reason: o.cancelled_reason,
     delivery_address: o.delivery_address,
     delivery_fee: Number(o.delivery_fee ?? 0),
+    payment_method: (o.payment_method === "gcash" ? "gcash" : "cod") as PaymentMethod,
+    payment_status: (PAYMENT_STATUSES as readonly string[]).includes(o.payment_status)
+      ? (o.payment_status as PaymentStatus)
+      : "unpaid",
+    payment_reference: o.payment_reference,
     lines: (o.order_lines ?? []).map((l) => ({
       id: l.id,
       qty: Number(l.qty),

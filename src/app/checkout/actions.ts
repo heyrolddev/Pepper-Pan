@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_DELIVERY, quoteDelivery, type DeliverySettings } from "@/lib/delivery";
+import { DEFAULT_PAYMENTS, type PaymentMethod, type PaymentSettings } from "@/lib/payments";
 
 type PlaceOrderInput = {
   items: { mealId: string; qty: number }[];
@@ -12,6 +13,8 @@ type PlaceOrderInput = {
   deliveryAddress?: string;
   deliveryLat?: number | null;
   deliveryLng?: number | null;
+  paymentMethod?: PaymentMethod;
+  paymentReference?: string;
 };
 
 /** A phone we could actually ring: PH mobile/landline digits, lenient on format. */
@@ -125,12 +128,39 @@ export async function placeOrder(
     distanceKm = quote.km;
   }
 
+  // --- Payment ------------------------------------------------------------
+  // Which methods exist is the shop's decision, so it's re-checked here: a
+  // client can't pick a method the shop has switched off.
+  const { data: paymentRow } = await supabase
+    .from("payment_settings")
+    .select("cod_enabled, gcash_enabled, gcash_name, gcash_number, gcash_qr_url, instructions")
+    .eq("id", 1)
+    .maybeSingle();
+  const paymentSettings = (paymentRow as PaymentSettings) ?? DEFAULT_PAYMENTS;
+
+  const method: PaymentMethod = input.paymentMethod === "gcash" ? "gcash" : "cod";
+  if (method === "gcash" && !paymentSettings.gcash_enabled) {
+    return { error: "GCash isn't available right now — please choose cash." };
+  }
+  if (method === "cod" && !paymentSettings.cod_enabled) {
+    return { error: "Cash isn't available right now — please pay with GCash." };
+  }
+
+  const reference = (input.paymentReference ?? "").trim();
+  if (method === "gcash" && reference.length < 4) {
+    return { error: "Enter the GCash reference number from your receipt." };
+  }
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
       customer_id: user.id,
       fulfillment: input.fulfillment,
-      payment_method: "cod",
+      payment_method: method,
+      // A GCash order arrives claiming to be paid; it stays "submitted" until
+      // staff match the reference against their own GCash records.
+      payment_status: method === "gcash" ? "submitted" : "unpaid",
+      payment_reference: method === "gcash" ? reference : null,
       contact_name: input.contactName.trim(),
       contact_phone: input.contactPhone.trim(),
       notes: input.notes.trim() || null,

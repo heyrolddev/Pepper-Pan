@@ -6,7 +6,9 @@ import Link from "next/link";
 import { useCart } from "@/lib/cart-context";
 import { placeOrder } from "@/app/checkout/actions";
 import { MapPicker, type Pin } from "@/components/map-picker";
+import { PaymentPicker } from "@/components/payment-picker";
 import { quoteDelivery, type DeliverySettings } from "@/lib/delivery";
+import type { PaymentMethod, PaymentSettings } from "@/lib/payments";
 
 const fieldClass =
   "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
@@ -18,6 +20,7 @@ const peso = (n: number) => "₱" + n.toFixed(2);
 export function CheckoutForm({
   defaults,
   delivery,
+  payments,
 }: {
   defaults: {
     name: string;
@@ -27,6 +30,7 @@ export function CheckoutForm({
     lng: number | null;
   };
   delivery: DeliverySettings;
+  payments: PaymentSettings;
 }) {
   const { items, total, clear } = useCart();
   const router = useRouter();
@@ -41,6 +45,10 @@ export function CheckoutForm({
       : null
   );
   const [notes, setNotes] = useState("");
+  const [method, setMethod] = useState<PaymentMethod>(
+    payments.cod_enabled ? "cod" : "gcash"
+  );
+  const [reference, setReference] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +64,7 @@ export function CheckoutForm({
   const fee = isDelivery && quote?.ok ? quote.fee : 0;
   const grandTotal = total + fee;
 
-  const blockedReason = isDelivery
+  const deliveryBlocked = isDelivery
     ? !address.trim() || address.trim().length < 10
       ? "Enter your complete address (house/street, barangay, landmark)."
       : !pin
@@ -65,6 +73,13 @@ export function CheckoutForm({
           ? quote.reason
           : null
     : null;
+
+  const paymentBlocked =
+    method === "gcash" && reference.trim().length < 4
+      ? "Paste your GCash reference number so we can confirm the payment."
+      : null;
+
+  const blockedReason = deliveryBlocked ?? paymentBlocked;
 
   if (items.length === 0) {
     return (
@@ -97,6 +112,8 @@ export function CheckoutForm({
         deliveryAddress: isDelivery ? address : undefined,
         deliveryLat: isDelivery ? (pin?.lat ?? null) : null,
         deliveryLng: isDelivery ? (pin?.lng ?? null) : null,
+        paymentMethod: method,
+        paymentReference: method === "gcash" ? reference : undefined,
       });
 
       if (result.error) {
@@ -239,6 +256,15 @@ export function CheckoutForm({
         </div>
       )}
 
+      <PaymentPicker
+        settings={payments}
+        method={method}
+        onMethodChange={setMethod}
+        reference={reference}
+        onReferenceChange={setReference}
+        total={grandTotal}
+      />
+
       <label className={labelClass}>
         Notes (optional)
         <textarea
@@ -283,7 +309,9 @@ export function CheckoutForm({
         {submitting ? "Placing order…" : "Place order →"}
       </button>
       <p className="text-center text-xs text-ink-800/50">
-        Cash on pickup or delivery. We&apos;ll confirm your order shortly.
+        {method === "gcash"
+          ? "We'll check your GCash reference and confirm your order shortly."
+          : "Cash on pickup or delivery. We'll confirm your order shortly."}
       </p>
     </form>
   );

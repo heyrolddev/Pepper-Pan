@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
-import { cancelMyOrder, updateMyOrder } from "@/app/orders/actions";
+import { cancelMyOrder, submitPayment, updateMyOrder } from "@/app/orders/actions";
 import { ClockIcon, LiveDotIcon } from "@/components/icons";
+import { METHOD_LABEL, STATUS_LABEL, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
 
 export type TrackedLine = {
   id: number;
@@ -24,6 +25,9 @@ export type TrackedOrder = {
   cancelled_reason: string | null;
   delivery_address: string | null;
   delivery_fee: number;
+  payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
+  payment_reference: string | null;
   lines: TrackedLine[];
 };
 
@@ -98,6 +102,31 @@ function OrderCard({ order }: { order: TrackedOrder }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [reference, setReference] = useState(order.payment_reference ?? "");
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  async function handleSubmitPayment() {
+    setPayBusy(true);
+    setPayError(null);
+    const fd = new FormData();
+    fd.set("orderId", order.id);
+    fd.set("reference", reference);
+    if (receipt) fd.set("receipt", receipt);
+    try {
+      const res = await submitPayment(fd);
+      if (res.error) return setPayError(res.error);
+      setPayOpen(false);
+      setReceipt(null);
+      router.refresh();
+    } catch (e) {
+      setPayError(e instanceof Error ? e.message : "Could not send that payment detail.");
+    } finally {
+      setPayBusy(false);
+    }
+  }
 
   const cancelled = order.status === "cancelled";
   const editable = order.status === "pending";
@@ -252,6 +281,88 @@ function OrderCard({ order }: { order: TrackedOrder }) {
           </span>
         </div>
       </div>
+
+      {/* Payment */}
+      {!cancelled && (
+        <div className="border-t border-ink-950/10 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-ink-800/70">
+              {METHOD_LABEL[order.payment_method] ?? "Cash"}
+              {order.payment_reference && (
+                <span className="ml-2 font-mono text-xs text-ink-800/50">
+                  {order.payment_reference}
+                </span>
+              )}
+            </span>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-bold ${
+                STATUS_LABEL[order.payment_status]?.tone === "good"
+                  ? "bg-jade-700 text-cream-50"
+                  : STATUS_LABEL[order.payment_status]?.tone === "wait"
+                    ? "bg-gold-400 text-ink-950"
+                    : "bg-ink-950/10 text-ink-800"
+              }`}
+            >
+              {STATUS_LABEL[order.payment_status]?.customer ?? order.payment_status}
+            </span>
+          </div>
+
+          {/* GCash orders that aren't confirmed yet can still be corrected. */}
+          {order.payment_method === "gcash" && order.payment_status !== "paid" && (
+            <div className="mt-3">
+              {payOpen ? (
+                <div className="flex flex-col gap-2">
+                  <input
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    placeholder="GCash reference number"
+                    className="rounded-xl border-2 border-ink-950/15 bg-cream-50 px-4 py-2 text-sm outline-none focus:border-brand-600"
+                  />
+                  <label className="text-xs font-semibold text-ink-800/70">
+                    Receipt screenshot (optional)
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
+                      className="mt-1 block w-full text-xs"
+                    />
+                  </label>
+                  {payError && (
+                    <p className="rounded-xl bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700">
+                      {payError}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSubmitPayment}
+                      disabled={payBusy}
+                      className="rounded-full bg-brand-600 px-4 py-2 text-xs font-bold text-cream-50 disabled:opacity-60"
+                    >
+                      {payBusy ? "Sending…" : "Send to the shop"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPayOpen(false);
+                        setPayError(null);
+                      }}
+                      className="rounded-full px-4 py-2 text-xs font-bold text-ink-800 hover:text-brand-600"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setPayOpen(true)}
+                  className="rounded-full bg-ink-950 px-4 py-2 text-xs font-bold text-cream-50 transition-colors hover:bg-brand-600"
+                >
+                  {order.payment_reference ? "Update payment details" : "Add payment details"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <p className="mx-6 mb-4 rounded-xl bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700">

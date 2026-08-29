@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 
 const NOT_EDITABLE =
   "This order can no longer be changed — the kitchen has already started it. Please call us at +63 947 353 3060.";
@@ -116,6 +117,69 @@ export async function updateMyOrder(
 
   if (totalError) return { error: totalError.message };
   if (!updated || updated.length === 0) return { error: NOT_EDITABLE };
+
+  revalidateOrders();
+  return { error: null };
+}
+
+/**
+ * Submit a GCash reference (and optionally a receipt screenshot) for one's
+ * own order.
+ *
+ * This goes through the `submit_payment_reference` database function rather
+ * than a plain UPDATE: RLS only lets a customer write to an order while it's
+ * still `pending`, but payment happens while the food is already cooking.
+ * The function proves ownership itself and writes nothing but the payment
+ * columns, so this can't become a backdoor for editing a confirmed order.
+ */
+export async function submitPayment(
+  formData: FormData
+): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You need to sign in first." };
+
+  const orderId = String(formData.get("orderId") ?? "");
+  const reference = String(formData.get("reference") ?? "").trim();
+  if (!orderId) return { error: "Missing order." };
+  if (reference.length < 4) {
+    return { error: "Enter the GCash reference number from your receipt." };
+  }
+
+  // The receipt is optional; only validate/upload when one was attached.
+  let receiptUrl: string | null = null;
+  const file = formData.get("receipt");
+  if (file instanceof File && file.size > 0) {
+    const checked = validateImage(file);
+    if ("error" in checked) return { error: checked.error };
+
+    const uploaded = await uploadImage(
+      checked.file,
+      `receipts/${orderId}-${Date.now()}.${extensionFor(checked.file.type)}`
+    );
+    if ("error" in uploaded) return { error: uploaded.error };
+    receiptUrl = uploaded.url;
+  }
+
+  const { data, error } = await supabase.rpc("submit_payment_reference", {
+    p_order_id: orderId,
+    p_reference: reference,
+    p_receipt_url: receiptUrl,
+  });
+
+  if (error) {
+    return {
+      error: `${error.message}. If this mentions submit_payment_reference, run migration 0006 in the Supabase SQL Editor.`,
+    };
+  }
+  if (data !== true) {
+    return {
+      error:
+        "That payment couldn't be recorded — the order may be cancelled, or already confirmed as paid.",
+    };
+  }
 
   revalidateOrders();
   return { error: null };

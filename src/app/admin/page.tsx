@@ -14,6 +14,8 @@ type OrderRow = {
   fulfillment: string;
   revenue: number;
   delivery_fee: number | null;
+  payment_status: string;
+  payment_method: string;
   contact_name: string | null;
 };
 
@@ -71,7 +73,7 @@ export default async function AdminDashboard() {
     supabase
       .from("orders")
       .select(
-        "id, created_at, date, status, fulfillment, revenue, delivery_fee, contact_name"
+        "id, created_at, date, status, fulfillment, revenue, delivery_fee, payment_status, payment_method, contact_name"
       )
       .order("created_at", { ascending: false }),
     supabase
@@ -156,6 +158,12 @@ export default async function AdminDashboard() {
   // silently includes money that goes straight back out to the rider.
   const deliveryFeesMonth = monthly.reduce((s, o) => s + Number(o.delivery_fee || 0), 0);
 
+  // GCash payments the customer says they sent but nobody has checked yet —
+  // money the shop may be owed, so it gets its own alert tile.
+  const awaitingPayment = orders.filter(
+    (o) => o.payment_status === "submitted" && o.status !== "cancelled"
+  );
+
   return (
     <div className="flex flex-col gap-10">
       <LiveOrdersBanner />
@@ -214,6 +222,12 @@ export default async function AdminDashboard() {
                 ? `${peso(deliveryFeesMonth)} in fees this month`
                 : "All time, excluding cancelled"
             }
+          />
+          <StatTile
+            label="Payments to check"
+            value={String(awaitingPayment.length)}
+            detail="GCash refs awaiting your confirmation"
+            tone={awaitingPayment.length > 0 ? "alert" : "plain"}
           />
           <StatTile
             label="Cancelled"
