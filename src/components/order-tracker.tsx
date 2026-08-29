@@ -36,6 +36,7 @@ export type TrackedOrder = {
   payment_reference: string | null;
   payment_plan: PaymentPlan;
   downpayment_amount: number;
+  downpayment_confirmed_at: string | null;
   lines: TrackedLine[];
 };
 
@@ -138,6 +139,10 @@ function OrderCard({ order }: { order: TrackedOrder }) {
 
   const cancelled = order.status === "cancelled";
   const editable = order.status === "pending";
+  const balanceDue = Math.max(
+    0,
+    order.revenue + Number(order.delivery_fee) - order.downpayment_amount
+  );
   const draftTotal = order.lines.reduce(
     (s, l) => s + (qtys[l.id] ?? l.qty) * Number(l.price_at_sale),
     0
@@ -317,23 +322,63 @@ function OrderCard({ order }: { order: TrackedOrder }) {
             </span>
           </div>
 
-          {/* What's still owed, derived from the current total so an edited
-              order never leaves a stale figure on screen. */}
-          {order.payment_plan === "downpayment" && order.payment_status !== "paid" && (
-            <p className="mt-2 rounded-xl bg-gold-50 px-4 py-2 text-xs font-semibold text-ink-950 ring-1 ring-gold-400/50">
-              {peso(order.downpayment_amount)} down payment ·{" "}
-              {peso(
-                Math.max(
-                  0,
-                  order.revenue + Number(order.delivery_fee) - order.downpayment_amount
-                )
-              )}{" "}
-              to pay in cash on handover
-            </p>
+          {/* A down payment has three states that must never look alike:
+              sent-but-unchecked, confirmed by the shop, and settled. Amounts
+              are derived from the current total, so an edited order never
+              leaves a stale figure on screen. */}
+          {order.payment_plan === "downpayment" && (
+            <>
+              {order.payment_status === "submitted" && (
+                <p className="mt-2 rounded-xl bg-gold-50 px-4 py-2.5 text-xs font-semibold text-ink-950 ring-1 ring-gold-400/50">
+                  ⏳ You sent {peso(order.downpayment_amount)} — waiting for the
+                  shop to confirm it.
+                </p>
+              )}
+
+              {order.payment_status === "partial" && (
+                <div className="mt-2 rounded-xl bg-jade-50 px-4 py-2.5 text-xs ring-1 ring-jade-600/40">
+                  <p className="font-bold text-jade-700">
+                    ✓ Down payment of {peso(order.downpayment_amount)} confirmed
+                    by the shop
+                    {order.downpayment_confirmed_at && (
+                      <span className="font-normal text-ink-800/60">
+                        {" "}
+                        ·{" "}
+                        {new Date(order.downpayment_confirmed_at).toLocaleString(
+                          undefined,
+                          { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
+                        )}
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 font-semibold text-ink-950">
+                    {peso(balanceDue)} still to pay in cash on handover.
+                  </p>
+                </div>
+              )}
+
+              {order.payment_status === "paid" && (
+                <p className="mt-2 rounded-xl bg-jade-50 px-4 py-2.5 text-xs font-bold text-jade-700 ring-1 ring-jade-600/40">
+                  ✓ Fully paid — {peso(order.downpayment_amount)} down payment +{" "}
+                  {peso(balanceDue)} balance.
+                </p>
+              )}
+
+              {order.payment_status === "unpaid" && (
+                <p className="mt-2 rounded-xl bg-cream-50 px-4 py-2.5 text-xs font-semibold text-ink-800 ring-1 ring-ink-950/10">
+                  {peso(order.downpayment_amount)} down payment ·{" "}
+                  {peso(balanceDue)} on handover.
+                </p>
+              )}
+            </>
           )}
 
-          {/* GCash orders that aren't confirmed yet can still be corrected. */}
-          {order.payment_method === "gcash" && order.payment_status !== "paid" && (
+          {/* Only correctable while the shop hasn't confirmed the money.
+              Once it's 'partial' or 'paid' the reference is the shop's
+              record — re-submitting would knock a confirmed payment back to
+              "needs checking", which the database also refuses. */}
+          {order.payment_method === "gcash" &&
+            !["partial", "paid"].includes(order.payment_status) && (
             <div className="mt-3">
               {payOpen ? (
                 <div className="flex flex-col gap-2">
@@ -383,9 +428,9 @@ function OrderCard({ order }: { order: TrackedOrder }) {
                 >
                   {order.payment_reference ? "Update payment details" : "Add payment details"}
                 </button>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
         </div>
       )}
 

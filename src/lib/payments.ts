@@ -57,7 +57,7 @@ export const STATUS_LABEL: Record<
   },
   partial: {
     admin: "Part-paid — collect balance",
-    customer: "Down payment received",
+    customer: "Down payment confirmed ✓",
     tone: "part",
   },
   paid: { admin: "Paid in full", customer: "Paid ✓", tone: "good" },

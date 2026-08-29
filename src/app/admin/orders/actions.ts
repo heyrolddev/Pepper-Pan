@@ -109,12 +109,22 @@ export async function setPaymentStatus(
   const viewer = await getViewer();
   if (!isStaff(viewer)) return { error: "Not allowed." };
 
+  const now = new Date().toISOString();
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("orders")
     .update({
       payment_status: status,
-      paid_at: status === "paid" ? new Date().toISOString() : null,
+      paid_at: status === "paid" ? now : null,
+      // Stamped when the down payment is confirmed, and kept once the order
+      // is settled in full — the customer's record of "you confirmed my
+      // ₱276 at 2:15pm" shouldn't vanish when the balance is collected.
+      // Cleared only if the payment is walked back to unpaid.
+      ...(status === "partial"
+        ? { downpayment_confirmed_at: now }
+        : status === "unpaid" || status === "refunded"
+          ? { downpayment_confirmed_at: null }
+          : {}),
     })
     .eq("id", orderId)
     .select("id");

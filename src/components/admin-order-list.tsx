@@ -32,6 +32,7 @@ export type AdminOrder = {
   payment_receipt_url: string | null;
   payment_plan: PaymentPlan;
   downpayment_amount: number;
+  downpayment_confirmed_at: string | null;
   lines: { qty: number; price: number; name: string }[];
   customer: {
     full_name: string | null;
@@ -126,6 +127,7 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
         plan={o.payment_plan}
         total={Number(o.revenue) + Number(o.delivery_fee)}
         downpayment={Number(o.downpayment_amount)}
+        downpaymentConfirmedAt={o.downpayment_confirmed_at}
       />
 
       {o.fulfillment === "delivery" && o.delivery_address && (

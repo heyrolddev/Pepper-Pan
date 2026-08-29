@@ -35,6 +35,7 @@ export function PaymentVerifier({
   receiptUrl,
   total,
   downpayment,
+  downpaymentConfirmedAt,
 }: {
   orderId: string;
   method: PaymentMethod;
@@ -44,6 +45,7 @@ export function PaymentVerifier({
   receiptUrl: string | null;
   total: number;
   downpayment: number;
+  downpaymentConfirmedAt?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -115,6 +117,18 @@ export function PaymentVerifier({
         <p className="mt-2 text-xs text-ink-800/70">
           Check this reference in your GCash app
           {isDownpayment ? ` for ${peso(downpayment)}` : ""} before confirming.
+        </p>
+      )}
+
+      {downpaymentConfirmedAt && status !== "unpaid" && (
+        <p className="mt-1 text-xs text-ink-800/60">
+          Down payment confirmed{" "}
+          {new Date(downpaymentConfirmedAt).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}
         </p>
       )}
 
