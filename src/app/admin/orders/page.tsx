@@ -32,6 +32,7 @@ type OrderRow = {
   payment_receipt_url: string | null;
   payment_plan: string;
   downpayment_amount: number | null;
+  downpayment_confirmed_at: string | null;
   order_lines: { qty: number; price_at_sale: number; meals: { name: string } | null }[];
 };
 
@@ -49,7 +50,7 @@ export default async function AdminOrdersPage() {
   const { data } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, payment_plan, downpayment_amount, order_lines(qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -101,6 +102,7 @@ export default async function AdminOrdersPage() {
       payment_receipt_url: o.payment_receipt_url,
       payment_plan: (o.payment_plan === "downpayment" ? "downpayment" : "full") as PaymentPlan,
       downpayment_amount: Number(o.downpayment_amount ?? 0),
+      downpayment_confirmed_at: o.downpayment_confirmed_at,
       lines: (o.order_lines ?? []).map((l) => ({
         qty: Number(l.qty),
         price: Number(l.price_at_sale),

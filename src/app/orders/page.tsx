@@ -31,6 +31,7 @@ type Order = {
   payment_reference: string | null;
   payment_plan: string;
   downpayment_amount: number | null;
+  downpayment_confirmed_at: string | null;
   order_lines: OrderLine[];
 };
 
@@ -76,7 +77,7 @@ export default async function OrdersPage() {
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, order_lines(id, qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, qty, price_at_sale, meals(name))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
@@ -100,6 +101,7 @@ export default async function OrdersPage() {
     payment_reference: o.payment_reference,
     payment_plan: (o.payment_plan === "downpayment" ? "downpayment" : "full") as PaymentPlan,
     downpayment_amount: Number(o.downpayment_amount ?? 0),
+    downpayment_confirmed_at: o.downpayment_confirmed_at,
     lines: (o.order_lines ?? []).map((l) => ({
       id: l.id,
       qty: Number(l.qty),
