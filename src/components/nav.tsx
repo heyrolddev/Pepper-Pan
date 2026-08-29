@@ -66,7 +66,10 @@ export function Nav({
         </Link>
 
         <nav className="flex items-center gap-1 text-sm font-semibold sm:gap-2">
-          {links.map((link) => (
+          {/* Staff get a deliberately bare header: the owner signed in to run
+              the shop, not to browse it, and the HQ badge is the way in. */}
+          {!staff &&
+            links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -107,7 +110,7 @@ export function Nav({
             </Link>
           )}
 
-          {signedIn && (
+          {signedIn && !staff && (
             <Link
               href="/orders"
               className={`hidden rounded-full px-3 py-2 transition-colors sm:block ${linkClass}`}
@@ -137,6 +140,7 @@ export function Nav({
             </Link>
           )}
 
+          {!staff && (
           <Link
             href="/cart"
             className={`relative rounded-full px-3 py-2 transition-colors ${linkClass}`}
@@ -154,6 +158,7 @@ export function Nav({
               </motion.span>
             )}
           </Link>
+          )}
 
           {signedIn ? (
             <SignOutButton scrolled={scrolled} />

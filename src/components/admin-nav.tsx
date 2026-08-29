@@ -11,6 +11,8 @@ const links = [
   { href: "/admin/delivery", label: "Delivery" },
   { href: "/admin/payments", label: "Payments" },
   { href: "/admin/reviews", label: "Reviews" },
+  { href: "/admin/inbox", label: "Inbox" },
+  { href: "/admin/analytics", label: "Analytics" },
 ];
 
 export function AdminNav() {

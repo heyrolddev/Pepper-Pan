@@ -377,6 +377,10 @@ function OrderCard({ order }: { order: TrackedOrder }) {
             <div className="mt-3">
               {payOpen ? (
                 <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-ink-800/70">
+                    Send us <span className="text-brand-700">either</span> the
+                    reference number or a screenshot — whichever is easier.
+                  </p>
                   <input
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
@@ -384,7 +388,7 @@ function OrderCard({ order }: { order: TrackedOrder }) {
                     className="rounded-xl border-2 border-ink-950/15 bg-cream-50 px-4 py-2 text-sm outline-none focus:border-brand-600"
                   />
                   <label className="text-xs font-semibold text-ink-800/70">
-                    Receipt screenshot (optional)
+                    …or a screenshot of the GCash receipt
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp"

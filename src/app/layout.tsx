@@ -11,6 +11,8 @@ import { Marquee } from "@/components/marquee";
 import { Preloader } from "@/components/preloader";
 import { Logo } from "@/components/logo";
 import { getViewer, isStaff } from "@/lib/auth";
+import { AskWidget } from "@/components/ask-widget";
+import { getChatSettings } from "@/lib/chat-settings";
 
 // Warm display serif — reads artisanal and appetising rather than corporate.
 const fraunces = Fraunces({
@@ -45,7 +47,7 @@ else{d.classList.add('intro-lock');}
 }catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const viewer = await getViewer();
+  const [viewer, chat] = await Promise.all([getViewer(), getChatSettings()]);
 
   return (
     <html
@@ -70,6 +72,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           />
           {children}
           <FloatingCart />
+          <AskWidget messengerUrl={chat.messengerUrl} />
 
           <footer className="grain relative overflow-hidden bg-ink-950 text-cream-100">
             <Marquee
