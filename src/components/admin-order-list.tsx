@@ -7,7 +7,7 @@ import { EtaPicker } from "@/components/eta-picker";
 import { AdminSearch } from "@/components/admin-search";
 import { PaymentVerifier } from "@/components/payment-verifier";
 import type { OrderStatus } from "@/lib/orders";
-import type { PaymentMethod, PaymentStatus } from "@/lib/payments";
+import type { PaymentMethod, PaymentPlan, PaymentStatus } from "@/lib/payments";
 
 export type AdminOrder = {
   id: string;
@@ -30,6 +30,8 @@ export type AdminOrder = {
   payment_status: PaymentStatus;
   payment_reference: string | null;
   payment_receipt_url: string | null;
+  payment_plan: PaymentPlan;
+  downpayment_amount: number;
   lines: { qty: number; price: number; name: string }[];
   customer: {
     full_name: string | null;
@@ -121,7 +123,9 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
         status={o.payment_status}
         reference={o.payment_reference}
         receiptUrl={o.payment_receipt_url}
-        amount={Number(o.revenue) + Number(o.delivery_fee)}
+        plan={o.payment_plan}
+        total={Number(o.revenue) + Number(o.delivery_fee)}
+        downpayment={Number(o.downpayment_amount)}
       />
 
       {o.fulfillment === "delivery" && o.delivery_address && (

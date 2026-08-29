@@ -2,7 +2,14 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import type { PaymentMethod, PaymentSettings } from "@/lib/payments";
+import {
+  downpaymentFor,
+  type PaymentMethod,
+  type PaymentPlan,
+  type PaymentSettings,
+} from "@/lib/payments";
+
+const peso = (n: number) => "₱" + n.toFixed(2);
 
 const fieldClass =
   "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
@@ -40,6 +47,8 @@ export function PaymentPicker({
   settings,
   method,
   onMethodChange,
+  plan,
+  onPlanChange,
   reference,
   onReferenceChange,
   total,
@@ -47,10 +56,17 @@ export function PaymentPicker({
   settings: PaymentSettings;
   method: PaymentMethod;
   onMethodChange: (m: PaymentMethod) => void;
+  plan: PaymentPlan;
+  onPlanChange: (p: PaymentPlan) => void;
   reference: string;
   onReferenceChange: (v: string) => void;
   total: number;
 }) {
+  const percent = settings.downpayment_percent;
+  const downNow = downpaymentFor(total, percent);
+  const balance = total - downNow;
+  const offersDownpayment = settings.gcash_enabled && settings.downpayment_enabled;
+  const dueNow = plan === "downpayment" ? downNow : total;
   const options: { id: PaymentMethod; label: string; blurb: string; on: boolean }[] = [
     {
       id: "cod",
@@ -99,10 +115,66 @@ export function PaymentPicker({
 
       {method === "gcash" && settings.gcash_enabled && (
         <div className="flex flex-col gap-3 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
+          {offersDownpayment && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-ink-800">
+                How much are you sending now?
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {([
+                  {
+                    id: "full" as PaymentPlan,
+                    title: "Pay in full",
+                    amount: total,
+                    note: "Nothing left to pay on handover",
+                  },
+                  {
+                    id: "downpayment" as PaymentPlan,
+                    title: `${percent}% down payment`,
+                    amount: downNow,
+                    note: `${peso(balance)} in cash on handover`,
+                  },
+                ]).map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => onPlanChange(o.id)}
+                    className={`rounded-2xl border-2 p-4 text-left transition-colors ${
+                      plan === o.id
+                        ? "border-brand-600 bg-brand-600 text-cream-50"
+                        : "border-ink-950/15 bg-cream-50 text-ink-800 hover:border-brand-600"
+                    }`}
+                  >
+                    <span className="block text-xs font-bold uppercase tracking-wide opacity-70">
+                      {o.title}
+                    </span>
+                    <span className="block font-display text-2xl font-black">
+                      {peso(o.amount)}
+                    </span>
+                    <span
+                      className={`block text-xs ${
+                        plan === o.id ? "text-cream-100/75" : "text-ink-800/55"
+                      }`}
+                    >
+                      {o.note}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <p className="text-sm font-semibold text-ink-950">
-            Send ₱{total.toFixed(2)} to this GCash account, then paste your
-            reference number below.
+            Send {peso(dueNow)} to this GCash account, then paste your reference
+            number below.
           </p>
+
+          {plan === "downpayment" && offersDownpayment && (
+            <p className="rounded-xl bg-gold-50 px-4 py-2.5 text-sm font-semibold text-ink-950 ring-1 ring-gold-400/50">
+              Pay {peso(downNow)} now · {peso(balance)} in cash when you get
+              your order.
+            </p>
+          )}
 
           {settings.gcash_number && (
             <CopyableRow label="GCash number" value={settings.gcash_number} />

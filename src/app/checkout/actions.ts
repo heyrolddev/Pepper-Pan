@@ -2,7 +2,13 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_DELIVERY, quoteDelivery, type DeliverySettings } from "@/lib/delivery";
-import { DEFAULT_PAYMENTS, type PaymentMethod, type PaymentSettings } from "@/lib/payments";
+import {
+  amountDueNow,
+  DEFAULT_PAYMENTS,
+  type PaymentMethod,
+  type PaymentPlan,
+  type PaymentSettings,
+} from "@/lib/payments";
 
 type PlaceOrderInput = {
   items: { mealId: string; qty: number }[];
@@ -14,6 +20,7 @@ type PlaceOrderInput = {
   deliveryLat?: number | null;
   deliveryLng?: number | null;
   paymentMethod?: PaymentMethod;
+  paymentPlan?: PaymentPlan;
   paymentReference?: string;
 };
 
@@ -133,7 +140,9 @@ export async function placeOrder(
   // client can't pick a method the shop has switched off.
   const { data: paymentRow } = await supabase
     .from("payment_settings")
-    .select("cod_enabled, gcash_enabled, gcash_name, gcash_number, gcash_qr_url, instructions")
+    .select(
+      "cod_enabled, gcash_enabled, gcash_name, gcash_number, gcash_qr_url, instructions, downpayment_enabled, downpayment_percent"
+    )
     .eq("id", 1)
     .maybeSingle();
   const paymentSettings = (paymentRow as PaymentSettings) ?? DEFAULT_PAYMENTS;
@@ -151,6 +160,20 @@ export async function placeOrder(
     return { error: "Enter the GCash reference number from your receipt." };
   }
 
+  // A part-payment is only allowed when the shop offers one, and the amount
+  // is computed here from the shop's own percentage — the browser never gets
+  // to say how little counts as a down payment.
+  const wantsDownpayment = method === "gcash" && input.paymentPlan === "downpayment";
+  if (wantsDownpayment && !paymentSettings.downpayment_enabled) {
+    return { error: "Part payment isn't available right now — please pay in full." };
+  }
+  const plan: PaymentPlan = wantsDownpayment ? "downpayment" : "full";
+  const orderTotal = subtotal + deliveryFee;
+  const downpaymentAmount =
+    plan === "downpayment"
+      ? amountDueNow(orderTotal, "downpayment", Number(paymentSettings.downpayment_percent))
+      : 0;
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
@@ -161,6 +184,8 @@ export async function placeOrder(
       // staff match the reference against their own GCash records.
       payment_status: method === "gcash" ? "submitted" : "unpaid",
       payment_reference: method === "gcash" ? reference : null,
+      payment_plan: plan,
+      downpayment_amount: downpaymentAmount,
       contact_name: input.contactName.trim(),
       contact_phone: input.contactPhone.trim(),
       notes: input.notes.trim() || null,

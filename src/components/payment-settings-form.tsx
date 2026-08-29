@@ -51,6 +51,8 @@ export function PaymentSettingsForm({ initial }: { initial: PaymentSettings }) {
   const [gcashNumber, setGcashNumber] = useState(initial.gcash_number ?? "");
   const [qrUrl, setQrUrl] = useState(initial.gcash_qr_url);
   const [instructions, setInstructions] = useState(initial.instructions ?? "");
+  const [downEnabled, setDownEnabled] = useState(initial.downpayment_enabled);
+  const [downPercent, setDownPercent] = useState(String(initial.downpayment_percent));
 
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -68,6 +70,8 @@ export function PaymentSettingsForm({ initial }: { initial: PaymentSettings }) {
         gcashName,
         gcashNumber,
         instructions,
+        downpaymentEnabled: downEnabled,
+        downpaymentPercent: Number(downPercent),
       });
       if (res.error) return setError(res.error);
       setSaved(true);
@@ -150,6 +154,59 @@ export function PaymentSettingsForm({ initial }: { initial: PaymentSettings }) {
                 className={fieldClass}
               />
             </label>
+          </div>
+
+          {/* Part payment */}
+          <div className="flex flex-col gap-3 rounded-xl bg-cream-50 p-4 ring-1 ring-ink-950/10">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-bold text-ink-950">Allow a down payment</p>
+                <p className="text-sm text-ink-800/60">
+                  Customers send part of the total now and pay the rest in cash
+                  on handover — a real transfer before you cook is your
+                  protection against made-up orders.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDownEnabled((v) => !v)}
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-colors ${
+                  downEnabled
+                    ? "bg-jade-600 text-cream-50 hover:bg-jade-700"
+                    : "bg-ink-950/10 text-ink-800 hover:bg-ink-950/20"
+                }`}
+              >
+                {downEnabled ? "✓ On" : "Off"}
+              </button>
+            </div>
+
+            {downEnabled && (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-widest text-ink-800">
+                  Down payment
+                </span>
+                <span className="flex items-center gap-2">
+                  <input
+                    inputMode="decimal"
+                    value={downPercent}
+                    onChange={(e) => setDownPercent(e.target.value)}
+                    className={`${fieldClass} max-w-28`}
+                  />
+                  <span className="text-sm font-semibold text-ink-800/60">
+                    % of the total
+                  </span>
+                </span>
+                <span className="text-[11px] text-ink-800/50">
+                  On a ₱500 order that&apos;s{" "}
+                  <b>
+                    ₱{Math.round((500 * (Number(downPercent) || 0)) / 100)} now
+                  </b>{" "}
+                  and ₱
+                  {500 - Math.round((500 * (Number(downPercent) || 0)) / 100)} on
+                  handover.
+                </span>
+              </label>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
