@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AdminOrderList, type AdminOrder } from "@/components/admin-order-list";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import type { OrderStatus } from "@/lib/orders";
+import { PAYMENT_STATUSES, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
 
 type OrderRow = {
   id: string;
@@ -20,6 +21,10 @@ type OrderRow = {
   delivery_lng: number | null;
   delivery_distance_km: number | null;
   delivery_fee: number;
+  payment_method: string;
+  payment_status: string;
+  payment_reference: string | null;
+  payment_receipt_url: string | null;
   order_lines: { qty: number; price_at_sale: number; meals: { name: string } | null }[];
 };
 
@@ -37,7 +42,7 @@ export default async function AdminOrdersPage() {
   const { data } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, order_lines(qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, order_lines(qty, price_at_sale, meals(name))"
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -81,6 +86,12 @@ export default async function AdminOrdersPage() {
       delivery_lng: o.delivery_lng,
       delivery_distance_km: o.delivery_distance_km,
       delivery_fee: Number(o.delivery_fee ?? 0),
+      payment_method: (o.payment_method === "gcash" ? "gcash" : "cod") as PaymentMethod,
+      payment_status: (PAYMENT_STATUSES as readonly string[]).includes(o.payment_status)
+        ? (o.payment_status as PaymentStatus)
+        : "unpaid",
+      payment_reference: o.payment_reference,
+      payment_receipt_url: o.payment_receipt_url,
       lines: (o.order_lines ?? []).map((l) => ({
         qty: Number(l.qty),
         price: Number(l.price_at_sale),

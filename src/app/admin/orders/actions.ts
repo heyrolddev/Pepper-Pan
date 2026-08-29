@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getViewer, isStaff } from "@/lib/auth";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
+import { PAYMENT_STATUSES, type PaymentStatus } from "@/lib/payments";
 
 const BLOCKED_MESSAGE =
   "The database didn't accept that change. Re-run the latest migration (0004) in the Supabase SQL Editor.";
@@ -84,6 +85,37 @@ export async function cancelOrderAsStaff(
   const { data, error } = await supabase
     .from("orders")
     .update({ status: "cancelled", cancelled_reason: reason.trim() || "Cancelled by the shop" })
+    .eq("id", orderId)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  revalidateOrders();
+  return { error: null };
+}
+
+/**
+ * Confirm (or un-confirm) that a payment actually arrived. Staff check the
+ * reference against their own GCash records — nothing here can verify it for
+ * them, so this only records the human decision.
+ */
+export async function setPaymentStatus(
+  orderId: string,
+  status: PaymentStatus
+): Promise<{ error: string | null }> {
+  if (!PAYMENT_STATUSES.includes(status)) return { error: "Unknown payment status." };
+
+  const viewer = await getViewer();
+  if (!isStaff(viewer)) return { error: "Not allowed." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .update({
+      payment_status: status,
+      paid_at: status === "paid" ? new Date().toISOString() : null,
+    })
     .eq("id", orderId)
     .select("id");
 

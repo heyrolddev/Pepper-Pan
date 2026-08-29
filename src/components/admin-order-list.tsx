@@ -5,7 +5,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { OrderStatusPicker } from "@/components/order-status-picker";
 import { EtaPicker } from "@/components/eta-picker";
 import { AdminSearch } from "@/components/admin-search";
+import { PaymentVerifier } from "@/components/payment-verifier";
 import type { OrderStatus } from "@/lib/orders";
+import type { PaymentMethod, PaymentStatus } from "@/lib/payments";
 
 export type AdminOrder = {
   id: string;
@@ -24,6 +26,10 @@ export type AdminOrder = {
   delivery_lng: number | null;
   delivery_distance_km: number | null;
   delivery_fee: number;
+  payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
+  payment_reference: string | null;
+  payment_receipt_url: string | null;
   lines: { qty: number; price: number; name: string }[];
   customer: {
     full_name: string | null;
@@ -109,6 +115,15 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
         ))}
       </ul>
 
+      <PaymentVerifier
+        orderId={o.id}
+        method={o.payment_method}
+        status={o.payment_status}
+        reference={o.payment_reference}
+        receiptUrl={o.payment_receipt_url}
+        amount={Number(o.revenue) + Number(o.delivery_fee)}
+      />
+
       {o.fulfillment === "delivery" && o.delivery_address && (
         <div className="mt-3 rounded-xl bg-gold-50 px-4 py-3 text-sm ring-1 ring-gold-400/40">
           <p className="font-bold text-ink-950">
@@ -162,6 +177,9 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
         o.fulfillment,
         o.notes,
         o.delivery_address,
+        o.payment_method,
+        o.payment_status,
+        o.payment_reference,
         o.id.slice(0, 8),
         ...o.lines.map((l) => l.name),
       ]
