@@ -19,16 +19,21 @@ export async function saveProfile(input: {
 
   // role / is_verified / is_blocked are clamped by a database trigger, so a
   // customer can never escalate here even if this payload were tampered with.
-  const { error } = await supabase
+  // `.select()` matters: an RLS-blocked UPDATE returns success with zero rows.
+  const { data, error } = await supabase
     .from("profiles")
     .update({
       full_name: input.fullName.trim(),
       phone: input.phone.trim(),
       address: input.address.trim() || null,
     })
-    .eq("id", user.id);
+    .eq("id", user.id)
+    .select("id");
 
   if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "The database didn't accept that change." };
+  }
 
   revalidatePath("/account");
   revalidatePath("/checkout");

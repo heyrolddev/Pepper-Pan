@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { OrderStatusPicker } from "@/components/order-status-picker";
-import type { OrderStatus } from "./actions";
+import type { OrderStatus } from "@/lib/orders";
 
 const peso = (n: number) =>
   "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

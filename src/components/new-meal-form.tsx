@@ -20,14 +20,19 @@ export function NewMealForm() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await createMeal({ name, price: Number(price), category });
-    setBusy(false);
-    if (res.error) return setError(res.error);
-    setName("");
-    setPrice("");
-    setCategory("");
-    setOpen(false);
-    router.refresh();
+    try {
+      const res = await createMeal({ name, price: Number(price), category });
+      if (res.error) return setError(res.error);
+      setName("");
+      setPrice("");
+      setCategory("");
+      setOpen(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (!open) {

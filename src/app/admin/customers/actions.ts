@@ -23,8 +23,16 @@ export async function setCustomerFlags(
   if (Object.keys(patch).length === 0) return { error: null };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("profiles").update(patch).eq("id", customerId);
+  // `.select()` matters: an RLS-blocked UPDATE returns success with zero rows.
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(patch)
+    .eq("id", customerId)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "The database didn't accept that change." };
+  }
 
   revalidatePath("/admin/customers");
   revalidatePath("/admin/orders");

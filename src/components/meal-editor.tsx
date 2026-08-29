@@ -64,20 +64,26 @@ export function MealEditor({ meal }: { meal: AdminMeal }) {
     setError(null);
     setSaved(false);
 
-    const res = await saveMeal({
-      id: meal.id,
-      name,
-      price: Number(price),
-      description,
-      category,
-      isPublic,
-      isAvailable,
-    });
-    setBusy(false);
-    if (res.error) return setError(res.error);
-    setSaved(true);
-    router.refresh();
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      const res = await saveMeal({
+        id: meal.id,
+        name,
+        price: Number(price),
+        description,
+        category,
+        isPublic,
+        isAvailable,
+      });
+      if (res.error) return setError(res.error);
+      setSaved(true);
+      router.refresh();
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      // Without this a thrown Server Action would leave the button stuck.
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleUpload(file: File) {
@@ -86,11 +92,16 @@ export function MealEditor({ meal }: { meal: AdminMeal }) {
     const fd = new FormData();
     fd.set("mealId", meal.id);
     fd.set("file", file);
-    const res = await uploadMealImage(fd);
-    setBusy(false);
-    if (res.error) return setError(res.error);
-    if (res.url) setImageUrl(res.url);
-    router.refresh();
+    try {
+      const res = await uploadMealImage(fd);
+      if (res.error) return setError(res.error);
+      if (res.url) setImageUrl(res.url);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
