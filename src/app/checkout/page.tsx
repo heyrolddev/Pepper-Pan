@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getViewer, isConfigured } from "@/lib/auth";
 import { CheckoutForm } from "@/components/checkout-form";
 import { PageHeader } from "@/components/page-header";
+import { getDeliverySettings } from "@/lib/delivery-server";
 
 export default async function CheckoutPage() {
   if (!isConfigured()) {
@@ -59,6 +60,8 @@ export default async function CheckoutPage() {
     );
   }
 
+  const delivery = await getDeliverySettings();
+
   return (
     <main className="flex-1">
       <PageHeader
@@ -68,10 +71,13 @@ export default async function CheckoutPage() {
       />
       <section className="mx-auto max-w-md px-6 py-14">
         <CheckoutForm
+          delivery={delivery}
           defaults={{
             name: viewer.profile?.full_name ?? "",
             phone: viewer.profile?.phone ?? "",
             address: viewer.profile?.address ?? "",
+            lat: viewer.profile?.address_lat ?? null,
+            lng: viewer.profile?.address_lng ?? null,
           }}
         />
       </section>

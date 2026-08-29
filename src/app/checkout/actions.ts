@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_DELIVERY, quoteDelivery, type DeliverySettings } from "@/lib/delivery";
 
 type PlaceOrderInput = {
   items: { mealId: string; qty: number }[];
@@ -8,13 +9,28 @@ type PlaceOrderInput = {
   contactPhone: string;
   fulfillment: "pickup" | "delivery";
   notes: string;
+  deliveryAddress?: string;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
 };
+
+/** A phone we could actually ring: PH mobile/landline digits, lenient on format. */
+function isUsablePhone(raw: string) {
+  const digits = raw.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 13;
+}
 
 export async function placeOrder(
   input: PlaceOrderInput
 ): Promise<{ error: string | null }> {
   if (input.items.length === 0) {
     return { error: "Your cart is empty." };
+  }
+  if (!input.contactName.trim()) {
+    return { error: "Please enter your name." };
+  }
+  if (!isUsablePhone(input.contactPhone)) {
+    return { error: "Please enter a working mobile number so we can reach you." };
   }
 
   const supabase = await createClient();
@@ -57,10 +73,57 @@ export async function placeOrder(
     }
   }
 
-  const revenue = input.items.reduce(
+  const subtotal = input.items.reduce(
     (sum, i) => sum + priceById.get(i.mealId)! * i.qty,
     0
   );
+
+  // --- Delivery ----------------------------------------------------------
+  // The fee is recomputed here from the shop's own settings. Whatever the
+  // browser thought the fee was is discarded.
+  let deliveryFee = 0;
+  let distanceKm: number | null = null;
+  let address: string | null = null;
+  let lat: number | null = null;
+  let lng: number | null = null;
+
+  if (input.fulfillment === "delivery") {
+    address = (input.deliveryAddress ?? "").trim();
+    if (address.length < 10) {
+      return {
+        error:
+          "Please give a complete delivery address — house/street, barangay and a landmark.",
+      };
+    }
+
+    lat = typeof input.deliveryLat === "number" ? input.deliveryLat : null;
+    lng = typeof input.deliveryLng === "number" ? input.deliveryLng : null;
+    if (
+      lat === null ||
+      lng === null ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      Math.abs(lat) > 90 ||
+      Math.abs(lng) > 180
+    ) {
+      return { error: "Please drop the pin on the map so the rider can find you." };
+    }
+
+    const { data: settingsRow } = await supabase
+      .from("delivery_settings")
+      .select(
+        "is_enabled, shop_lat, shop_lng, base_fee, base_km, per_km_fee, min_fee, max_km, free_over, notice"
+      )
+      .eq("id", 1)
+      .maybeSingle();
+
+    const settings = (settingsRow as DeliverySettings) ?? DEFAULT_DELIVERY;
+    const quote = quoteDelivery(settings, lat, lng, subtotal);
+    if (!quote.ok) return { error: quote.reason };
+
+    deliveryFee = quote.fee;
+    distanceKm = quote.km;
+  }
 
   const { data: order, error: orderError } = await supabase
     .from("orders")
@@ -68,10 +131,16 @@ export async function placeOrder(
       customer_id: user.id,
       fulfillment: input.fulfillment,
       payment_method: "cod",
-      contact_name: input.contactName,
-      contact_phone: input.contactPhone,
-      notes: input.notes || null,
-      revenue,
+      contact_name: input.contactName.trim(),
+      contact_phone: input.contactPhone.trim(),
+      notes: input.notes.trim() || null,
+      // `revenue` stays the food subtotal; the fee is its own column.
+      revenue: subtotal,
+      delivery_address: address,
+      delivery_lat: lat,
+      delivery_lng: lng,
+      delivery_distance_km: distanceKm,
+      delivery_fee: deliveryFee,
     })
     .select("id")
     .single();

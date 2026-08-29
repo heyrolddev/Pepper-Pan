@@ -19,6 +19,11 @@ export type AdminOrder = {
   contact_phone: string | null;
   notes: string | null;
   customer_id: string | null;
+  delivery_address: string | null;
+  delivery_lat: number | null;
+  delivery_lng: number | null;
+  delivery_distance_km: number | null;
+  delivery_fee: number;
   lines: { qty: number; price: number; name: string }[];
   customer: {
     full_name: string | null;
@@ -76,8 +81,15 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-3">
-          <span className="font-display text-xl font-black text-brand-600">
-            {peso(Number(o.revenue))}
+          <span className="text-right">
+            <span className="block font-display text-xl font-black text-brand-600">
+              {peso(Number(o.revenue) + Number(o.delivery_fee))}
+            </span>
+            {Number(o.delivery_fee) > 0 && (
+              <span className="block text-[11px] text-ink-800/55">
+                {peso(Number(o.revenue))} food + {peso(Number(o.delivery_fee))} delivery
+              </span>
+            )}
           </span>
           {!["completed", "cancelled"].includes(o.status) && (
             <EtaPicker orderId={o.id} eta={o.eta_minutes} />
@@ -96,6 +108,30 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
           </li>
         ))}
       </ul>
+
+      {o.fulfillment === "delivery" && o.delivery_address && (
+        <div className="mt-3 rounded-xl bg-gold-50 px-4 py-3 text-sm ring-1 ring-gold-400/40">
+          <p className="font-bold text-ink-950">
+            🛵 Deliver to
+            {o.delivery_distance_km != null && (
+              <span className="ml-2 font-normal text-ink-800/70">
+                ~{Number(o.delivery_distance_km)} km away
+              </span>
+            )}
+          </p>
+          <p className="mt-1 text-ink-800">{o.delivery_address}</p>
+          {o.delivery_lat != null && o.delivery_lng != null && (
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${o.delivery_lat}&mlon=${o.delivery_lng}#map=17/${o.delivery_lat}/${o.delivery_lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block font-bold text-brand-600 hover:underline"
+            >
+              Open the pin in a map ↗
+            </a>
+          )}
+        </div>
+      )}
 
       {o.notes && (
         <p className="mt-3 rounded-xl bg-cream-50 px-4 py-3 text-sm text-ink-800">
@@ -125,6 +161,7 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
         o.status,
         o.fulfillment,
         o.notes,
+        o.delivery_address,
         o.id.slice(0, 8),
         ...o.lines.map((l) => l.name),
       ]

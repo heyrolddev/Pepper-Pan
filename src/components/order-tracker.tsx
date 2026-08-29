@@ -22,6 +22,8 @@ export type TrackedOrder = {
   revenue: number;
   eta_minutes: number | null;
   cancelled_reason: string | null;
+  delivery_address: string | null;
+  delivery_fee: number;
   lines: TrackedLine[];
 };
 
@@ -224,11 +226,31 @@ function OrderCard({ order }: { order: TrackedOrder }) {
         })}
       </ul>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink-950/10 px-6 py-4">
-        <span className="font-display font-bold text-ink-950">Total</span>
-        <span className="font-display text-lg font-black text-brand-600">
-          {peso(editing ? draftTotal : order.revenue)}
-        </span>
+      {order.delivery_address && (
+        <p className="border-t border-ink-950/10 px-6 py-3 text-sm text-ink-800/70">
+          🛵 Delivering to {order.delivery_address}
+        </p>
+      )}
+
+      <div className="flex flex-col gap-1.5 border-t border-ink-950/10 px-6 py-4">
+        {Number(order.delivery_fee) > 0 && (
+          <>
+            <div className="flex justify-between text-sm text-ink-800/70">
+              <span>Food</span>
+              <span>{peso(editing ? draftTotal : order.revenue)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-ink-800/70">
+              <span>Delivery</span>
+              <span>{peso(order.delivery_fee)}</span>
+            </div>
+          </>
+        )}
+        <div className="flex items-center justify-between">
+          <span className="font-display font-bold text-ink-950">Total</span>
+          <span className="font-display text-lg font-black text-brand-600">
+            {peso((editing ? draftTotal : order.revenue) + Number(order.delivery_fee))}
+          </span>
+        </div>
       </div>
 
       {error && (

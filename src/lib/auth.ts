@@ -6,6 +6,8 @@ export type Profile = {
   full_name: string | null;
   phone: string | null;
   address: string | null;
+  address_lat: number | null;
+  address_lng: number | null;
   is_verified: boolean;
   is_blocked: boolean;
 };
@@ -31,7 +33,9 @@ export async function getViewer(): Promise<Viewer> {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, role, full_name, phone, address, is_verified, is_blocked")
+      .select(
+        "id, role, full_name, phone, address, address_lat, address_lng, is_verified, is_blocked"
+      )
       .eq("id", user.id)
       .maybeSingle();
 
