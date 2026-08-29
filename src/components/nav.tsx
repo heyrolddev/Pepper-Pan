@@ -14,7 +14,7 @@ const links = [
   { href: "/#visit", label: "Visit" },
 ];
 
-export function Nav({ userEmail }: { userEmail: string | null }) {
+export function Nav({ signedIn, staff }: { signedIn: boolean; staff: boolean }) {
   const { count } = useCart();
   const pathname = usePathname();
   const { scrollY } = useScroll();
@@ -69,12 +69,23 @@ export function Nav({ userEmail }: { userEmail: string | null }) {
             </Link>
           ))}
 
-          {userEmail && (
+          {staff && (
             <Link
-              href="/orders"
-              className={`rounded-full px-3 py-2 transition-colors ${linkClass}`}
+              href="/admin"
+              className={`rounded-full px-3 py-2 font-bold transition-colors ${
+                scrolled ? "text-brand-600 hover:text-brand-700" : "text-gold-400 hover:text-gold-300"
+              }`}
             >
-              Orders
+              Admin
+            </Link>
+          )}
+
+          {signedIn && (
+            <Link
+              href="/account"
+              className={`hidden rounded-full px-3 py-2 transition-colors sm:block ${linkClass}`}
+            >
+              Account
             </Link>
           )}
 
@@ -96,7 +107,7 @@ export function Nav({ userEmail }: { userEmail: string | null }) {
             )}
           </Link>
 
-          {userEmail ? (
+          {signedIn ? (
             <SignOutButton scrolled={scrolled} />
           ) : (
             <Link
