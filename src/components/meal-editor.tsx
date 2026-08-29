@@ -3,7 +3,8 @@
 import Image from "next/image";
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { saveMeal, uploadMealImage } from "@/app/admin/menu/actions";
+import { deleteMeal, saveMeal, uploadMealImage } from "@/app/admin/menu/actions";
+import { TrashIcon } from "@/components/icons";
 
 export type AdminMeal = {
   id: string;
@@ -57,6 +58,24 @@ export function MealEditor({ meal }: { meal: AdminMeal }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function handleDelete() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await deleteMeal(meal.id);
+      if (res.error) {
+        setConfirmDelete(false);
+        return setError(res.error);
+      }
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete that item.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
@@ -181,15 +200,51 @@ export function MealEditor({ meal }: { meal: AdminMeal }) {
           <Toggle checked={isPublic} onChange={setIsPublic} label="Shown on menu" />
           <Toggle checked={isAvailable} onChange={setIsAvailable} label="Available" />
 
-          <button
-            type="submit"
-            disabled={busy}
-            className={`ml-auto rounded-full px-5 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
-              saved ? "bg-jade-600 text-cream-50" : "bg-brand-600 text-cream-50 hover:bg-brand-700"
-            }`}
-          >
-            {busy ? "Saving…" : saved ? "Saved ✓" : "Save"}
-          </button>
+          {confirmDelete ? (
+            <span className="ml-auto flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-ink-800">Delete this item?</span>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={busy}
+                className="rounded-full bg-brand-600 px-4 py-2 text-xs font-bold text-cream-50 disabled:opacity-60"
+              >
+                {busy ? "Deleting…" : "Yes, delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="rounded-full px-3 py-2 text-xs font-bold text-ink-800 hover:text-brand-600"
+              >
+                Keep
+              </button>
+            </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                disabled={busy}
+                aria-label={`Delete ${meal.name}`}
+                title="Delete this item"
+                className="ml-auto grid h-9 w-9 place-items-center rounded-full text-ink-800/50 transition-colors hover:bg-brand-50 hover:text-brand-600 disabled:opacity-60"
+              >
+                <TrashIcon className="h-4 w-4" />
+              </button>
+
+              <button
+                type="submit"
+                disabled={busy}
+                className={`rounded-full px-5 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
+                  saved
+                    ? "bg-jade-600 text-cream-50"
+                    : "bg-brand-600 text-cream-50 hover:bg-brand-700"
+                }`}
+              >
+                {busy ? "Saving…" : saved ? "Saved ✓" : "Save"}
+              </button>
+            </>
+          )}
         </div>
 
         {error && (

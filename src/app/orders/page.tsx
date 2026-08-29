@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
-import { Reveal } from "@/components/reveal";
+import { OrderTracker, type TrackedOrder } from "@/components/order-tracker";
 
 type OrderLine = {
+  id: number;
   qty: number;
   price_at_sale: number;
   meals: { name: string } | null;
@@ -15,16 +16,9 @@ type Order = {
   status: string;
   fulfillment: string;
   revenue: number;
+  eta_minutes: number | null;
+  cancelled_reason: string | null;
   order_lines: OrderLine[];
-};
-
-const statusTone: Record<string, string> = {
-  pending: "bg-gold-400 text-ink-950",
-  confirmed: "bg-chili-500 text-cream-50",
-  preparing: "bg-chili-500 text-cream-50",
-  ready: "bg-jade-600 text-cream-50",
-  completed: "bg-jade-700 text-cream-50",
-  cancelled: "bg-ink-800 text-cream-100",
 };
 
 export default async function OrdersPage() {
@@ -69,12 +63,28 @@ export default async function OrdersPage() {
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, order_lines(qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, order_lines(id, qty, price_at_sale, meals(name))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
 
   const typedOrders = (orders ?? []) as unknown as Order[];
+
+  const tracked: TrackedOrder[] = typedOrders.map((o) => ({
+    id: o.id,
+    created_at: o.created_at,
+    status: o.status,
+    fulfillment: o.fulfillment,
+    revenue: Number(o.revenue),
+    eta_minutes: o.eta_minutes,
+    cancelled_reason: o.cancelled_reason,
+    lines: (o.order_lines ?? []).map((l) => ({
+      id: l.id,
+      qty: Number(l.qty),
+      price_at_sale: Number(l.price_at_sale),
+      name: l.meals?.name ?? "Item",
+    })),
+  }));
 
   return (
     <main className="flex-1">
@@ -82,14 +92,14 @@ export default async function OrdersPage() {
         eyebrow="Order history"
         title="Your Orders"
         subtitle={
-          typedOrders.length > 0
-            ? "Everything you've ordered from Pepper Pan."
+          tracked.length > 0
+            ? "Track what's cooking and look back at everything you've ordered."
             : undefined
         }
       />
 
       <section className="mx-auto max-w-2xl px-6 py-14">
-        {typedOrders.length === 0 ? (
+        {tracked.length === 0 ? (
           <div className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-10 text-center">
             <p className="font-display text-2xl font-bold text-ink-950">
               No orders yet
@@ -105,55 +115,7 @@ export default async function OrdersPage() {
             </Link>
           </div>
         ) : (
-          <ul className="flex flex-col gap-5">
-            {typedOrders.map((order, i) => (
-              <Reveal key={order.id} delay={Math.min(i, 6) * 0.06}>
-                <li className="overflow-hidden rounded-3xl bg-cream-100 ring-1 ring-ink-950/10">
-                  <div className="flex items-center justify-between gap-4 border-b border-ink-950/10 px-6 py-4">
-                    <div>
-                      <p className="text-sm font-semibold text-ink-950">
-                        {new Date(order.created_at).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </p>
-                      <p className="text-xs capitalize text-ink-800/60">
-                        {order.fulfillment}
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
-                        statusTone[order.status] ?? "bg-ink-800 text-cream-100"
-                      }`}
-                    >
-                      {order.status}
-                    </span>
-                  </div>
-
-                  <ul className="flex flex-col gap-2 px-6 py-4 text-sm">
-                    {order.order_lines.map((line, idx) => (
-                      <li key={idx} className="flex justify-between gap-4">
-                        <span className="text-ink-800">
-                          {line.qty} × {line.meals?.name ?? "Item"}
-                        </span>
-                        <span className="shrink-0 font-semibold text-ink-950">
-                          ₱{(line.qty * Number(line.price_at_sale)).toFixed(2)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div className="flex justify-between border-t border-ink-950/10 px-6 py-4">
-                    <span className="font-display font-bold text-ink-950">Total</span>
-                    <span className="font-display text-lg font-black text-brand-600">
-                      ₱{Number(order.revenue).toFixed(2)}
-                    </span>
-                  </div>
-                </li>
-              </Reveal>
-            ))}
-          </ul>
+          <OrderTracker orders={tracked} customerId={user.id} />
         )}
       </section>
     </main>

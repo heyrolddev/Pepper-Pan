@@ -1,99 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "motion/react";
-import { useRef, useState, type FormEvent } from "react";
+import { usePathname } from "next/navigation";
+import { motion, useMotionValueEvent, useScroll } from "motion/react";
+import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { SignOutButton } from "@/components/sign-out-button";
 import { Logo } from "@/components/logo";
+import { ChefHatIcon } from "@/components/icons";
 
 const links = [
   { href: "/menu", label: "Menu" },
   { href: "/#story", label: "Story" },
   { href: "/#visit", label: "Visit" },
 ];
-
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-
-function NavSearch({ linkClass }: { linkClass: string }) {
-  const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
-
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    const q = value.trim();
-    router.push(q ? `/menu?q=${encodeURIComponent(q)}` : "/menu");
-    setOpen(false);
-    setValue("");
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        aria-label="Search the menu"
-        onClick={() => {
-          setOpen((o) => !o);
-          requestAnimationFrame(() => inputRef.current?.focus());
-        }}
-        className={`rounded-full p-2 transition-colors ${linkClass}`}
-      >
-        <SearchIcon className="h-5 w-5" />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22 }}
-            className="absolute inset-x-0 top-full overflow-hidden border-t border-ink-950/10 bg-cream-50 shadow-lg shadow-ink-950/10"
-          >
-            <form
-              onSubmit={submit}
-              className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-4"
-            >
-              <SearchIcon className="h-5 w-5 shrink-0 text-ink-800/50" />
-              <input
-                ref={inputRef}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="Search for noodles, milktea, ji pai…"
-                className="w-full bg-transparent text-base font-medium text-ink-950 outline-none placeholder:text-ink-800/40"
-              />
-              <button
-                type="submit"
-                className="shrink-0 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-cream-50 transition-colors hover:bg-brand-700"
-              >
-                Search
-              </button>
-            </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
 
 export function Nav({ signedIn, staff }: { signedIn: boolean; staff: boolean }) {
   const { count } = useCart();
@@ -122,7 +42,7 @@ export function Nav({ signedIn, staff }: { signedIn: boolean; staff: boolean }) 
         scrolled
           ? "bg-cream-50 shadow-[inset_0_-1px_0_rgb(28_17_14/0.12)]"
           : "bg-transparent"
-      } relative`}
+      }`}
     >
       <div className="mx-auto flex h-[var(--nav-h)] max-w-6xl items-center justify-between px-6">
         <Link href="/" aria-label="Pepper Pan — home" className="group block">
@@ -150,16 +70,28 @@ export function Nav({ signedIn, staff }: { signedIn: boolean; staff: boolean }) 
             </Link>
           ))}
 
-          <NavSearch linkClass={linkClass} />
-
+          {/* Owner/staff marker — deliberately a badge rather than another
+              text link, so it's obvious at a glance which account you're in. */}
           {staff && (
             <Link
               href="/admin"
-              className={`rounded-full px-3 py-2 font-bold transition-colors ${
-                scrolled ? "text-brand-600 hover:text-brand-700" : "text-gold-400 hover:text-gold-300"
+              title="You're signed in as shop staff — open Pepper Pan HQ"
+              className={`group flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-3 font-bold ring-2 transition-all hover:scale-105 ${
+                scrolled
+                  ? "bg-ink-950 text-gold-400 ring-gold-400/40"
+                  : "bg-gold-400 text-ink-950 ring-gold-400/60"
               }`}
             >
-              Admin
+              <span
+                className={`grid h-6 w-6 place-items-center rounded-full ${
+                  scrolled ? "bg-gold-400 text-ink-950" : "bg-ink-950 text-gold-400"
+                }`}
+              >
+                <ChefHatIcon className="h-3.5 w-3.5" />
+              </span>
+              <span className="hidden text-xs uppercase tracking-wide sm:block">
+                Owner
+              </span>
             </Link>
           )}
 
