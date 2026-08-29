@@ -82,7 +82,7 @@ export default async function AdminDashboard() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const last30 = new Date(now.getTime() - 30 * 864e5).toISOString().slice(0, 10);
 
-  const [ordersRes, linesRes, customersRes] = await Promise.all([
+  const [ordersRes, linesRes, customersRes, leadsRes] = await Promise.all([
     supabase
       .from("orders")
       .select(
@@ -94,7 +94,16 @@ export default async function AdminDashboard() {
       .select("qty, price_at_sale, meals(name), orders!inner(date)")
       .gte("orders.date", last30),
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer"),
+    // Chat leads waiting on a person. Errors (before migration 0011) count
+    // as zero — a missing inbox shouldn't take the dashboard down with it.
+    supabase
+      .from("chat_threads")
+      .select("id", { count: "exact", head: true })
+      .eq("needs_human", true)
+      .eq("handled", false),
   ]);
+
+  const waitingLeads = leadsRes.error ? 0 : (leadsRes.count ?? 0);
 
   const orders = (ordersRes.data ?? []) as OrderRow[];
   // Cancelled orders are excluded from every money figure — they earned nothing.
@@ -248,6 +257,16 @@ export default async function AdminDashboard() {
             detail={`${cancelled.length} of ${orders.length} orders`}
           />
         </div>
+
+        {waitingLeads > 0 && (
+          <Link
+            href="/admin/inbox"
+            className="mt-4 mr-3 inline-block rounded-full bg-gold-400 px-6 py-3 text-sm font-bold text-ink-950 transition-transform hover:scale-105"
+          >
+            💬 {waitingLeads} customer{waitingLeads === 1 ? "" : "s"} waiting on a
+            reply →
+          </Link>
+        )}
 
         {needsAction.length > 0 && (
           <Link

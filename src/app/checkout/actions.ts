@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 import { DEFAULT_DELIVERY, quoteDelivery, type DeliverySettings } from "@/lib/delivery";
 import {
   amountDueNow,
@@ -22,6 +23,9 @@ type PlaceOrderInput = {
   paymentMethod?: PaymentMethod;
   paymentPlan?: PaymentPlan;
   paymentReference?: string;
+  // Server Actions can carry a File directly, so the screenshot travels with
+  // the rest of the order rather than needing a second round trip.
+  paymentReceipt?: File | null;
 };
 
 /** A phone we could actually ring: PH mobile/landline digits, lenient on format. */
@@ -156,8 +160,29 @@ export async function placeOrder(
   }
 
   const reference = (input.paymentReference ?? "").trim();
-  if (method === "gcash" && reference.length < 4) {
-    return { error: "Enter the GCash reference number from your receipt." };
+  const receiptFile =
+    input.paymentReceipt instanceof File && input.paymentReceipt.size > 0
+      ? input.paymentReceipt
+      : null;
+
+  // Either proof is accepted; the same rule is enforced again in the database.
+  if (method === "gcash" && reference.length < 4 && !receiptFile) {
+    return {
+      error:
+        "Add your GCash reference number or a screenshot of the receipt — either one is fine.",
+    };
+  }
+
+  let receiptUrl: string | null = null;
+  if (receiptFile) {
+    const checked = validateImage(receiptFile);
+    if ("error" in checked) return { error: checked.error };
+    const uploaded = await uploadImage(
+      checked.file,
+      `receipts/${user.id}-${Date.now()}.${extensionFor(checked.file.type)}`
+    );
+    if ("error" in uploaded) return { error: uploaded.error };
+    receiptUrl = uploaded.url;
   }
 
   // A part-payment is only allowed when the shop offers one, and the amount
@@ -183,7 +208,8 @@ export async function placeOrder(
       // A GCash order arrives claiming to be paid; it stays "submitted" until
       // staff match the reference against their own GCash records.
       payment_status: method === "gcash" ? "submitted" : "unpaid",
-      payment_reference: method === "gcash" ? reference : null,
+      payment_reference: method === "gcash" && reference ? reference : null,
+      payment_receipt_url: receiptUrl,
       payment_plan: plan,
       downpayment_amount: downpaymentAmount,
       contact_name: input.contactName.trim(),

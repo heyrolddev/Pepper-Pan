@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { saveProfile } from "@/app/account/actions";
 import { MapPicker, type Pin } from "@/components/map-picker";
+import { AddressField } from "@/components/address-field";
 
 const fieldClass =
   "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
@@ -89,19 +90,11 @@ export function AccountForm({
         />
       </label>
 
-      <label className={labelClass}>
-        Delivery address
-        <textarea
-          rows={3}
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="House / street, barangay, landmarks…"
-          className={fieldClass}
-        />
-        <span className="text-[11px] font-medium normal-case tracking-normal text-ink-800/50">
-          We&apos;ll use this to pre-fill your delivery orders.
-        </span>
-      </label>
+      <AddressField
+        value={address}
+        onChange={setAddress}
+        onPick={(picked) => setPin(picked)}
+      />
 
       <div className="flex flex-col gap-2">
         <p className="text-xs font-bold uppercase tracking-widest text-ink-800">

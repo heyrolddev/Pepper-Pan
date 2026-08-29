@@ -62,7 +62,12 @@ export async function setOrderEta(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("orders")
-    .update({ eta_minutes: minutes })
+    .update({
+      eta_minutes: minutes,
+      // Stamped so the customer's countdown runs from when the promise was
+      // made, not from when they happened to open the page.
+      eta_set_at: minutes === null ? null : new Date().toISOString(),
+    })
     .eq("id", orderId)
     .select("id");
 

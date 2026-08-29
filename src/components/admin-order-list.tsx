@@ -9,6 +9,7 @@ import { PaymentVerifier } from "@/components/payment-verifier";
 import type { OrderStatus } from "@/lib/orders";
 import type { PaymentMethod, PaymentPlan, PaymentStatus } from "@/lib/payments";
 import { formatDateTimeFull } from "@/lib/format-date";
+import { EtaCountdown } from "@/components/eta-countdown";
 
 export type AdminOrder = {
   id: string;
@@ -31,6 +32,7 @@ export type AdminOrder = {
   payment_status: PaymentStatus;
   payment_reference: string | null;
   payment_receipt_url: string | null;
+  eta_set_at: string | null;
   payment_plan: PaymentPlan;
   downpayment_amount: number;
   downpayment_confirmed_at: string | null;
@@ -102,7 +104,12 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
             )}
           </span>
           {!["completed", "cancelled"].includes(o.status) && (
-            <EtaPicker orderId={o.id} eta={o.eta_minutes} />
+            <span className="flex items-center gap-2">
+              {o.eta_minutes != null && (
+                <EtaCountdown minutes={o.eta_minutes} from={o.eta_set_at} />
+              )}
+              <EtaPicker orderId={o.id} eta={o.eta_minutes} />
+            </span>
           )}
           <OrderStatusPicker orderId={o.id} status={o.status} />
         </div>

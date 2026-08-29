@@ -16,7 +16,18 @@ const links = [
   { href: "/#visit", label: "Visit" },
 ];
 
-export function Nav({ signedIn, staff }: { signedIn: boolean; staff: boolean }) {
+export function Nav({
+  signedIn,
+  staff,
+  name,
+}: {
+  signedIn: boolean;
+  staff: boolean;
+  name: string | null;
+}) {
+  // First name only in the nav — a full name rarely fits, and "Harold" reads
+  // more like *their* account than the full legal name would.
+  const firstName = (name ?? "").trim().split(/\s+/)[0] || null;
   const { count } = useCart();
   const pathname = usePathname();
   const { scrollY } = useScroll();
@@ -55,7 +66,10 @@ export function Nav({ signedIn, staff }: { signedIn: boolean; staff: boolean }) 
         </Link>
 
         <nav className="flex items-center gap-1 text-sm font-semibold sm:gap-2">
-          {links.map((link) => (
+          {/* Staff get a deliberately bare header: the owner signed in to run
+              the shop, not to browse it, and the HQ badge is the way in. */}
+          {!staff &&
+            links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -96,15 +110,37 @@ export function Nav({ signedIn, staff }: { signedIn: boolean; staff: boolean }) 
             </Link>
           )}
 
-          {signedIn && (
+          {signedIn && !staff && (
             <Link
-              href="/account"
+              href="/orders"
               className={`hidden rounded-full px-3 py-2 transition-colors sm:block ${linkClass}`}
             >
-              Account
+              My orders
             </Link>
           )}
 
+          {/* The account chip carries the customer's own name, so the header
+              reads as their account rather than a generic "Account" link. */}
+          {signedIn && !staff && (
+            <Link
+              href="/account"
+              title="Your account"
+              className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-1 font-bold transition-all hover:scale-105 sm:pr-3 ${
+                scrolled
+                  ? "bg-ink-950/5 text-ink-950 ring-1 ring-ink-950/10"
+                  : "bg-cream-50/10 text-cream-50 ring-1 ring-cream-50/20"
+              }`}
+            >
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-600 text-xs font-black text-cream-50">
+                {(firstName ?? "?").charAt(0).toUpperCase()}
+              </span>
+              <span className="hidden max-w-24 truncate text-xs sm:block">
+                {firstName ?? "Account"}
+              </span>
+            </Link>
+          )}
+
+          {!staff && (
           <Link
             href="/cart"
             className={`relative rounded-full px-3 py-2 transition-colors ${linkClass}`}
@@ -122,6 +158,7 @@ export function Nav({ signedIn, staff }: { signedIn: boolean; staff: boolean }) 
               </motion.span>
             )}
           </Link>
+          )}
 
           {signedIn ? (
             <SignOutButton scrolled={scrolled} />

@@ -7,6 +7,7 @@ import { useCart } from "@/lib/cart-context";
 import { placeOrder } from "@/app/checkout/actions";
 import { MapPicker, type Pin } from "@/components/map-picker";
 import { PaymentPicker } from "@/components/payment-picker";
+import { AddressField } from "@/components/address-field";
 import { quoteDelivery, type DeliverySettings } from "@/lib/delivery";
 import {
   amountDueNow,
@@ -55,6 +56,7 @@ export function CheckoutForm({
   );
   const [plan, setPlan] = useState<PaymentPlan>("full");
   const [reference, setReference] = useState("");
+  const [receipt, setReceipt] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,9 +82,11 @@ export function CheckoutForm({
           : null
     : null;
 
+  // Either proof satisfies the shop; the server and database enforce the
+  // same rule, so this only saves a round trip.
   const paymentBlocked =
-    method === "gcash" && reference.trim().length < 4
-      ? "Paste your GCash reference number so we can confirm the payment."
+    method === "gcash" && reference.trim().length < 4 && !receipt
+      ? "Add your GCash reference number or a screenshot of the receipt."
       : null;
 
   const blockedReason = deliveryBlocked ?? paymentBlocked;
@@ -121,6 +125,7 @@ export function CheckoutForm({
         paymentMethod: method,
         paymentPlan: method === "gcash" ? plan : "full",
         paymentReference: method === "gcash" ? reference : undefined,
+        paymentReceipt: method === "gcash" ? receipt : null,
       });
 
       if (result.error) {
@@ -213,17 +218,12 @@ export function CheckoutForm({
 
       {isDelivery && (
         <div className="flex flex-col gap-4 rounded-3xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
-          <label className={labelClass}>
-            Delivery address <span className="text-brand-600">*required</span>
-            <textarea
-              required
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              rows={3}
-              placeholder="House no. & street, barangay, nearest landmark…"
-              className={fieldClass}
-            />
-          </label>
+          <AddressField
+            required
+            value={address}
+            onChange={setAddress}
+            onPick={(picked) => setPin(picked)}
+          />
 
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-800">
@@ -271,6 +271,8 @@ export function CheckoutForm({
         onPlanChange={setPlan}
         reference={reference}
         onReferenceChange={setReference}
+        receipt={receipt}
+        onReceiptChange={setReceipt}
         total={grandTotal}
       />
 

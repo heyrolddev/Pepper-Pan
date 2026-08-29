@@ -144,14 +144,22 @@ export async function submitPayment(
   const orderId = String(formData.get("orderId") ?? "");
   const reference = String(formData.get("reference") ?? "").trim();
   if (!orderId) return { error: "Missing order." };
-  if (reference.length < 4) {
-    return { error: "Enter the GCash reference number from your receipt." };
+
+  const file = formData.get("receipt");
+  const hasReceipt = file instanceof File && file.size > 0;
+
+  // Either proof will do — a reference number typed off a phone screen, or a
+  // screenshot of the GCash receipt — but not neither. The database enforces
+  // the same rule, counting a screenshot already on file.
+  if (reference.length < 4 && !hasReceipt) {
+    return {
+      error:
+        "Add your GCash reference number or a screenshot of the receipt — either one is fine.",
+    };
   }
 
-  // The receipt is optional; only validate/upload when one was attached.
   let receiptUrl: string | null = null;
-  const file = formData.get("receipt");
-  if (file instanceof File && file.size > 0) {
+  if (hasReceipt) {
     const checked = validateImage(file);
     if ("error" in checked) return { error: checked.error };
 

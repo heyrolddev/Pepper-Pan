@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { cancelMyOrder, submitPayment, updateMyOrder } from "@/app/orders/actions";
-import { ClockIcon, LiveDotIcon } from "@/components/icons";
+import { LiveDotIcon } from "@/components/icons";
 import { OrderReviewPanel, type ReviewableItem } from "@/components/order-review-panel";
 import { formatDateTime } from "@/lib/format-date";
+import { EtaCountdown } from "@/components/eta-countdown";
 import {
   METHOD_LABEL,
   STATUS_LABEL,
@@ -36,6 +37,7 @@ export type TrackedOrder = {
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
   payment_reference: string | null;
+  eta_set_at: string | null;
   payment_plan: PaymentPlan;
   downpayment_amount: number;
   downpayment_confirmed_at: string | null;
@@ -205,11 +207,9 @@ function OrderCard({ order }: { order: TrackedOrder }) {
             Cancelled
           </span>
         ) : (
-          order.eta_minutes != null && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-400 px-3 py-1.5 text-xs font-bold text-ink-950">
-              <ClockIcon className="h-3.5 w-3.5" />
-              Ready in ~{order.eta_minutes} min
-            </span>
+          order.eta_minutes != null &&
+          !["completed", "cancelled"].includes(order.status) && (
+            <EtaCountdown minutes={order.eta_minutes} from={order.eta_set_at} />
           )
         )}
       </div>
@@ -377,6 +377,10 @@ function OrderCard({ order }: { order: TrackedOrder }) {
             <div className="mt-3">
               {payOpen ? (
                 <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-ink-800/70">
+                    Send us <span className="text-brand-700">either</span> the
+                    reference number or a screenshot — whichever is easier.
+                  </p>
                   <input
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
@@ -384,7 +388,7 @@ function OrderCard({ order }: { order: TrackedOrder }) {
                     className="rounded-xl border-2 border-ink-950/15 bg-cream-50 px-4 py-2 text-sm outline-none focus:border-brand-600"
                   />
                   <label className="text-xs font-semibold text-ink-800/70">
-                    Receipt screenshot (optional)
+                    …or a screenshot of the GCash receipt
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp"
