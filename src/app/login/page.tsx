@@ -1,16 +1,23 @@
 "use client";
 
 import { Suspense, useState, type FormEvent } from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/page-header";
 
+const fieldClass =
+  "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
+const labelClass =
+  "flex flex-col gap-2 text-xs font-bold uppercase tracking-widest text-ink-800";
+
 function LoginForm() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const next = searchParams.get("next") ?? "/";
 
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(searchParams.get("error"));
   const [submitting, setSubmitting] = useState(false);
 
@@ -20,19 +27,20 @@ function LoginForm() {
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-    setSubmitting(false);
     if (error) {
-      setError(error.message);
+      setError(
+        error.message === "Invalid login credentials"
+          ? "That email and password don't match. Double-check and try again."
+          : error.message
+      );
+      setSubmitting(false);
       return;
     }
-    setSent(true);
+
+    router.push(next);
+    router.refresh();
   }
 
   return (
@@ -40,47 +48,61 @@ function LoginForm() {
       <PageHeader
         eyebrow="Welcome back"
         title="Sign in"
-        subtitle="We'll email you a one-time link — no password needed."
+        subtitle="Sign in to order, track your orders and save your details."
       />
 
       <section className="mx-auto max-w-md px-6 py-14">
-        {sent ? (
-          <div className="rounded-3xl bg-jade-700 p-8 text-center text-cream-50">
-            <p className="font-display text-2xl font-bold">Check your email 📬</p>
-            <p className="mt-2 text-cream-100/80">
-              We sent a sign-in link to <strong>{email}</strong>. Open it on
-              this same device and browser.
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <label className={labelClass}>
+            Email
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className={fieldClass}
+            />
+          </label>
+
+          <label className={labelClass}>
+            Password
+            <input
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your password"
+              className={fieldClass}
+            />
+          </label>
+
+          {error && (
+            <p className="rounded-2xl bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700">
+              {error}
             </p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-            <label className="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest text-ink-800">
-              Email address
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600"
-              />
-            </label>
+          )}
 
-            {error && (
-              <p className="rounded-2xl bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700">
-                {error}
-              </p>
-            )}
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-full bg-brand-600 px-7 py-4 font-bold text-cream-50 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
+          >
+            {submitting ? "Signing in…" : "Sign in →"}
+          </button>
+        </form>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-full bg-brand-600 px-7 py-4 font-bold text-cream-50 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
-            >
-              {submitting ? "Sending…" : "Send magic link →"}
-            </button>
-          </form>
-        )}
+        <p className="mt-8 text-center text-sm text-ink-800/70">
+          New here?{" "}
+          <Link
+            href={`/signup?next=${encodeURIComponent(next)}`}
+            className="font-bold text-brand-600 hover:underline"
+          >
+            Create an account
+          </Link>
+        </p>
       </section>
     </>
   );

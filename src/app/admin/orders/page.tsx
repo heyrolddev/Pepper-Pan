@@ -1,0 +1,167 @@
+import { createClient } from "@/lib/supabase/server";
+import { OrderStatusPicker } from "@/components/order-status-picker";
+import type { OrderStatus } from "./actions";
+
+const peso = (n: number) =>
+  "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+type Order = {
+  id: string;
+  created_at: string;
+  status: OrderStatus;
+  fulfillment: string;
+  revenue: number;
+  contact_name: string | null;
+  contact_phone: string | null;
+  notes: string | null;
+  customer_id: string | null;
+  order_lines: { qty: number; price_at_sale: number; meals: { name: string } | null }[];
+};
+
+type CustomerInfo = {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  is_verified: boolean;
+  is_blocked: boolean;
+};
+
+export default async function AdminOrdersPage() {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("orders")
+    .select(
+      "id, created_at, status, fulfillment, revenue, contact_name, contact_phone, notes, customer_id, order_lines(qty, price_at_sale, meals(name))"
+    )
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const orders = (data ?? []) as unknown as Order[];
+
+  const customerIds = [...new Set(orders.map((o) => o.customer_id).filter(Boolean))] as string[];
+  const { data: profileRows } = customerIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, full_name, phone, is_verified, is_blocked")
+        .in("id", customerIds)
+    : { data: [] };
+  const profiles = new Map(
+    ((profileRows ?? []) as CustomerInfo[]).map((p) => [p.id, p])
+  );
+
+  // How many completed orders each customer has — a cheap "is this a real
+  // regular or a first-timer?" signal next to each order.
+  const completedCount = new Map<string, number>();
+  for (const o of orders) {
+    if (o.customer_id && o.status === "completed") {
+      completedCount.set(o.customer_id, (completedCount.get(o.customer_id) ?? 0) + 1);
+    }
+  }
+
+  const open = orders.filter((o) =>
+    ["pending", "confirmed", "preparing", "ready"].includes(o.status)
+  );
+  const rest = orders.filter((o) => !open.includes(o));
+
+  const renderOrder = (o: Order) => {
+    const p = o.customer_id ? profiles.get(o.customer_id) : undefined;
+    return (
+      <li key={o.id} className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-display text-lg font-bold text-ink-950">
+                {o.contact_name || p?.full_name || "Walk-in"}
+              </span>
+              {!o.customer_id && (
+                <span className="rounded-full bg-ink-800 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-cream-100">
+                  Walk-in
+                </span>
+              )}
+              {p?.is_verified && (
+                <span className="rounded-full bg-jade-700 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-cream-50">
+                  ✓ Verified
+                </span>
+              )}
+              {p?.is_blocked && (
+                <span className="rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-cream-50">
+                  ⚠ Blocked
+                </span>
+              )}
+              {o.customer_id && !p?.is_verified && !p?.is_blocked && (
+                <span className="rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-ink-950">
+                  New customer
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-ink-800/70">
+              {o.contact_phone || p?.phone || "no number"} · {o.fulfillment} ·{" "}
+              {new Date(o.created_at).toLocaleString()}
+            </p>
+            {o.customer_id && (
+              <p className="text-xs text-ink-800/55">
+                {completedCount.get(o.customer_id) ?? 0} completed order
+                {(completedCount.get(o.customer_id) ?? 0) === 1 ? "" : "s"} before this list
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <span className="font-display text-xl font-black text-brand-600">
+              {peso(Number(o.revenue))}
+            </span>
+            <OrderStatusPicker orderId={o.id} status={o.status} />
+          </div>
+        </div>
+
+        <ul className="mt-4 flex flex-col gap-1 border-t border-ink-950/10 pt-3 text-sm">
+          {o.order_lines?.map((l, i) => (
+            <li key={i} className="flex justify-between gap-4">
+              <span className="text-ink-800">
+                {l.qty} × {l.meals?.name ?? "Item"}
+              </span>
+              <span className="font-semibold text-ink-950">
+                {peso(l.qty * Number(l.price_at_sale))}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {o.notes && (
+          <p className="mt-3 rounded-xl bg-cream-50 px-4 py-3 text-sm text-ink-800">
+            <span className="font-bold">Notes:</span> {o.notes}
+          </p>
+        )}
+      </li>
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-10">
+      <section>
+        <h2 className="font-display text-2xl font-black text-ink-950">
+          Open orders{open.length > 0 && ` (${open.length})`}
+        </h2>
+        {open.length === 0 ? (
+          <p className="mt-4 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
+            Nothing waiting — you&apos;re all caught up. 🎉
+          </p>
+        ) : (
+          <ul className="mt-5 flex flex-col gap-4">{open.map(renderOrder)}</ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="font-display text-2xl font-black text-ink-950">History</h2>
+        {rest.length === 0 ? (
+          <p className="mt-4 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
+            No past orders yet.
+          </p>
+        ) : (
+          <ul className="mt-5 flex flex-col gap-4">{rest.map(renderOrder)}</ul>
+        )}
+      </section>
+    </div>
+  );
+}

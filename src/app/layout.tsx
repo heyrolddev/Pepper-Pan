@@ -9,7 +9,7 @@ import { ScrollProgress } from "@/components/scroll-progress";
 import { Marquee } from "@/components/marquee";
 import { Preloader } from "@/components/preloader";
 import { Logo } from "@/components/logo";
-import { createClient } from "@/lib/supabase/server";
+import { getViewer, isStaff } from "@/lib/auth";
 
 // Warm display serif — reads artisanal and appetising rather than corporate.
 const fraunces = Fraunces({
@@ -31,21 +31,6 @@ export const metadata: Metadata = {
     "Taiwan-style black pepper noodles, rice meals and milktea, made fresh daily in Apalit. Order ahead for pickup or delivery.",
 };
 
-async function getUserEmail(): Promise<string | null> {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return null;
-  }
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    return user?.email ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Runs before first paint so the real page never flashes before the
  * overlay. The intro plays on every page load; only a reduced-motion
@@ -59,7 +44,7 @@ else{d.classList.add('intro-lock');}
 }catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const userEmail = await getUserEmail();
+  const viewer = await getViewer();
 
   return (
     <html
@@ -77,7 +62,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <Preloader />
           <Cursor />
           <ScrollProgress />
-          <Nav userEmail={userEmail} />
+          <Nav signedIn={!!viewer} staff={isStaff(viewer)} />
           {children}
 
           <footer className="grain relative overflow-hidden bg-ink-950 text-cream-100">

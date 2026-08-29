@@ -25,6 +25,20 @@ export async function placeOrder(
     return { error: "You need to sign in first." };
   }
 
+  // RLS also rejects orders from blocked accounts; checking here just turns
+  // that into a message the customer can actually understand.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_blocked")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profile?.is_blocked) {
+    return {
+      error:
+        "Ordering is paused on this account. Please contact us at +63 947 353 3060.",
+    };
+  }
+
   // Re-fetch current prices server-side rather than trusting client-supplied
   // totals, since the cart lives in the browser (localStorage).
   const mealIds = input.items.map((i) => i.mealId);

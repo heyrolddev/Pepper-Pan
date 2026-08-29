@@ -1,0 +1,46 @@
+import { createClient } from "@/lib/supabase/server";
+
+export type Profile = {
+  id: string;
+  role: "owner" | "staff" | "customer";
+  full_name: string | null;
+  phone: string | null;
+  address: string | null;
+  is_verified: boolean;
+  is_blocked: boolean;
+};
+
+export type Viewer = { email: string; profile: Profile | null } | null;
+
+export function isConfigured() {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+}
+
+/** The signed-in user plus their profile row, or null when signed out. */
+export async function getViewer(): Promise<Viewer> {
+  if (!isConfigured()) return null;
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, role, full_name, phone, address, is_verified, is_blocked")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    return { email: user.email ?? "", profile: (profile as Profile) ?? null };
+  } catch {
+    return null;
+  }
+}
+
+export function isStaff(viewer: Viewer) {
+  return viewer?.profile?.role === "owner" || viewer?.profile?.role === "staff";
+}

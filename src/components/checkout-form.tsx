@@ -11,14 +11,18 @@ const fieldClass =
 const labelClass =
   "flex flex-col gap-2 text-xs font-bold uppercase tracking-widest text-ink-800";
 
-export function CheckoutForm() {
+export function CheckoutForm({
+  defaults,
+}: {
+  defaults: { name: string; phone: string; address: string };
+}) {
   const { items, total, clear } = useCart();
   const router = useRouter();
 
-  const [contactName, setContactName] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
+  const [contactName, setContactName] = useState(defaults.name);
+  const [contactPhone, setContactPhone] = useState(defaults.phone);
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(defaults.address);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
