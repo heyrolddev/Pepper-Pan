@@ -48,7 +48,7 @@ export async function buildSnapshot(): Promise<ShopSnapshot> {
   const d30 = new Date(now.getTime() - 30 * day).toISOString().slice(0, 10);
   const d60 = new Date(now.getTime() - 60 * day).toISOString().slice(0, 10);
 
-  const [ordersRes, linesRes, mealsRes, reviewsRes, chatRes] = await Promise.all([
+  const [ordersRes, linesRes, mealsRes, reviewsRes, chatRes, deliveryRes] = await Promise.all([
     supabase
       .from("orders")
       .select(
@@ -62,6 +62,7 @@ export async function buildSnapshot(): Promise<ShopSnapshot> {
     supabase.from("meals").select("name, price, is_available").eq("is_public", true),
     supabase.from("reviews").select("rating, comment, created_at").eq("is_hidden", false),
     supabase.from("chat_messages").select("content, role").eq("role", "user").limit(200),
+    supabase.from("delivery_settings").select("free_over").eq("id", 1).maybeSingle(),
   ]);
 
   const orders = (ordersRes.data ?? []) as OrderRow[];
@@ -200,5 +201,6 @@ export async function buildSnapshot(): Promise<ShopSnapshot> {
         .map((r) => ({ rating: r.rating, comment: (r.comment ?? "").slice(0, 300) })),
     },
     questionsAsked: questions,
+    freeDeliveryOver: Number(deliveryRes.data?.free_over ?? 0),
   };
 }

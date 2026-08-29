@@ -7,9 +7,9 @@ import { buildSnapshot } from "./snapshot";
 /**
  * Run the marketing analysis on demand.
  *
- * Deliberately not run on page load: every run costs the shop money, and the
- * numbers don't move fast enough to justify one per refresh. The owner presses
- * the button when they want fresh advice.
+ * Run on a button rather than on page load: it reads several months of orders
+ * to build the snapshot, and the numbers don't move fast enough to justify
+ * that work on every refresh.
  */
 export async function runAnalysis(): Promise<{
   advice: Advice | null;

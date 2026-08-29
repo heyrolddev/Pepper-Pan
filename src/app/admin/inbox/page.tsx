@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { AdminInbox, type InboxThread } from "@/components/admin-inbox";
 import { ChatSettingsForm } from "@/components/chat-settings-form";
-import { assistantConfigured } from "@/lib/assistant";
 
 type ThreadRow = {
   id: string;
@@ -139,28 +138,7 @@ export default async function AdminInboxPage() {
           </p>
           <p className="font-display text-3xl font-black text-ink-950">{threads.length}</p>
         </div>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">
-            Assistant
-          </p>
-          <p
-            className={`font-display text-lg font-black ${
-              assistantConfigured() ? "text-jade-600" : "text-brand-600"
-            }`}
-          >
-            {assistantConfigured() ? "Live" : "Needs API key"}
-          </p>
-        </div>
       </div>
-
-      {!assistantConfigured() && (
-        <p className="rounded-2xl bg-gold-50 px-5 py-3 text-sm text-ink-800 ring-1 ring-gold-400/40">
-          Add <code className="font-mono text-xs">ANTHROPIC_API_KEY</code> to your
-          Vercel environment variables to switch the assistant on. Until then the
-          chat still opens, but it points people straight at you instead of
-          answering.
-        </p>
-      )}
 
       <ChatSettingsForm
         initial={{

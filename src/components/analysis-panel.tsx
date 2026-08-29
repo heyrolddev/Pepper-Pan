@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 import { runAnalysis } from "@/app/admin/analytics/actions";
 import type { Advice } from "@/lib/marketing-analyst";
 
-export function AnalysisPanel({ configured }: { configured: boolean }) {
+export function AnalysisPanel() {
   const [advice, setAdvice] = useState<Advice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,26 +40,20 @@ export function AnalysisPanel({ configured }: { configured: boolean }) {
           </h3>
           <p className="mt-1 max-w-xl text-sm text-cream-100/60">
             Reads the numbers above — your busiest hours, what sells, what
-            doesn&apos;t, what customers say — and comes back with posts to make,
-            ads worth boosting, and promos that fit a stall your size.
+            doesn&apos;t, what customers ask — and works out what to post, what
+            to boost and what to put on promo. The captions are drafts in your
+            voice to edit; the reasoning behind each one is your own data.
           </p>
         </div>
 
         <button
           onClick={run}
-          disabled={busy || !configured}
+          disabled={busy}
           className="shrink-0 rounded-full bg-gold-400 px-6 py-3 font-bold text-ink-950 transition-transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
         >
           {busy ? "Reading your numbers…" : advice ? "Run again" : "Analyse my shop"}
         </button>
       </div>
-
-      {!configured && (
-        <p className="mt-5 rounded-2xl bg-gold-400/10 px-5 py-3 text-sm text-gold-200 ring-1 ring-gold-400/30">
-          Add <code className="font-mono text-xs">ANTHROPIC_API_KEY</code> to your
-          Vercel environment variables to switch this on.
-        </p>
-      )}
 
       {error && (
         <p className="mt-5 rounded-2xl bg-brand-600/20 px-5 py-3 text-sm font-semibold text-brand-200 ring-1 ring-brand-600/40">
@@ -183,8 +177,9 @@ export function AnalysisPanel({ configured }: { configured: boolean }) {
           )}
 
           <p className="text-center text-xs text-cream-100/40">
-            Generated from your own sales data{ranAt ? ` at ${ranAt}` : ""}. Suggestions,
-            not instructions — you know your customers.
+            Worked out from your own sales data{ranAt ? ` at ${ranAt}` : ""}. Every
+            figure here is yours. The wording is a starting point — you know how
+            your customers talk.
           </p>
         </div>
       )}

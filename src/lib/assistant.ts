@@ -1,161 +1,478 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
-
-export function assistantConfigured() {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
-}
-
-/**
- * Facts the assistant is allowed to state, read fresh from the database.
- *
- * Everything the assistant says about the menu, prices, delivery and payment
- * comes from here — it is never asked to recall them. That's what stops it
- * inventing a dish or quoting a price the shop doesn't charge.
- */
-async function shopFacts(): Promise<string> {
-  const supabase = createAdminClient();
-
-  const [meals, delivery, payments] = await Promise.all([
-    supabase
-      .from("meals")
-      .select("name, price, description, categories")
-      .eq("is_public", true)
-      .eq("is_available", true)
-      .order("name")
-      .limit(200),
-    supabase.from("delivery_settings").select("*").eq("id", 1).maybeSingle(),
-    supabase.from("payment_settings").select("*").eq("id", 1).maybeSingle(),
-  ]);
-
-  const menuLines = (meals.data ?? [])
-    .map(
-      (m) =>
-        `- ${m.name} — ₱${Number(m.price).toFixed(2)}${
-          m.description ? ` (${m.description})` : ""
-        }`
-    )
-    .join("\n");
-
-  const d = delivery.data;
-  const p = payments.data;
-
-  const deliveryText = d
-    ? d.is_enabled
-      ? `Delivery is available. Fee: ₱${d.base_fee} covers the first ${d.base_km} km, then ₱${d.per_km_fee} per extra km (minimum ₱${d.min_fee}). We don't deliver beyond ${d.max_km} km.${
-          Number(d.free_over) > 0 ? ` Free delivery on orders over ₱${d.free_over}.` : ""
-        }`
-      : "Delivery is paused right now — pickup only."
-    : "Delivery details aren't configured yet.";
-
-  const paymentText = p
-    ? [
-        p.cod_enabled ? "Cash on delivery or at the stall." : null,
-        p.gcash_enabled
-          ? `GCash${p.gcash_number ? ` (${p.gcash_number}${p.gcash_name ? `, ${p.gcash_name}` : ""})` : ""}.${
-              p.downpayment_enabled
-                ? ` A ${p.downpayment_percent}% down payment is allowed, with the balance in cash on handover.`
-                : ""
-            }`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" ")
-    : "Payment details aren't configured yet.";
-
-  return [
-    "MENU (only these items exist):",
-    menuLines || "(the menu is empty right now)",
-    "",
-    `DELIVERY: ${deliveryText}`,
-    `PAYMENT: ${paymentText}`,
-    "SHOP: Pepper Pan, Taiwan-style street food in Apalit, Pampanga.",
-    "Located in front of Palengkeni, beside Osave. Phone +63 947 353 3060.",
-    "TikTok @pepper.pan.taiwan.",
-  ].join("\n");
-}
-
-const SYSTEM = `You are the assistant for Pepper Pan, a small Taiwan-style street food shop in Apalit, Pampanga, run by a family.
-
-You help people decide what to order and answer questions about the menu, prices, delivery and payment.
-
-Rules that matter:
-- Only ever state facts from the SHOP FACTS below. If someone asks about a dish, a price, a delivery fee or an area not covered there, say you're not sure and offer to have the owner reply. Never invent a menu item, a price, or a promo.
-- Never promise a discount, a freebie, or a delivery time. Only the owner can.
-- You cannot see anyone's order status, take payment, or place an order. Point them to the Menu page to order, or to My Orders to track one.
-- Keep replies short — two or three sentences. This is a chat, usually on a phone.
-- Filipino customers often write in Taglish. Reply in whatever mix they used; Taglish is welcome.
-- Be warm and a bit playful, the way a small family shop is. Don't be corporate.
-- If someone wants to complain, cancel, change an order, or asks something you can't answer, say the owner will get back to them and ask for their name and number.
-
-End your reply with the token [HUMAN] — on its own, after your message — when the person needs the owner: a complaint, a cancellation, a bulk or catering order, a question about a specific existing order, or anything you couldn't answer. The token is stripped before the customer sees it; it only flags the thread for the owner.`;
-
 export type AssistantReply = { text: string; needsHuman: boolean };
 
 /**
- * One assistant turn.
+ * "Ask Pepper Pan" answers from the shop's own data — no AI model, no API key,
+ * nothing to pay for.
  *
- * Errors are deliberately swallowed into a friendly fallback that still points
- * at a human — a chat widget that shows a stack trace, or nothing at all, is
- * worse for the shop than one that says "message us and we'll reply".
+ * The trade is deliberate: this can only answer the questions it recognises,
+ * but it can never invent a dish, quote a price the shop doesn't charge, or
+ * promise a delivery time. Everything it doesn't recognise goes to the owner
+ * as a lead rather than being guessed at, which for a food stall is the
+ * honest failure mode — most of what people actually ask is the menu, the
+ * price, the hours and the delivery fee.
  */
-export async function askAssistant(history: ChatTurn[]): Promise<AssistantReply> {
-  if (!assistantConfigured()) {
-    return {
-      text: "Chat isn't switched on yet — please message us on Facebook or call +63 947 353 3060 and we'll help you right away.",
-      needsHuman: true,
-    };
+
+type Meal = {
+  name: string;
+  price: number;
+  description: string | null;
+  is_available: boolean;
+};
+
+type Facts = {
+  meals: Meal[];
+  bestSeller: string | null;
+  delivery: {
+    enabled: boolean;
+    baseFee: number;
+    baseKm: number;
+    perKm: number;
+    minFee: number;
+    maxKm: number;
+    freeOver: number;
+  } | null;
+  payment: {
+    cod: boolean;
+    gcash: boolean;
+    gcashName: string | null;
+    gcashNumber: string | null;
+    downpayment: boolean;
+    downpaymentPercent: number;
+  } | null;
+};
+
+const PHONE = "+63 947 353 3060";
+const WHERE = "in front of Palengkeni, beside Osave, Apalit";
+
+const peso = (n: number) =>
+  "₱" + Number(n).toLocaleString("en-PH", { maximumFractionDigits: 2 });
+
+/** Always available — there is no key to configure. */
+export function assistantConfigured() {
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Reading the shop
+// ---------------------------------------------------------------------------
+
+async function loadFacts(): Promise<Facts> {
+  const db = createAdminClient();
+
+  const [mealsRes, deliveryRes, paymentRes, linesRes] = await Promise.all([
+    db
+      .from("meals")
+      .select("name, price, description, is_available")
+      .eq("is_public", true)
+      .order("name")
+      .limit(200),
+    db.from("delivery_settings").select("*").eq("id", 1).maybeSingle(),
+    db.from("payment_settings").select("*").eq("id", 1).maybeSingle(),
+    // "What's your bestseller?" deserves a real answer, so it comes from what
+    // people have actually ordered rather than the owner's guess.
+    db
+      .from("order_lines")
+      .select("qty, meals(name), orders!inner(status)")
+      .neq("orders.status", "cancelled")
+      .limit(2000),
+  ]);
+
+  const tally = new Map<string, number>();
+  type Line = { qty: number; meals: { name: string } | null };
+  for (const line of (linesRes.data ?? []) as unknown as Line[]) {
+    const name = line.meals?.name;
+    if (!name) continue;
+    tally.set(name, (tally.get(name) ?? 0) + Number(line.qty || 0));
   }
+  const bestSeller =
+    [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
-  try {
-    const facts = await shopFacts();
-    const client = new Anthropic();
+  const d = deliveryRes.data;
+  const p = paymentRes.data;
 
-    const response = await client.messages.create({
-      model: "claude-opus-5",
-      max_tokens: 1000,
-      // Low effort: this is short customer-service chat, not a reasoning task,
-      // and it keeps replies quick and cheap.
-      output_config: { effort: "low" },
-      system: [
-        { type: "text", text: SYSTEM },
-        // The stable instructions sit first and the volatile facts after, so
-        // the cached prefix survives a menu edit.
-        { type: "text", text: `SHOP FACTS\n${facts}`, cache_control: { type: "ephemeral" } },
-      ],
-      // Keep the last few turns only — a chat widget doesn't need the whole
-      // history, and it bounds what a long session costs.
-      messages: history.slice(-12).map((t) => ({ role: t.role, content: t.content })),
-    });
+  return {
+    meals: (mealsRes.data ?? []) as Meal[],
+    bestSeller,
+    delivery: d
+      ? {
+          enabled: Boolean(d.is_enabled),
+          baseFee: Number(d.base_fee ?? 0),
+          baseKm: Number(d.base_km ?? 0),
+          perKm: Number(d.per_km_fee ?? 0),
+          minFee: Number(d.min_fee ?? 0),
+          maxKm: Number(d.max_km ?? 0),
+          freeOver: Number(d.free_over ?? 0),
+        }
+      : null,
+    payment: p
+      ? {
+          cod: Boolean(p.cod_enabled),
+          gcash: Boolean(p.gcash_enabled),
+          gcashName: p.gcash_name ?? null,
+          gcashNumber: p.gcash_number ?? null,
+          downpayment: Boolean(p.downpayment_enabled),
+          downpaymentPercent: Number(p.downpayment_percent ?? 50),
+        }
+      : null,
+  };
+}
 
-    if (response.stop_reason === "refusal") {
-      return {
-        text: "Sorry, I can't help with that one — but the owner can. What's your name and number?",
-        needsHuman: true,
-      };
+// ---------------------------------------------------------------------------
+// Reading the question
+// ---------------------------------------------------------------------------
+
+/** Lowercase, strip accents and punctuation, so "Magkano?" matches "magkano". */
+function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Match at the start of a word, never mid-word.
+ *
+ * A plain substring test reads "Apalit" as the complaint word "palit" and
+ * "hindi" as the greeting "hi" — so the shop's own town would have gone to
+ * the owner as a complaint. Anchoring to a word start keeps Tagalog prefixes
+ * working ("cancel" still finds "cancelling") without those collisions.
+ */
+const has = (haystack: string, needles: string[]) => {
+  const padded = " " + haystack;
+  return needles.some((n) => padded.includes(" " + n));
+};
+
+/** Whole words only — for markers short enough to hide inside other words. */
+const hasWord = (haystack: string, needles: string[]) => {
+  const words = new Set(haystack.split(" "));
+  return needles.some((n) => words.has(n));
+};
+
+/**
+ * Filipino customers write in Taglish, English, or Tagalog depending on mood.
+ * Matching the mix they used is the difference between a reply that sounds
+ * like the shop and one that sounds like a bank.
+ */
+const TAGALOG_MARKERS = [
+  "po", "ba", "ng", "ano", "magkano", "meron", "kayo", "ninyo", "niyo",
+  "yung", "yan", "ito", "sana", "salamat", "kuya", "ate", "paano", "saan",
+  "kailan", "pwede", "puwede", "gusto", "bukas", "sarado", "presyo", "bayad",
+  "magbayad", "hatid", "padeliver", "kami", "namin", "akin", "ako", "mag",
+  "naman", "lang", "dito", "diyan", "dyan", "opo", "sige",
+];
+
+function speaksTaglish(text: string): boolean {
+  return hasWord(normalize(text), TAGALOG_MARKERS);
+}
+
+/** Menu items the message names, longest name first so "milktea" beats "tea". */
+function mealsMentioned(message: string, meals: Meal[]): Meal[] {
+  const n = normalize(message);
+  const hits: { meal: Meal; score: number }[] = [];
+
+  for (const meal of meals) {
+    const name = normalize(meal.name);
+    if (!name) continue;
+
+    if (n.includes(name)) {
+      hits.push({ meal, score: name.length + 100 });
+      continue;
     }
+    // Partial match on the distinctive words of the name, so "jipai" finds
+    // "Jipai Chicken Chop" and "wings" finds "Chicken Wings".
+    const words = name.split(" ").filter((w) => w.length >= 4);
+    const matched = words.filter((w) => n.includes(w));
+    if (matched.length > 0) {
+      hits.push({ meal, score: matched.join("").length });
+    }
+  }
 
-    const raw = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
+  return hits.sort((a, b) => b.score - a.score).map((h) => h.meal);
+}
 
-    const needsHuman = raw.includes("[HUMAN]");
-    const text = raw.replace(/\[HUMAN\]/g, "").trim();
+// ---------------------------------------------------------------------------
+// The answers
+// ---------------------------------------------------------------------------
 
+function deliveryAnswer(f: Facts, tl: boolean): string {
+  const d = f.delivery;
+  if (!d) {
+    return tl
+      ? "Hindi pa po naka-set ang delivery details namin. Tawag na lang po kayo sa " + PHONE + " para masagot agad."
+      : "Our delivery details aren't set up yet. Call us on " + PHONE + " and we'll sort you out.";
+  }
+  if (!d.enabled) {
+    return tl
+      ? `Pickup po muna kami sa ngayon — nasa ${WHERE} po kami. Pasensya na po!`
+      : `We're pickup-only at the moment — you'll find us ${WHERE}.`;
+  }
+
+  const free =
+    d.freeOver > 0
+      ? tl
+        ? ` Libre na po ang delivery pag umabot ng ${peso(d.freeOver)} ang order niyo!`
+        : ` Delivery is free on orders over ${peso(d.freeOver)}!`
+      : "";
+
+  return tl
+    ? `Nagdedeliver po kami! ${peso(d.baseFee)} po para sa unang ${d.baseKm} km, tapos ${peso(d.perKm)} kada dagdag na km — hanggang ${d.maxKm} km po ang abot namin.${free} Lalabas po ang exactong fee sa checkout pag na-pin niyo ang location niyo.`
+    : `Yes, we deliver! ${peso(d.baseFee)} covers the first ${d.baseKm} km, then ${peso(d.perKm)} per extra km, up to ${d.maxKm} km.${free} Your exact fee shows at checkout once you drop your pin.`;
+}
+
+function paymentAnswer(f: Facts, tl: boolean): string {
+  const p = f.payment;
+  if (!p || (!p.cod && !p.gcash)) {
+    return tl
+      ? "Tawag po kayo sa " + PHONE + " para sa payment details, sagot po namin agad."
+      : "Give us a ring on " + PHONE + " for payment details and we'll help right away.";
+  }
+
+  const ways: string[] = [];
+  if (p.gcash) {
+    const who = p.gcashNumber
+      ? ` (${p.gcashNumber}${p.gcashName ? `, ${p.gcashName}` : ""})`
+      : "";
+    ways.push(`GCash${who}`);
+  }
+  if (p.cod) ways.push(tl ? "cash pagdating ng order" : "cash on delivery or at the stall");
+
+  const dp =
+    p.gcash && p.downpayment
+      ? tl
+        ? ` Pwede rin po ang ${p.downpaymentPercent}% downpayment sa GCash, tapos cash na po ang balance pagdating.`
+        : ` You can also send a ${p.downpaymentPercent}% down payment on GCash and pay the balance in cash on handover.`
+      : "";
+
+  return tl
+    ? `Pwede po kayo mag-${ways.join(" o ")}.${dp}`
+    : `You can pay by ${ways.join(" or ")}.${dp}`;
+}
+
+function menuAnswer(f: Facts, tl: boolean): string {
+  const available = f.meals.filter((m) => m.is_available);
+  if (available.length === 0) {
+    return tl
+      ? "Wala pa pong nakalista sa menu ngayon. Tingnan niyo po ulit mamaya, o tawag sa " + PHONE + "."
+      : "Nothing's listed on the menu right now. Check back shortly, or call " + PHONE + ".";
+  }
+
+  const list = available
+    .slice(0, 6)
+    .map((m) => `${m.name} (${peso(m.price)})`)
+    .join(", ");
+  const more =
+    available.length > 6
+      ? tl
+        ? ` …at ${available.length - 6} pa po sa Menu page.`
+        : ` …and ${available.length - 6} more on the Menu page.`
+      : "";
+
+  return tl
+    ? `Meron po kaming ${list}.${more} Buong menu po nasa Menu page — pwede na po kayo mag-order doon.`
+    : `We've got ${list}.${more} The full menu's on the Menu page, and you can order right from there.`;
+}
+
+function priceAnswer(meals: Meal[], tl: boolean): string {
+  const lines = meals
+    .slice(0, 3)
+    .map((m) => {
+      const out = m.is_available
+        ? ""
+        : tl
+          ? " (ubos po ngayon)"
+          : " (sold out right now)";
+      return `${m.name} — ${peso(m.price)}${out}`;
+    })
+    .join("\n");
+
+  const one = meals.length === 1 ? meals[0] : null;
+  const blurb = one?.description ? `\n\n${one.description}` : "";
+
+  return tl
+    ? `Ito po ang presyo:\n${lines}${blurb}\n\nPwede na po kayo mag-order sa Menu page.`
+    : `Here you go:\n${lines}${blurb}\n\nYou can order it on the Menu page.`;
+}
+
+function bestSellerAnswer(f: Facts, tl: boolean): string {
+  const name = f.bestSeller;
+  const meal = name ? f.meals.find((m) => m.name === name) : null;
+
+  if (!meal) {
+    // No sales history yet — don't invent a favourite, point at the menu.
+    return tl
+      ? "Lahat po masarap, pero ang black pepper noodles po talaga ang hinahanap ng mga suki. Tingnan niyo po ang Menu page para sa buong lista!"
+      : "Our black pepper noodles are what people come back for. Have a look at the Menu page for the full list!";
+  }
+
+  return tl
+    ? `Ang pinaka-order po sa amin ay ${meal.name} — ${peso(meal.price)} lang po. ${meal.description ?? "Subukan niyo po!"}`
+    : `Our most-ordered dish is ${meal.name} at ${peso(meal.price)}. ${meal.description ?? "Give it a try!"}`;
+}
+
+// ---------------------------------------------------------------------------
+// Routing
+// ---------------------------------------------------------------------------
+
+/** Things only the owner should answer — asked first, so nothing else steals them. */
+const ESCALATE = [
+  "refund", "sauli", "reklamo", "complaint", "complain", "palit", "wrong order",
+  "mali ang", "maling", "cancel", "kanselahin", "hindi dumating", "not arrived",
+  "delayed", "matagal", "lamig na", "panis", "sira", "spoiled", "catering",
+  "bulk", "party", "reserve", "reservation", "booking", "invoice", "resibo",
+  "receipt", "franchise", "supplier", "partnership", "sponsor",
+];
+
+/** Questions about one particular existing order — the assistant can't see those. */
+const ORDER_STATUS = [
+  "my order", "order ko", "san na", "nasaan na", "where is my", "track",
+  "order number", "status ng order", "kailan darating", "when will",
+];
+
+export async function askAssistant(history: ChatTurn[]): Promise<AssistantReply> {
+  const last = [...history].reverse().find((t) => t.role === "user");
+  const message = last?.content ?? "";
+  const n = normalize(message);
+  const tl = speaksTaglish(message);
+
+  if (!n) {
     return {
-      text:
-        text ||
-        "Sorry, I didn't catch that. Could you say it another way, or message us on Facebook?",
-      needsHuman,
+      text: tl
+        ? "Ano po ang maitutulong namin? Tanong lang po tungkol sa menu, presyo o delivery."
+        : "How can we help? Ask us anything about the menu, prices or delivery.",
+      needsHuman: false,
     };
-  } catch {
+  }
+
+  // --- things that need a person, checked before anything else -------------
+  if (has(n, ESCALATE)) {
     return {
-      text: "Sorry — I'm having trouble replying right now. Message us on Facebook or call +63 947 353 3060 and we'll sort you out.",
+      text: tl
+        ? `Ipapasa ko po ito kay owner para siya mismo ang sumagot. Ano po ang pangalan at number niyo? Pwede rin po kayo tumawag sa ${PHONE}.`
+        : `Let me pass this to the owner so they can answer you properly. What's your name and number? You can also call us on ${PHONE}.`,
       needsHuman: true,
     };
   }
+
+  if (has(n, ORDER_STATUS)) {
+    return {
+      text: tl
+        ? "Makikita niyo po ang status ng order niyo sa My Orders page — may live countdown pa po kung kailan matatapos. Kung may mali po, sabihin niyo lang ang pangalan at number niyo at si owner na po ang sasagot."
+        : "You can see your order's live status — with a countdown — on the My Orders page. If something looks wrong, leave your name and number and the owner will come back to you.",
+      needsHuman: true,
+    };
+  }
+
+  const facts = await loadFacts();
+
+  // --- specific dish, with or without a price word -------------------------
+  const named = mealsMentioned(message, facts.meals);
+  const asksPrice = has(n, [
+    "magkano", "how much", "price", "presyo", "cost", "bayad ba", "pila",
+  ]);
+
+  if (named.length > 0 && !has(n, ["deliver", "hatid", "padeliver"])) {
+    return { text: priceAnswer(named, tl), needsHuman: false };
+  }
+
+  // --- delivery ------------------------------------------------------------
+  if (has(n, ["deliver", "delivery", "padeliver", "ipadeliver", "hatid", "ihatid", "paabot", "ship", "rider", "pickup", "pick up", "sundo", "susunduin"])) {
+    return { text: deliveryAnswer(facts, tl), needsHuman: false };
+  }
+
+  // --- payment -------------------------------------------------------------
+  if (has(n, ["gcash", "cod", "cash", "bayad", "magbayad", "nagbayad", "babayaran", "payment", "pay", "downpayment", "down payment", "maya", "bank"])) {
+    return { text: paymentAnswer(facts, tl), needsHuman: false };
+  }
+
+  // --- bestseller / recommendation ----------------------------------------
+  if (has(n, ["bestseller", "best seller", "sikat", "masarap", "recommend", "suggest", "ano maganda", "ano masarap", "paborito", "favorite", "popular", "top"])) {
+    return { text: bestSellerAnswer(facts, tl), needsHuman: false };
+  }
+
+  // --- hours ---------------------------------------------------------------
+  if (has(n, ["oras", "open", "bukas", "sarado", "close", "closed", "what time", "anong time", "hours", "schedule"])) {
+    return {
+      text: tl
+        ? `Bukas po kami araw-araw — pero para sigurado sa oras ngayong araw, tawag lang po sa ${PHONE}. Nasa ${WHERE} po kami.`
+        : `We're open daily — for today's exact hours give us a ring on ${PHONE}. You'll find us ${WHERE}.`,
+      needsHuman: false,
+    };
+  }
+
+  // --- where are you -------------------------------------------------------
+  if (has(n, ["saan", "where", "address", "location", "lugar", "pupunta", "branch", "tindahan", "malapit"])) {
+    return {
+      text: tl
+        ? `Nasa ${WHERE} po kami! Kung malayo po kayo, pwede rin po namin i-deliver — sabihin niyo lang.`
+        : `You'll find us ${WHERE}! If you're further out we can deliver too — just say the word.`,
+      needsHuman: false,
+    };
+  }
+
+  // --- how do I order ------------------------------------------------------
+  if (has(n, ["paano mag order", "paano umorder", "how do i order", "how to order", "paano po mag", "mag order", "place an order", "reserve ko"])) {
+    return {
+      text: tl
+        ? "Pumunta lang po kayo sa Menu page, pindutin ang gusto niyo, tapos Checkout. Pipiliin niyo po kung pickup o delivery, at kung GCash o cash. Makikita niyo po agad ang progress sa My Orders."
+        : "Head to the Menu page, tap what you want, then Checkout. You'll choose pickup or delivery and GCash or cash, and you can watch your order's progress under My Orders.",
+      needsHuman: false,
+    };
+  }
+
+  // --- contact -------------------------------------------------------------
+  if (has(n, ["number", "contact", "tawag", "call", "phone", "cellphone", "hotline", "messenger", "facebook"])) {
+    return {
+      text: tl
+        ? `Eto po ang number namin: ${PHONE}. Nasa ${WHERE} din po kami kung gusto niyo dumaan.`
+        : `Our number is ${PHONE}. We're also ${WHERE} if you'd rather drop by.`,
+      needsHuman: false,
+    };
+  }
+
+  // --- menu ----------------------------------------------------------------
+  if (has(n, ["menu", "ano meron", "anong meron", "what do you", "food", "pagkain", "ulam", "list", "available", "sell", "offer", "drinks", "inumin"])) {
+    return { text: menuAnswer(facts, tl), needsHuman: false };
+  }
+
+  // --- a bare "how much" with no dish named --------------------------------
+  if (asksPrice) {
+    return { text: menuAnswer(facts, tl), needsHuman: false };
+  }
+
+  // --- pleasantries --------------------------------------------------------
+  if (has(n, ["salamat", "thank", "thanks", "sige po", "ok po", "okay po"])) {
+    return {
+      text: tl
+        ? "Walang anuman po! Kita-kits sa Pepper Pan 🧡"
+        : "Anytime! See you at Pepper Pan 🧡",
+      needsHuman: false,
+    };
+  }
+
+  if (
+    hasWord(n, ["hi", "hello", "hey", "kumusta", "kamusta", "musta", "yo"]) ||
+    has(n, ["good morning", "good afternoon", "good evening"])
+  ) {
+    return {
+      text: tl
+        ? "Kumusta po! 🧡 Tanong lang po tungkol sa menu, presyo, delivery o bayad — sagot po agad."
+        : "Hello! 🧡 Ask us anything about the menu, prices, delivery or payment — we'll answer right away.",
+      needsHuman: false,
+    };
+  }
+
+  // --- didn't recognise it: hand it to the owner, don't guess --------------
+  return {
+    text: tl
+      ? `Hindi ko po sigurado ang sagot diyan — pero si owner po ang makakasagot. Ano po ang pangalan at number niyo? O tawag lang po sa ${PHONE}.`
+      : `I'm not sure about that one — but the owner can answer it. What's your name and number? Or call us on ${PHONE}.`,
+    needsHuman: true,
+  };
 }

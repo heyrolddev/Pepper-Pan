@@ -1,6 +1,5 @@
 import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { AnalysisPanel } from "@/components/analysis-panel";
-import { analystConfigured } from "@/lib/marketing-analyst";
 import { buildSnapshot } from "./snapshot";
 
 const peso = (n: number) =>
@@ -130,7 +129,7 @@ export default async function AdminAnalyticsPage() {
         </Panel>
       </section>
 
-      <AnalysisPanel configured={analystConfigured()} />
+      <AnalysisPanel />
     </div>
   );
 }
