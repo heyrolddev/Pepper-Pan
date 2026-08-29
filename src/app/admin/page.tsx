@@ -13,6 +13,7 @@ type OrderRow = {
   status: string;
   fulfillment: string;
   revenue: number;
+  delivery_fee: number | null;
   contact_name: string | null;
 };
 
@@ -69,7 +70,9 @@ export default async function AdminDashboard() {
   const [ordersRes, linesRes, customersRes] = await Promise.all([
     supabase
       .from("orders")
-      .select("id, created_at, date, status, fulfillment, revenue, contact_name")
+      .select(
+        "id, created_at, date, status, fulfillment, revenue, delivery_fee, contact_name"
+      )
       .order("created_at", { ascending: false }),
     supabase
       .from("order_lines")
@@ -149,6 +152,9 @@ export default async function AdminDashboard() {
 
   const pickup = live.filter((o) => o.fulfillment === "pickup").length;
   const delivery = live.filter((o) => o.fulfillment === "delivery").length;
+  // Delivery fees are tracked apart from food sales, so "sales" never
+  // silently includes money that goes straight back out to the rider.
+  const deliveryFeesMonth = monthly.reduce((s, o) => s + Number(o.delivery_fee || 0), 0);
 
   return (
     <div className="flex flex-col gap-10">
@@ -203,7 +209,11 @@ export default async function AdminDashboard() {
           <StatTile
             label="Pickup / delivery"
             value={`${pickup} / ${delivery}`}
-            detail="All time, excluding cancelled"
+            detail={
+              deliveryFeesMonth > 0
+                ? `${peso(deliveryFeesMonth)} in fees this month`
+                : "All time, excluding cancelled"
+            }
           />
           <StatTile
             label="Cancelled"

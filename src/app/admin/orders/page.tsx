@@ -15,6 +15,11 @@ type OrderRow = {
   contact_phone: string | null;
   notes: string | null;
   customer_id: string | null;
+  delivery_address: string | null;
+  delivery_lat: number | null;
+  delivery_lng: number | null;
+  delivery_distance_km: number | null;
+  delivery_fee: number;
   order_lines: { qty: number; price_at_sale: number; meals: { name: string } | null }[];
 };
 
@@ -32,7 +37,7 @@ export default async function AdminOrdersPage() {
   const { data } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, contact_name, contact_phone, notes, customer_id, order_lines(qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, order_lines(qty, price_at_sale, meals(name))"
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -71,6 +76,11 @@ export default async function AdminOrdersPage() {
       contact_phone: o.contact_phone,
       notes: o.notes,
       customer_id: o.customer_id,
+      delivery_address: o.delivery_address,
+      delivery_lat: o.delivery_lat,
+      delivery_lng: o.delivery_lng,
+      delivery_distance_km: o.delivery_distance_km,
+      delivery_fee: Number(o.delivery_fee ?? 0),
       lines: (o.order_lines ?? []).map((l) => ({
         qty: Number(l.qty),
         price: Number(l.price_at_sale),

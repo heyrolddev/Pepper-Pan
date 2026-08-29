@@ -18,6 +18,8 @@ type Order = {
   revenue: number;
   eta_minutes: number | null;
   cancelled_reason: string | null;
+  delivery_address: string | null;
+  delivery_fee: number;
   order_lines: OrderLine[];
 };
 
@@ -63,7 +65,7 @@ export default async function OrdersPage() {
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, order_lines(id, qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, delivery_address, delivery_fee, order_lines(id, qty, price_at_sale, meals(name))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
@@ -78,6 +80,8 @@ export default async function OrdersPage() {
     revenue: Number(o.revenue),
     eta_minutes: o.eta_minutes,
     cancelled_reason: o.cancelled_reason,
+    delivery_address: o.delivery_address,
+    delivery_fee: Number(o.delivery_fee ?? 0),
     lines: (o.order_lines ?? []).map((l) => ({
       id: l.id,
       qty: Number(l.qty),

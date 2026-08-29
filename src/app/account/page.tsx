@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getViewer, isConfigured } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { AccountForm } from "@/components/account-form";
+import { getDeliverySettings } from "@/lib/delivery-server";
 
 export default async function AccountPage() {
   if (!isConfigured()) {
@@ -40,6 +41,7 @@ export default async function AccountPage() {
   }
 
   const p = viewer.profile;
+  const delivery = await getDeliverySettings();
 
   return (
     <main className="flex-1">
@@ -76,10 +78,13 @@ export default async function AccountPage() {
         </div>
 
         <AccountForm
+          shop={{ lat: delivery.shop_lat, lng: delivery.shop_lng }}
           initial={{
             fullName: p?.full_name ?? "",
             phone: p?.phone ?? "",
             address: p?.address ?? "",
+            lat: p?.address_lat ?? null,
+            lng: p?.address_lng ?? null,
           }}
         />
 
