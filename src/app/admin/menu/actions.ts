@@ -90,6 +90,35 @@ export async function createMeal(input: {
 }
 
 /**
+ * Removes a menu item. Meals referenced by a past order can't be deleted —
+ * `order_lines.meal_id` has no ON DELETE, so Postgres refuses, which is the
+ * behaviour we want: deleting one would rewrite sales history. Those are
+ * hidden from the menu instead, which the caller is told to do.
+ */
+export async function deleteMeal(id: string): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!isStaff(viewer)) return { error: "Not allowed." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("meals").delete().eq("id", id).select("id");
+
+  if (error) {
+    // 23503 = foreign key violation, i.e. the item appears on a past order.
+    if (error.code === "23503") {
+      return {
+        error:
+          "This item is part of past orders, so deleting it would change your sales history. Untick “Shown on menu” to retire it instead.",
+      };
+    }
+    return { error: error.message };
+  }
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  revalidateMenu();
+  return { error: null };
+}
+
+/**
  * Uploads a meal photo. `isStaff(viewer)` above is the real gate — once
  * that passes, the upload itself goes through the service-role client when
  * SUPABASE_SERVICE_ROLE_KEY is configured, bypassing storage RLS entirely

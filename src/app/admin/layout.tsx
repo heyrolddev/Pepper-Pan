@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getViewer, isConfigured, isStaff } from "@/lib/auth";
 import { AdminNav } from "@/components/admin-nav";
+import { ChefHatIcon } from "@/components/icons";
 
 export default async function AdminLayout({
   children,
@@ -22,15 +24,29 @@ export default async function AdminLayout({
       <div className="under-nav grain relative overflow-hidden bg-ink-950 pb-6">
         <div aria-hidden className="hero-grid pointer-events-none absolute inset-0 opacity-30" />
         <div className="relative mx-auto max-w-6xl px-6 pt-10">
-          <p className="text-xs font-bold uppercase tracking-widest text-gold-400">
-            Shop admin
-          </p>
-          <h1 className="mt-1 font-display text-3xl font-black text-cream-50">
-            Pepper Pan HQ
-          </h1>
-          <p className="mt-1 text-sm text-cream-100/60">
-            Signed in as {viewer.email} · {viewer.profile?.role}
-          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gold-400 text-ink-950 ring-4 ring-gold-400/20">
+              <ChefHatIcon className="h-7 w-7" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-widest text-gold-400">
+                {viewer.profile?.role === "owner" ? "Owner account" : "Staff account"}
+              </p>
+              <h1 className="font-display text-3xl font-black text-cream-50">
+                Pepper Pan HQ
+              </h1>
+              <p className="mt-0.5 truncate text-sm text-cream-100/60">
+                Signed in as {viewer.email}
+              </p>
+            </div>
+
+            <Link
+              href="/"
+              className="ml-auto rounded-full bg-cream-50/10 px-4 py-2 text-sm font-bold text-cream-100 transition-colors hover:bg-cream-50/20"
+            >
+              View shop ↗
+            </Link>
+          </div>
           <AdminNav />
         </div>
       </div>

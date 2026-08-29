@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 
@@ -83,8 +82,7 @@ function MealCard({ meal, index }: { meal: Meal; index: number }) {
 }
 
 export function MenuList({ meals }: { meals: Meal[] }) {
-  const searchParams = useSearchParams();
-  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
 
   const categories = useMemo(() => {

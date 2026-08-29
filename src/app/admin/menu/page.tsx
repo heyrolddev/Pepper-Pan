@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { MealEditor, type AdminMeal } from "@/components/meal-editor";
+import type { AdminMeal } from "@/components/meal-editor";
+import { AdminMenuList } from "@/components/admin-menu-list";
 import { NewMealForm } from "@/components/new-meal-form";
 
 export default async function AdminMenuPage() {
@@ -32,13 +33,7 @@ export default async function AdminMenuPage() {
         </p>
       )}
 
-      <ul className="flex flex-col gap-4">
-        {meals.map((meal) => (
-          <li key={meal.id}>
-            <MealEditor meal={meal} />
-          </li>
-        ))}
-      </ul>
+      <AdminMenuList meals={meals} />
     </div>
   );
 }

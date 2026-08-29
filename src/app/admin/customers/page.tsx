@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getViewer } from "@/lib/auth";
-import { CustomerRow, type AdminCustomer } from "@/components/customer-row";
+import type { AdminCustomer } from "@/components/customer-row";
+import { AdminCustomerList } from "@/components/admin-customer-list";
 
 type ProfileRow = {
   id: string;
@@ -51,9 +52,6 @@ export default async function AdminCustomersPage() {
     };
   });
 
-  const blocked = customers.filter((c) => c.is_blocked);
-  const active = customers.filter((c) => !c.is_blocked);
-
   return (
     <div className="flex flex-col gap-8">
       <div>
@@ -77,26 +75,7 @@ export default async function AdminCustomersPage() {
           No customer accounts yet.
         </p>
       ) : (
-        <>
-          <ul className="flex flex-col gap-4">
-            {active.map((c) => (
-              <CustomerRow key={c.id} customer={c} canManage={canManage} />
-            ))}
-          </ul>
-
-          {blocked.length > 0 && (
-            <section>
-              <h3 className="font-display text-xl font-black text-ink-950">
-                Blocked ({blocked.length})
-              </h3>
-              <ul className="mt-4 flex flex-col gap-4">
-                {blocked.map((c) => (
-                  <CustomerRow key={c.id} customer={c} canManage={canManage} />
-                ))}
-              </ul>
-            </section>
-          )}
-        </>
+        <AdminCustomerList customers={customers} canManage={canManage} />
       )}
     </div>
   );
