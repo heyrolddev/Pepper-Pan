@@ -18,7 +18,26 @@ async function getMenu(): Promise<{ menu: Meal[] | null; configured: boolean }> 
       .order("name");
 
     if (error) throw error;
-    return { menu: data as Meal[], configured: true };
+
+    // Ratings come from their own view; a menu with no reviews yet simply
+    // renders without stars rather than failing.
+    const { data: ratings } = await supabase
+      .from("meal_ratings")
+      .select("meal_id, avg_rating, review_count");
+
+    const byMeal = new Map(
+      ((ratings ?? []) as { meal_id: string; avg_rating: number; review_count: number }[]).map(
+        (r) => [r.meal_id, r]
+      )
+    );
+
+    const menu = (data as Meal[]).map((m) => ({
+      ...m,
+      avg_rating: byMeal.get(m.id) ? Number(byMeal.get(m.id)!.avg_rating) : null,
+      review_count: byMeal.get(m.id)?.review_count ?? 0,
+    }));
+
+    return { menu, configured: true };
   } catch (err) {
     console.error("Failed to load menu:", err);
     return { menu: null, configured: true };

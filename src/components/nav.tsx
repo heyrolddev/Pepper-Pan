@@ -11,6 +11,7 @@ import { ChefHatIcon } from "@/components/icons";
 
 const links = [
   { href: "/menu", label: "Menu" },
+  { href: "/reviews", label: "Reviews" },
   { href: "/#story", label: "Story" },
   { href: "/#visit", label: "Visit" },
 ];
