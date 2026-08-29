@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer, isStaff } from "@/lib/auth";
 
 const BUCKET = "PepperPan";
@@ -89,11 +90,14 @@ export async function createMeal(input: {
 }
 
 /**
- * Uploads a meal photo using the signed-in user's own session, so storage
- * access is governed by the staff policy in migration 0003. (An earlier
- * version used the service-role key, which meant uploads failed outright
- * anywhere SUPABASE_SERVICE_ROLE_KEY wasn't configured — including
- * production.)
+ * Uploads a meal photo. `isStaff(viewer)` above is the real gate — once
+ * that passes, the upload itself goes through the service-role client when
+ * SUPABASE_SERVICE_ROLE_KEY is configured, bypassing storage RLS entirely
+ * (this is what actually fixed uploads: the staff storage policy in
+ * migration 0003 kept rejecting the insert in production for reasons that
+ * weren't reproducible outside the live project). Without that key set,
+ * it falls back to the signed-in user's own session, which depends on
+ * migration 0003's policies being present.
  */
 export async function uploadMealImage(
   formData: FormData
@@ -116,7 +120,9 @@ export async function uploadMealImage(
   const path = `meals/${mealId}-${Date.now()}.${ext}`;
 
   const supabase = await createClient();
-  const { error: uploadError } = await supabase.storage
+  const storageClient = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : supabase;
+
+  const { error: uploadError } = await storageClient.storage
     .from(BUCKET)
     .upload(path, Buffer.from(await file.arrayBuffer()), {
       contentType: file.type,
@@ -124,13 +130,13 @@ export async function uploadMealImage(
     });
   if (uploadError) {
     return {
-      error: `Upload failed: ${uploadError.message}. If this mentions permissions, run migration 0003 in the Supabase SQL Editor.`,
+      error: `Upload failed: ${uploadError.message}. If this mentions permissions, run migration 0003 in the Supabase SQL Editor, or add SUPABASE_SERVICE_ROLE_KEY in your Vercel project settings.`,
     };
   }
 
   const {
     data: { publicUrl },
-  } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  } = storageClient.storage.from(BUCKET).getPublicUrl(path);
 
   const { data, error } = await supabase
     .from("meals")

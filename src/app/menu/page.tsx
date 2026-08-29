@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { MenuList, type Meal } from "@/components/menu-list";
 import { PageHeader } from "@/components/page-header";
@@ -59,7 +60,11 @@ export default async function MenuPage() {
             up here.
           </p>
         )}
-        {configured && menu && menu.length > 0 && <MenuList meals={menu} />}
+        {configured && menu && menu.length > 0 && (
+          <Suspense fallback={<MenuList meals={menu} />}>
+            <MenuList meals={menu} />
+          </Suspense>
+        )}
       </section>
     </main>
   );
