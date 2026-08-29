@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ORDER_STATUSES, setOrderStatus, type OrderStatus } from "@/app/admin/orders/actions";
+import { setOrderStatus } from "@/app/admin/orders/actions";
+import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 
 export function OrderStatusPicker({
   orderId,
@@ -18,9 +19,13 @@ export function OrderStatusPicker({
   function change(next: OrderStatus) {
     setError(null);
     startTransition(async () => {
-      const res = await setOrderStatus(orderId, next);
-      if (res.error) setError(res.error);
-      else router.refresh();
+      try {
+        const res = await setOrderStatus(orderId, next);
+        if (res.error) setError(res.error);
+        else router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not update the status.");
+      }
     });
   }
 

@@ -3,17 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getViewer, isStaff } from "@/lib/auth";
-
-export const ORDER_STATUSES = [
-  "pending",
-  "confirmed",
-  "preparing",
-  "ready",
-  "completed",
-  "cancelled",
-] as const;
-
-export type OrderStatus = (typeof ORDER_STATUSES)[number];
+import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 
 export async function setOrderStatus(
   orderId: string,
@@ -27,8 +17,21 @@ export async function setOrderStatus(
   if (!isStaff(viewer)) return { error: "Not allowed." };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("orders").update({ status }).eq("id", orderId);
+  // `.select()` matters: without it PostgREST reports success even when a
+  // row-level security policy silently matched nothing.
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ status })
+    .eq("id", orderId)
+    .select("id");
+
   if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return {
+      error:
+        "The database didn't accept that change. Re-run the latest migration in the Supabase SQL Editor.",
+    };
+  }
 
   revalidatePath("/admin/orders");
   revalidatePath("/admin");

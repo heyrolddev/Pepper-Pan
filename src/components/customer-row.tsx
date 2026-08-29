@@ -34,9 +34,13 @@ export function CustomerRow({
   function update(flags: { isVerified?: boolean; isBlocked?: boolean }) {
     setError(null);
     startTransition(async () => {
-      const res = await setCustomerFlags(customer.id, flags);
-      if (res.error) setError(res.error);
-      else router.refresh();
+      try {
+        const res = await setCustomerFlags(customer.id, flags);
+        if (res.error) setError(res.error);
+        else router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not update this customer.");
+      }
     });
   }
 

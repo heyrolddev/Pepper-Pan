@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer, isStaff } from "@/lib/auth";
 
 const BUCKET = "PepperPan";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+const BLOCKED_MESSAGE =
+  "The database didn't accept that change. Run the latest migration (0003) in the Supabase SQL Editor, then try again.";
 
 function revalidateMenu() {
   revalidatePath("/admin/menu");
@@ -32,7 +34,10 @@ export async function saveMeal(input: {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  // `.select()` matters: PostgREST reports success on an UPDATE that a
+  // row-level security policy silently matched zero rows for, which is how
+  // this used to report "Saved" while changing nothing.
+  const { data, error } = await supabase
     .from("meals")
     .update({
       name: input.name.trim(),
@@ -42,9 +47,12 @@ export async function saveMeal(input: {
       is_public: input.isPublic,
       is_available: input.isAvailable,
     })
-    .eq("id", input.id);
+    .eq("id", input.id)
+    .select("id");
 
   if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
   revalidateMenu();
   return { error: null };
 }
@@ -62,23 +70,30 @@ export async function createMeal(input: {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.from("meals").insert({
-    name: input.name.trim(),
-    price: input.price,
-    categories: input.category.trim() ? [input.category.trim()] : [],
-    is_public: true,
-    is_available: true,
-  });
+  const { data, error } = await supabase
+    .from("meals")
+    .insert({
+      name: input.name.trim(),
+      price: input.price,
+      categories: input.category.trim() ? [input.category.trim()] : [],
+      is_public: true,
+      is_available: true,
+    })
+    .select("id");
 
   if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
   revalidateMenu();
   return { error: null };
 }
 
 /**
- * Uploads a meal photo. The file goes up with the service-role key so the
- * storage bucket needs no public write policy — but only after confirming
- * from the session cookie that the caller is actually staff.
+ * Uploads a meal photo using the signed-in user's own session, so storage
+ * access is governed by the staff policy in migration 0003. (An earlier
+ * version used the service-role key, which meant uploads failed outright
+ * anywhere SUPABASE_SERVICE_ROLE_KEY wasn't configured — including
+ * production.)
  */
 export async function uploadMealImage(
   formData: FormData
@@ -100,25 +115,31 @@ export async function uploadMealImage(
   const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
   const path = `meals/${mealId}-${Date.now()}.${ext}`;
 
-  const admin = createAdminClient();
-  const { error: uploadError } = await admin.storage
+  const supabase = await createClient();
+  const { error: uploadError } = await supabase.storage
     .from(BUCKET)
     .upload(path, Buffer.from(await file.arrayBuffer()), {
       contentType: file.type,
       upsert: true,
     });
-  if (uploadError) return { error: uploadError.message };
+  if (uploadError) {
+    return {
+      error: `Upload failed: ${uploadError.message}. If this mentions permissions, run migration 0003 in the Supabase SQL Editor.`,
+    };
+  }
 
   const {
     data: { publicUrl },
-  } = admin.storage.from(BUCKET).getPublicUrl(path);
+  } = supabase.storage.from(BUCKET).getPublicUrl(path);
 
-  const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("meals")
     .update({ image_url: publicUrl })
-    .eq("id", mealId);
+    .eq("id", mealId)
+    .select("id");
+
   if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
   revalidateMenu();
   return { error: null, url: publicUrl };

@@ -28,16 +28,20 @@ export function AccountForm({
     setError(null);
     setSaved(false);
 
-    const result = await saveProfile({ fullName, phone, address });
-    setSaving(false);
-
-    if (result.error) {
-      setError(result.error);
-      return;
+    try {
+      const result = await saveProfile({ fullName, phone, address });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setSaved(true);
+      router.refresh();
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    setSaved(true);
-    router.refresh();
-    setTimeout(() => setSaved(false), 2500);
   }
 
   return (
