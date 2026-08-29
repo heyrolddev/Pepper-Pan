@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_PAYMENTS, type PaymentSettings } from "@/lib/payments";
 
 const COLUMNS =
-  "cod_enabled, gcash_enabled, gcash_name, gcash_number, gcash_qr_url, instructions";
+  "cod_enabled, gcash_enabled, gcash_name, gcash_number, gcash_qr_url, instructions, downpayment_enabled, downpayment_percent";
 
 /**
  * Reads the shop's payment settings, falling back to cash-only so checkout
@@ -28,6 +28,10 @@ export async function getPaymentSettings(): Promise<PaymentSettings> {
       gcash_number: (row.gcash_number as string | null) ?? null,
       gcash_qr_url: (row.gcash_qr_url as string | null) ?? null,
       instructions: (row.instructions as string | null) ?? null,
+      downpayment_enabled: Boolean(row.downpayment_enabled),
+      // Numerics arrive as strings over PostgREST; the percentage maths needs
+      // a real number or `total * pct` misbehaves.
+      downpayment_percent: Number(row.downpayment_percent ?? 50),
     };
   } catch {
     return DEFAULT_PAYMENTS;

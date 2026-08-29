@@ -20,6 +20,8 @@ export async function savePaymentSettings(input: {
   gcashName: string;
   gcashNumber: string;
   instructions: string;
+  downpaymentEnabled: boolean;
+  downpaymentPercent: number;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
   if (!isStaff(viewer)) return { error: "Not allowed." };
@@ -36,11 +38,24 @@ export async function savePaymentSettings(input: {
     };
   }
 
+  // The database also constrains this, but rejecting it here gives the owner
+  // a sentence instead of a raw constraint error.
+  if (
+    input.downpaymentEnabled &&
+    (!Number.isFinite(input.downpaymentPercent) ||
+      input.downpaymentPercent < 1 ||
+      input.downpaymentPercent > 99)
+  ) {
+    return { error: "The down payment must be between 1% and 99% of the total." };
+  }
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("payment_settings")
     .update({
       cod_enabled: input.codEnabled,
+      downpayment_enabled: input.downpaymentEnabled,
+      downpayment_percent: input.downpaymentEnabled ? input.downpaymentPercent : 50,
       gcash_enabled: input.gcashEnabled,
       gcash_name: input.gcashName.trim() || null,
       gcash_number: input.gcashNumber.trim() || null,

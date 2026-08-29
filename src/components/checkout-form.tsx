@@ -8,7 +8,12 @@ import { placeOrder } from "@/app/checkout/actions";
 import { MapPicker, type Pin } from "@/components/map-picker";
 import { PaymentPicker } from "@/components/payment-picker";
 import { quoteDelivery, type DeliverySettings } from "@/lib/delivery";
-import type { PaymentMethod, PaymentSettings } from "@/lib/payments";
+import {
+  amountDueNow,
+  type PaymentMethod,
+  type PaymentPlan,
+  type PaymentSettings,
+} from "@/lib/payments";
 
 const fieldClass =
   "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
@@ -48,6 +53,7 @@ export function CheckoutForm({
   const [method, setMethod] = useState<PaymentMethod>(
     payments.cod_enabled ? "cod" : "gcash"
   );
+  const [plan, setPlan] = useState<PaymentPlan>("full");
   const [reference, setReference] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +119,7 @@ export function CheckoutForm({
         deliveryLat: isDelivery ? (pin?.lat ?? null) : null,
         deliveryLng: isDelivery ? (pin?.lng ?? null) : null,
         paymentMethod: method,
+        paymentPlan: method === "gcash" ? plan : "full",
         paymentReference: method === "gcash" ? reference : undefined,
       });
 
@@ -260,6 +267,8 @@ export function CheckoutForm({
         settings={payments}
         method={method}
         onMethodChange={setMethod}
+        plan={plan}
+        onPlanChange={setPlan}
         reference={reference}
         onReferenceChange={setReference}
         total={grandTotal}
@@ -293,6 +302,19 @@ export function CheckoutForm({
             {peso(grandTotal)}
           </span>
         </div>
+        {method === "gcash" && plan === "downpayment" && payments.downpayment_enabled && (
+          <div className="mt-1 flex items-center justify-between border-t border-cream-50/15 pt-3 text-sm">
+            <span className="text-cream-100/70">
+              Send now ({payments.downpayment_percent}%)
+            </span>
+            <span className="font-bold text-cream-50">
+              {peso(amountDueNow(grandTotal, "downpayment", payments.downpayment_percent))}
+              <span className="ml-2 font-normal text-cream-100/60">
+                · {peso(grandTotal - amountDueNow(grandTotal, "downpayment", payments.downpayment_percent))} on handover
+              </span>
+            </span>
+          </div>
+        )}
       </div>
 
       {(error || blockedReason) && (

@@ -6,7 +6,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { cancelMyOrder, submitPayment, updateMyOrder } from "@/app/orders/actions";
 import { ClockIcon, LiveDotIcon } from "@/components/icons";
-import { METHOD_LABEL, STATUS_LABEL, type PaymentMethod, type PaymentStatus } from "@/lib/payments";
+import {
+  METHOD_LABEL,
+  STATUS_LABEL,
+  type PaymentMethod,
+  type PaymentPlan,
+  type PaymentStatus,
+} from "@/lib/payments";
 
 export type TrackedLine = {
   id: number;
@@ -28,6 +34,8 @@ export type TrackedOrder = {
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
   payment_reference: string | null;
+  payment_plan: PaymentPlan;
+  downpayment_amount: number;
   lines: TrackedLine[];
 };
 
@@ -300,12 +308,29 @@ function OrderCard({ order }: { order: TrackedOrder }) {
                   ? "bg-jade-700 text-cream-50"
                   : STATUS_LABEL[order.payment_status]?.tone === "wait"
                     ? "bg-gold-400 text-ink-950"
-                    : "bg-ink-950/10 text-ink-800"
+                    : STATUS_LABEL[order.payment_status]?.tone === "part"
+                      ? "bg-chili-600 text-cream-50"
+                      : "bg-ink-950/10 text-ink-800"
               }`}
             >
               {STATUS_LABEL[order.payment_status]?.customer ?? order.payment_status}
             </span>
           </div>
+
+          {/* What's still owed, derived from the current total so an edited
+              order never leaves a stale figure on screen. */}
+          {order.payment_plan === "downpayment" && order.payment_status !== "paid" && (
+            <p className="mt-2 rounded-xl bg-gold-50 px-4 py-2 text-xs font-semibold text-ink-950 ring-1 ring-gold-400/50">
+              {peso(order.downpayment_amount)} down payment ·{" "}
+              {peso(
+                Math.max(
+                  0,
+                  order.revenue + Number(order.delivery_fee) - order.downpayment_amount
+                )
+              )}{" "}
+              to pay in cash on handover
+            </p>
+          )}
 
           {/* GCash orders that aren't confirmed yet can still be corrected. */}
           {order.payment_method === "gcash" && order.payment_status !== "paid" && (
