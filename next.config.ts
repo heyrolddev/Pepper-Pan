@@ -16,6 +16,14 @@ const nextConfig: NextConfig = {
         ]
       : [],
   },
+  experimental: {
+    serverActions: {
+      // Next.js caps Server Action request bodies at 1MB by default, which
+      // silently rejected meal-photo uploads (our own limit is 8MB) before
+      // the action code ever ran, surfacing as an opaque digest-only error.
+      bodySizeLimit: "10mb",
+    },
+  },
 };
 
 export default nextConfig;
