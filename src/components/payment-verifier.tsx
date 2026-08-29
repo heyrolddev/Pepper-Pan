@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setPaymentStatus } from "@/app/admin/orders/actions";
+import { formatDateTime } from "@/lib/format-date";
 import {
   METHOD_LABEL,
   STATUS_LABEL,
@@ -123,12 +124,7 @@ export function PaymentVerifier({
       {downpaymentConfirmedAt && status !== "unpaid" && (
         <p className="mt-1 text-xs text-ink-800/60">
           Down payment confirmed{" "}
-          {new Date(downpaymentConfirmedAt).toLocaleString(undefined, {
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          })}
+          {formatDateTime(downpaymentConfirmedAt)}
         </p>
       )}
 

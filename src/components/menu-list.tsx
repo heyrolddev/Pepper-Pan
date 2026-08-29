@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
+import { Stars } from "@/components/stars";
 
 export type Meal = {
   id: string;
@@ -12,6 +13,8 @@ export type Meal = {
   description: string | null;
   categories: string[];
   image_url: string | null;
+  avg_rating?: number | null;
+  review_count?: number;
 };
 
 function initialOf(name: string) {
@@ -58,6 +61,14 @@ function MealCard({ meal, index }: { meal: Meal; index: number }) {
         <p className="font-display text-lg font-bold leading-tight text-ink-950">
           {meal.name}
         </p>
+        {meal.avg_rating != null && (meal.review_count ?? 0) > 0 && (
+          <span className="flex items-center gap-1.5">
+            <Stars rating={meal.avg_rating} />
+            <span className="text-xs font-semibold text-ink-800/55">
+              {meal.avg_rating.toFixed(1)} ({meal.review_count})
+            </span>
+          </span>
+        )}
         {meal.description && (
           <p className="line-clamp-2 text-sm text-ink-800/70">{meal.description}</p>
         )}

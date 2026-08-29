@@ -8,6 +8,7 @@ import { AdminSearch } from "@/components/admin-search";
 import { PaymentVerifier } from "@/components/payment-verifier";
 import type { OrderStatus } from "@/lib/orders";
 import type { PaymentMethod, PaymentPlan, PaymentStatus } from "@/lib/payments";
+import { formatDateTimeFull } from "@/lib/format-date";
 
 export type AdminOrder = {
   id: string;
@@ -79,7 +80,7 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
           </div>
           <p className="mt-1 text-sm text-ink-800/70">
             {o.contact_phone || p?.phone || "no number"} · {o.fulfillment} ·{" "}
-            {new Date(o.created_at).toLocaleString()}
+            {formatDateTimeFull(o.created_at)}
           </p>
           {o.customer_id && (
             <p className="text-xs text-ink-800/55">

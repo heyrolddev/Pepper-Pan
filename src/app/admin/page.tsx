@@ -2,6 +2,19 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
+import { formatDateTime } from "@/lib/format-date";
+
+// Shop-timezone day labels, so a bar is filed under the day the shop had,
+// not the day the viewer's device thinks it was.
+const dayLabel = new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila",
+  day: "numeric",
+});
+const dayCaption = new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila",
+  month: "short",
+  day: "numeric",
+});
 
 const peso = (n: number) =>
   "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -109,8 +122,8 @@ export default async function AdminDashboard() {
     const key = d.toISOString().slice(0, 10);
     const value = sum(live.filter((o) => o.date === key));
     return {
-      label: d.toLocaleDateString(undefined, { day: "numeric" }),
-      caption: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      label: dayLabel.format(d),
+      caption: dayCaption.format(d),
       value,
     };
   });
@@ -316,12 +329,7 @@ export default async function AdminDashboard() {
                     {o.contact_name || "Walk-in"}
                   </span>
                   <span className="text-xs text-ink-800/55">
-                    {new Date(o.created_at).toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+{formatDateTime(o.created_at)}
                   </span>
                 </span>
                 <span className="flex items-center gap-4">

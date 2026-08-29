@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { OrderTracker, type TrackedOrder } from "@/components/order-tracker";
+import type { ReviewableItem } from "@/components/order-review-panel";
 import {
   PAYMENT_STATUSES,
   type PaymentMethod,
@@ -11,6 +12,7 @@ import {
 
 type OrderLine = {
   id: number;
+  meal_id: string;
   qty: number;
   price_at_sale: number;
   meals: { name: string } | null;
@@ -77,12 +79,48 @@ export default async function OrdersPage() {
   const { data: orders } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
 
   const typedOrders = (orders ?? []) as unknown as Order[];
+
+  // Everything this customer has already rated, so a completed order shows
+  // their existing stars rather than inviting a duplicate review.
+  const { data: myReviewRows } = await supabase
+    .from("reviews")
+    .select("meal_id, rating, comment")
+    .eq("customer_id", user.id);
+
+  const myReviews = new Map(
+    ((myReviewRows ?? []) as { meal_id: string | null; rating: number; comment: string | null }[])
+      .map((r) => [r.meal_id ?? "__shop__", { rating: r.rating, comment: r.comment }])
+  );
+
+  const reviewableFor = (o: Order): ReviewableItem[] => {
+    if (o.status !== "completed") return [];
+    // One row per distinct dish — ordering the same thing twice shouldn't ask
+    // for two reviews of it.
+    const seen = new Map<string, string>();
+    for (const l of o.order_lines ?? []) {
+      const id = (l as unknown as { meal_id?: string }).meal_id;
+      if (id && !seen.has(id)) seen.set(id, l.meals?.name ?? "Item");
+    }
+    return [
+      {
+        mealId: null,
+        label: "Pepper Pan overall",
+        sublabel: "Service, speed, the whole experience",
+        existing: myReviews.get("__shop__") ?? null,
+      },
+      ...[...seen.entries()].map(([id, name]) => ({
+        mealId: id,
+        label: name,
+        existing: myReviews.get(id) ?? null,
+      })),
+    ];
+  };
 
   const tracked: TrackedOrder[] = typedOrders.map((o) => ({
     id: o.id,
@@ -102,6 +140,7 @@ export default async function OrdersPage() {
     payment_plan: (o.payment_plan === "downpayment" ? "downpayment" : "full") as PaymentPlan,
     downpayment_amount: Number(o.downpayment_amount ?? 0),
     downpayment_confirmed_at: o.downpayment_confirmed_at,
+    reviewable: reviewableFor(o),
     lines: (o.order_lines ?? []).map((l) => ({
       id: l.id,
       qty: Number(l.qty),

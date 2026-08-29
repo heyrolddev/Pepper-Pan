@@ -10,6 +10,9 @@ import { HeroVisual } from "@/components/hero-visual";
 import { WhyUs } from "@/components/why-us";
 import { FanFavorites } from "@/components/fan-favorites";
 import { CustomerAvatar } from "@/components/customer-avatar";
+import { Stars } from "@/components/stars";
+import { getPublicReviews } from "@/lib/reviews-server";
+import { isConfigured } from "@/lib/auth";
 
 const ADDRESS =
   "In front of Palengkeni (New Apalit Public Market), beside Osave!, Apalit, Philippines";
@@ -80,6 +83,12 @@ const faqs = [
 
 export default async function Home() {
   const menuCount = await getMenuCount();
+  // Real reviews when there are any; the original invitation copy otherwise,
+  // so a new shop never shows an empty or invented testimonial.
+  const { reviews, average, count: reviewCount } = isConfigured()
+    ? await getPublicReviews(3)
+    : { reviews: [], average: 0, count: 0 };
+  const featured = reviews.filter((r) => r.comment && r.rating >= 4).slice(0, 3);
 
   const whyUsTiles = [
     {
@@ -348,21 +357,62 @@ export default async function Home() {
           aria-hidden
           className="drift pointer-events-none absolute -left-16 bottom-0 h-64 w-64 rounded-full bg-gold-400/20 blur-3xl"
         />
-        <Reveal className="relative mx-auto flex max-w-4xl flex-col items-center gap-8 px-6 text-center sm:flex-row sm:text-left">
-          <CustomerAvatar className="h-32 w-32 shrink-0 sm:h-40 sm:w-40" />
-          <div>
-            <span className="font-display text-6xl leading-none text-gold-300">
-              &ldquo;
-            </span>
-            <p className="-mt-4 font-display text-2xl font-bold leading-snug sm:text-3xl">
-              Once you taste it, you won&apos;t stop thinking about it.
-            </p>
-            <p className="mt-4 text-cream-100/80">
-              We&apos;ve already got a lot of regulars who keep coming back for
-              more — try it once, and you might just become one of them.
-            </p>
-          </div>
-        </Reveal>
+        {featured.length > 0 ? (
+          <Reveal className="relative mx-auto max-w-5xl px-6">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <Stars rating={average} size="lg" className="text-gold-300" />
+              <p className="font-display text-2xl font-black">
+                {average.toFixed(1)} out of 5
+              </p>
+              <p className="text-sm text-cream-100/70">
+                from {reviewCount} customer review{reviewCount === 1 ? "" : "s"}
+              </p>
+            </div>
+
+            <ul className="mt-10 grid gap-5 md:grid-cols-3">
+              {featured.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-col gap-3 rounded-3xl bg-cream-50/10 p-6 ring-1 ring-cream-50/20"
+                >
+                  <Stars rating={r.rating} className="text-gold-300" />
+                  <p className="flex-1 font-display text-lg font-bold leading-snug">
+                    &ldquo;{r.comment}&rdquo;
+                  </p>
+                  <p className="text-sm text-cream-100/70">
+                    {r.author}
+                    {r.mealName && ` · ${r.mealName}`}
+                  </p>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-8 text-center">
+              <Link
+                href="/reviews"
+                className="inline-block rounded-full bg-gold-400 px-7 py-3 font-bold text-ink-950 transition-transform hover:scale-105"
+              >
+                Read all reviews →
+              </Link>
+            </div>
+          </Reveal>
+        ) : (
+          <Reveal className="relative mx-auto flex max-w-4xl flex-col items-center gap-8 px-6 text-center sm:flex-row sm:text-left">
+            <CustomerAvatar className="h-32 w-32 shrink-0 sm:h-40 sm:w-40" />
+            <div>
+              <span className="font-display text-6xl leading-none text-gold-300">
+                &ldquo;
+              </span>
+              <p className="-mt-4 font-display text-2xl font-bold leading-snug sm:text-3xl">
+                Once you taste it, you won&apos;t stop thinking about it.
+              </p>
+              <p className="mt-4 text-cream-100/80">
+                We&apos;ve already got a lot of regulars who keep coming back for
+                more — try it once, and you might just become one of them.
+              </p>
+            </div>
+          </Reveal>
+        )}
       </section>
 
       {/* ---------------------------------------------------------- */}

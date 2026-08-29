@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setCustomerFlags } from "@/app/admin/customers/actions";
+import { formatDate } from "@/lib/format-date";
 
 export type AdminCustomer = {
   id: string;
@@ -71,7 +72,7 @@ export function CustomerRow({
 
           <p className="mt-1 text-sm text-ink-800/70">
             {customer.phone || "no number"} · joined{" "}
-            {new Date(customer.created_at).toLocaleDateString()}
+            {formatDate(customer.created_at)}
           </p>
           {customer.address && (
             <p className="mt-0.5 text-sm text-ink-800/55">{customer.address}</p>

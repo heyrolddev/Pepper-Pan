@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { cancelMyOrder, submitPayment, updateMyOrder } from "@/app/orders/actions";
 import { ClockIcon, LiveDotIcon } from "@/components/icons";
+import { OrderReviewPanel, type ReviewableItem } from "@/components/order-review-panel";
+import { formatDateTime } from "@/lib/format-date";
 import {
   METHOD_LABEL,
   STATUS_LABEL,
@@ -37,6 +39,7 @@ export type TrackedOrder = {
   payment_plan: PaymentPlan;
   downpayment_amount: number;
   downpayment_confirmed_at: string | null;
+  reviewable: ReviewableItem[];
   lines: TrackedLine[];
 };
 
@@ -190,12 +193,7 @@ function OrderCard({ order }: { order: TrackedOrder }) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-950/10 px-6 py-4">
         <div>
           <p className="text-sm font-semibold text-ink-950">
-            {new Date(order.created_at).toLocaleString(undefined, {
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            })}
+            {formatDateTime(order.created_at)}
           </p>
           <p className="text-xs capitalize text-ink-800/60">
             {order.fulfillment} · #{order.id.slice(0, 8)}
@@ -344,10 +342,7 @@ function OrderCard({ order }: { order: TrackedOrder }) {
                       <span className="font-normal text-ink-800/60">
                         {" "}
                         ·{" "}
-                        {new Date(order.downpayment_confirmed_at).toLocaleString(
-                          undefined,
-                          { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
-                        )}
+                        {formatDateTime(order.downpayment_confirmed_at)}
                       </span>
                     )}
                   </p>
@@ -432,6 +427,10 @@ function OrderCard({ order }: { order: TrackedOrder }) {
               </div>
             )}
         </div>
+      )}
+
+      {order.status === "completed" && order.reviewable.length > 0 && (
+        <OrderReviewPanel items={order.reviewable} />
       )}
 
       {error && (
