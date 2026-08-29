@@ -51,6 +51,8 @@ export function PaymentPicker({
   onPlanChange,
   reference,
   onReferenceChange,
+  receipt,
+  onReceiptChange,
   total,
 }: {
   settings: PaymentSettings;
@@ -60,6 +62,8 @@ export function PaymentPicker({
   onPlanChange: (p: PaymentPlan) => void;
   reference: string;
   onReferenceChange: (v: string) => void;
+  receipt: File | null;
+  onReceiptChange: (f: File | null) => void;
   total: number;
 }) {
   const percent = settings.downpayment_percent;
@@ -200,20 +204,49 @@ export function PaymentPicker({
             </div>
           )}
 
-          <label className="flex flex-col gap-2 text-xs font-bold uppercase tracking-widest text-ink-800">
-            GCash reference number <span className="text-brand-600">*required</span>
-            <input
-              value={reference}
-              onChange={(e) => onReferenceChange(e.target.value)}
-              placeholder="e.g. 0053 1234 5678"
-              className={fieldClass}
-            />
-            <span className="text-[11px] font-medium normal-case tracking-normal text-ink-800/50">
-              It&apos;s on your GCash receipt. We check it against our account
-              before cooking — you can also add a screenshot afterwards from
-              your orders page.
-            </span>
-          </label>
+          {/* Either proof is enough — typing a reference off a phone screen is
+              error-prone, and a screenshot is often easier and more convincing. */}
+          <div className="flex flex-col gap-3 rounded-xl bg-cream-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-800">
+              Proof of payment <span className="text-brand-600">*required</span>
+            </p>
+            <p className="-mt-1 text-[11px] text-ink-800/55">
+              Give us <b>either one</b> — whichever is easier on your phone.
+            </p>
+
+            <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-widest text-ink-800">
+              GCash reference number
+              <input
+                value={reference}
+                onChange={(e) => onReferenceChange(e.target.value)}
+                placeholder="e.g. 0053 1234 5678"
+                className={fieldClass}
+              />
+            </label>
+
+            <p className="text-center text-[11px] font-bold uppercase tracking-widest text-ink-800/40">
+              or
+            </p>
+
+            <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-widest text-ink-800">
+              Screenshot of your receipt
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(e) => onReceiptChange(e.target.files?.[0] ?? null)}
+                className="text-xs font-normal normal-case tracking-normal text-ink-800"
+              />
+              {receipt && (
+                <span className="text-[11px] font-semibold normal-case tracking-normal text-jade-700">
+                  ✓ {receipt.name}
+                </span>
+              )}
+            </label>
+
+            <p className="text-[11px] text-ink-800/50">
+              We check this against our GCash account before cooking.
+            </p>
+          </div>
 
           {settings.instructions && (
             <p className="text-xs text-ink-800/60">{settings.instructions}</p>

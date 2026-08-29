@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { cancelMyOrder, submitPayment, updateMyOrder } from "@/app/orders/actions";
-import { ClockIcon, LiveDotIcon } from "@/components/icons";
+import { LiveDotIcon } from "@/components/icons";
 import { OrderReviewPanel, type ReviewableItem } from "@/components/order-review-panel";
 import { formatDateTime } from "@/lib/format-date";
+import { EtaCountdown } from "@/components/eta-countdown";
 import {
   METHOD_LABEL,
   STATUS_LABEL,
@@ -36,6 +37,7 @@ export type TrackedOrder = {
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
   payment_reference: string | null;
+  eta_set_at: string | null;
   payment_plan: PaymentPlan;
   downpayment_amount: number;
   downpayment_confirmed_at: string | null;
@@ -205,11 +207,9 @@ function OrderCard({ order }: { order: TrackedOrder }) {
             Cancelled
           </span>
         ) : (
-          order.eta_minutes != null && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-400 px-3 py-1.5 text-xs font-bold text-ink-950">
-              <ClockIcon className="h-3.5 w-3.5" />
-              Ready in ~{order.eta_minutes} min
-            </span>
+          order.eta_minutes != null &&
+          !["completed", "cancelled"].includes(order.status) && (
+            <EtaCountdown minutes={order.eta_minutes} from={order.eta_set_at} />
           )
         )}
       </div>

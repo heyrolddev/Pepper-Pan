@@ -4,6 +4,7 @@ import Link from "next/link";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
 import { Nav } from "@/components/nav";
+import { FloatingCart } from "@/components/floating-cart";
 import { Cursor } from "@/components/cursor";
 import { ScrollProgress } from "@/components/scroll-progress";
 import { Marquee } from "@/components/marquee";
@@ -62,8 +63,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <Preloader />
           <Cursor />
           <ScrollProgress />
-          <Nav signedIn={!!viewer} staff={isStaff(viewer)} />
+          <Nav
+            signedIn={!!viewer}
+            staff={isStaff(viewer)}
+            name={viewer?.profile?.full_name ?? null}
+          />
           {children}
+          <FloatingCart />
 
           <footer className="grain relative overflow-hidden bg-ink-950 text-cream-100">
             <Marquee

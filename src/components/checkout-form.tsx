@@ -55,6 +55,7 @@ export function CheckoutForm({
   );
   const [plan, setPlan] = useState<PaymentPlan>("full");
   const [reference, setReference] = useState("");
+  const [receipt, setReceipt] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,9 +81,11 @@ export function CheckoutForm({
           : null
     : null;
 
+  // Either proof satisfies the shop; the server and database enforce the
+  // same rule, so this only saves a round trip.
   const paymentBlocked =
-    method === "gcash" && reference.trim().length < 4
-      ? "Paste your GCash reference number so we can confirm the payment."
+    method === "gcash" && reference.trim().length < 4 && !receipt
+      ? "Add your GCash reference number or a screenshot of the receipt."
       : null;
 
   const blockedReason = deliveryBlocked ?? paymentBlocked;
@@ -121,6 +124,7 @@ export function CheckoutForm({
         paymentMethod: method,
         paymentPlan: method === "gcash" ? plan : "full",
         paymentReference: method === "gcash" ? reference : undefined,
+        paymentReceipt: method === "gcash" ? receipt : null,
       });
 
       if (result.error) {
@@ -271,6 +275,8 @@ export function CheckoutForm({
         onPlanChange={setPlan}
         reference={reference}
         onReferenceChange={setReference}
+        receipt={receipt}
+        onReceiptChange={setReceipt}
         total={grandTotal}
       />
 
