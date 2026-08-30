@@ -8,6 +8,7 @@ import { Cursor } from "@/components/cursor";
 import { ScrollProgress } from "@/components/scroll-progress";
 import { Preloader } from "@/components/preloader";
 import { SiteFooter } from "@/components/site-footer";
+import { ShopStatusBanner } from "@/components/shop-status-banner";
 import { countActiveOrders, getViewer, isStaff } from "@/lib/auth";
 import { AskWidget } from "@/components/ask-widget";
 import { getChatSettings } from "@/lib/chat-settings";
@@ -73,6 +74,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             name={viewer?.profile?.full_name ?? null}
             activeOrders={activeOrders}
           />
+          <ShopStatusBanner />
           {children}
           <FloatingCart />
           <AskWidget messengerUrl={chat.messengerUrl} />

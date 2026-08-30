@@ -25,6 +25,7 @@ type Order = {
   fulfillment: string;
   revenue: number;
   eta_minutes: number | null;
+  scheduled_for: string | null;
   cancelled_reason: string | null;
   delivery_address: string | null;
   delivery_fee: number;
@@ -80,7 +81,7 @@ export default async function OrdersPage() {
   const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, scheduled_for, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
@@ -150,6 +151,7 @@ export default async function OrdersPage() {
     eta_minutes: o.eta_minutes,
     cancelled_reason: o.cancelled_reason,
     eta_set_at: o.eta_set_at,
+    scheduled_for: o.scheduled_for,
     delivery_address: o.delivery_address,
     delivery_fee: Number(o.delivery_fee ?? 0),
     payment_method: (o.payment_method === "gcash" ? "gcash" : "cod") as PaymentMethod,

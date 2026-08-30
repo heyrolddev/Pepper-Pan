@@ -8,6 +8,16 @@ import { placeOrder } from "@/app/checkout/actions";
 import { MapPicker, type Pin } from "@/components/map-picker";
 import { PaymentPicker } from "@/components/payment-picker";
 import { AddressField } from "@/components/address-field";
+import { OrderTiming } from "@/components/order-timing";
+import { formatDateTimeFull } from "@/lib/format-date";
+import {
+  canScheduleFor,
+  parseManilaLocal,
+  type Closure,
+  type DayHours,
+  type OpenState,
+  type ShopSettings,
+} from "@/lib/hours";
 import { quoteDelivery, type DeliverySettings } from "@/lib/delivery";
 import {
   amountDueNow,
@@ -23,11 +33,21 @@ const labelClass =
 
 const peso = (n: number) => "₱" + n.toFixed(2);
 
+export type CheckoutSchedule = {
+  hours: DayHours[];
+  closures: Closure[];
+  settings: ShopSettings;
+  state: OpenState;
+  configured: boolean;
+};
+
 export function CheckoutForm({
   defaults,
   delivery,
   payments,
+  schedule,
 }: {
+  schedule: CheckoutSchedule;
   defaults: {
     name: string;
     phone: string;
@@ -58,6 +78,10 @@ export function CheckoutForm({
       : null
   );
   const [notes, setNotes] = useState("");
+  // Null means "as soon as you can" — what most orders are. A date means the
+  // customer booked it for later, which is the only way to order while the
+  // shop is shut.
+  const [scheduledFor, setScheduledFor] = useState<string | null>(null);
   // Set when what they typed and where the pin sits look like different
   // places — a warning, never a block: the customer knows their own street
   // better than a geocoder does.
@@ -108,7 +132,30 @@ export function CheckoutForm({
       ? "Add your GCash reference number or a screenshot of the receipt."
       : null;
 
-  const blockedReason = deliveryBlocked ?? paymentBlocked;
+  // Closed doesn't mean "no orders" — it means "not for right now". Booking
+  // ahead is exactly the order a shut shop still wants.
+  const mustSchedule = schedule.configured && !schedule.state.isOpen;
+  const scheduleCheck =
+    scheduledFor && schedule.configured
+      ? canScheduleFor(
+          parseManilaLocal(scheduledFor),
+          schedule.hours,
+          schedule.closures,
+          schedule.settings
+        )
+      : null;
+
+  const timingBlocked =
+    mustSchedule && !scheduledFor
+      ? schedule.settings.accepting_orders
+        ? "We're closed right now — pick a time to collect or be delivered, and we'll have it ready."
+        : (schedule.settings.paused_message?.trim() ??
+          "We've paused orders for now — please check back a little later.")
+      : scheduleCheck && !scheduleCheck.ok
+        ? scheduleCheck.reason
+        : null;
+
+  const blockedReason = timingBlocked ?? deliveryBlocked ?? paymentBlocked;
 
   if (items.length === 0) {
     return (
@@ -192,6 +239,7 @@ export function CheckoutForm({
         paymentPlan: method === "gcash" ? plan : "full",
         paymentReference: method === "gcash" ? reference : undefined,
         paymentReceipt: method === "gcash" ? receipt : null,
+        scheduledFor,
       });
 
       if (result.error) {
@@ -282,6 +330,18 @@ export function CheckoutForm({
           </p>
         )}
       </fieldset>
+
+      {schedule.configured && (
+        <OrderTiming
+          state={schedule.state}
+          settings={schedule.settings}
+          hours={schedule.hours}
+          closures={schedule.closures}
+          value={scheduledFor}
+          onChange={setScheduledFor}
+          mustSchedule={mustSchedule}
+        />
+      )}
 
       {isDelivery && (
         <div className="flex flex-col gap-4 rounded-3xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
@@ -479,6 +539,17 @@ export function CheckoutForm({
               <span className="font-display text-xl font-black text-ink-950">
                 {peso(grandTotal)}
               </span>
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-cream-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">
+              When
+            </p>
+            <p className="mt-1 text-sm font-semibold text-ink-950">
+              {scheduledFor
+                ? formatDateTimeFull(parseManilaLocal(scheduledFor))
+                : "As soon as you can"}
             </p>
           </div>
 

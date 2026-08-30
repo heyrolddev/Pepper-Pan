@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getViewer, isStaff } from "@/lib/auth";
+import { notifyOrderStatus } from "@/lib/notify";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 import { PAYMENT_STATUSES, type PaymentStatus } from "@/lib/payments";
 
@@ -37,6 +38,12 @@ export async function setOrderStatus(
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  // Awaited rather than fired and forgotten: on serverless the function can
+  // be frozen the moment the response is returned, which would drop a
+  // dangling promise silently. It swallows its own failures, so the status
+  // change can't be held up by a mail problem.
+  await notifyOrderStatus(orderId);
 
   revalidateOrders();
   return { error: null };
@@ -95,6 +102,8 @@ export async function cancelOrderAsStaff(
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  await notifyOrderStatus(orderId);
 
   revalidateOrders();
   return { error: null };

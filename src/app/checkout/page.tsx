@@ -4,6 +4,7 @@ import { CheckoutForm } from "@/components/checkout-form";
 import { PageHeader } from "@/components/page-header";
 import { getDeliverySettings } from "@/lib/delivery-server";
 import { getPaymentSettings } from "@/lib/payments-server";
+import { getSchedule } from "@/lib/hours-server";
 
 export default async function CheckoutPage() {
   if (!isConfigured()) {
@@ -61,9 +62,10 @@ export default async function CheckoutPage() {
     );
   }
 
-  const [delivery, payments] = await Promise.all([
+  const [delivery, payments, schedule] = await Promise.all([
     getDeliverySettings(),
     getPaymentSettings(),
+    getSchedule(),
   ]);
 
   return (
@@ -77,6 +79,13 @@ export default async function CheckoutPage() {
         <CheckoutForm
           delivery={delivery}
           payments={payments}
+          schedule={{
+            hours: schedule.hours,
+            closures: schedule.closures,
+            settings: schedule.settings,
+            state: schedule.state,
+            configured: schedule.configured,
+          }}
           defaults={{
             name: viewer.profile?.full_name ?? "",
             phone: viewer.profile?.phone ?? "",

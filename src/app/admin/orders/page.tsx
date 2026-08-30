@@ -31,6 +31,7 @@ type OrderRow = {
   payment_reference: string | null;
   payment_receipt_url: string | null;
   eta_set_at: string | null;
+  scheduled_for: string | null;
   payment_plan: string;
   downpayment_amount: number | null;
   downpayment_confirmed_at: string | null;
@@ -51,7 +52,7 @@ export default async function AdminOrdersPage() {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -110,6 +111,7 @@ export default async function AdminOrdersPage() {
       eta_minutes: o.eta_minutes,
       cancelled_reason: o.cancelled_reason,
       eta_set_at: o.eta_set_at,
+      scheduled_for: o.scheduled_for,
       contact_name: o.contact_name,
       contact_phone: o.contact_phone,
       notes: o.notes,

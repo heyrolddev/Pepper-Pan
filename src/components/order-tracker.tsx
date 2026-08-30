@@ -7,7 +7,7 @@ import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { cancelMyOrder, submitPayment, updateMyOrder } from "@/app/orders/actions";
 import { LiveDotIcon } from "@/components/icons";
 import { OrderReviewPanel, type ReviewableItem } from "@/components/order-review-panel";
-import { formatDateTime } from "@/lib/format-date";
+import { formatDateTime, formatDateTimeFull } from "@/lib/format-date";
 import { EtaCountdown } from "@/components/eta-countdown";
 import {
   METHOD_LABEL,
@@ -38,6 +38,7 @@ export type TrackedOrder = {
   payment_status: PaymentStatus;
   payment_reference: string | null;
   eta_set_at: string | null;
+  scheduled_for: string | null;
   payment_plan: PaymentPlan;
   downpayment_amount: number;
   downpayment_confirmed_at: string | null;
@@ -46,24 +47,41 @@ export type TrackedOrder = {
 };
 
 /** The happy path, in order. `cancelled` deliberately sits outside it. */
-const STEPS = ["pending", "confirmed", "preparing", "ready", "completed"] as const;
+const STEPS = [
+  "pending",
+  "confirmed",
+  "preparing",
+  "ready",
+  "out_for_delivery",
+  "completed",
+] as const;
+
+type Step = (typeof STEPS)[number];
+
+/** Pickup orders never leave the stall, so that step isn't part of their rail. */
+const PICKUP_STEPS: readonly Step[] = STEPS.filter((s) => s !== "out_for_delivery");
 
 const STEP_COPY: Record<string, { label: string; blurb: string }> = {
   pending: { label: "Placed", blurb: "We've got your order — waiting for the shop to confirm." },
   confirmed: { label: "Confirmed", blurb: "Confirmed! It's queued for the kitchen." },
   preparing: { label: "Cooking", blurb: "Your food is on the pan right now. 🔥" },
-  ready: { label: "Ready", blurb: "Ready for pickup / out for delivery." },
+  ready: { label: "Ready", blurb: "Your food is ready and waiting." },
+  out_for_delivery: {
+    label: "On the way",
+    blurb: "Your rider has left the stall — keep your phone nearby. 🛵",
+  },
   completed: { label: "Done", blurb: "Enjoy! Salamat sa order. 🧡" },
 };
 
 const peso = (n: number) => "₱" + Number(n).toFixed(2);
 
-function StatusRail({ status }: { status: string }) {
-  const current = STEPS.indexOf(status as (typeof STEPS)[number]);
+function StatusRail({ status, fulfillment }: { status: string; fulfillment: string }) {
+  const steps: readonly Step[] = fulfillment === "delivery" ? STEPS : PICKUP_STEPS;
+  const current = steps.indexOf(status as Step);
 
   return (
     <div className="flex items-center gap-1">
-      {STEPS.map((step, i) => {
+      {steps.map((step, i) => {
         const done = i <= current;
         const active = i === current;
         return (
@@ -216,7 +234,13 @@ function OrderCard({ order }: { order: TrackedOrder }) {
 
       {!cancelled && (
         <div className="px-6 py-5">
-          <StatusRail status={order.status} />
+          {order.scheduled_for && (
+            <p className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-gold-400 px-3 py-1 text-xs font-black text-ink-950">
+              📅 Booked for {formatDateTimeFull(order.scheduled_for)}
+            </p>
+          )}
+
+          <StatusRail status={order.status} fulfillment={order.fulfillment} />
           <p className="mt-4 text-center text-sm font-semibold text-ink-800">
             {STEP_COPY[order.status]?.blurb ?? ""}
           </p>
