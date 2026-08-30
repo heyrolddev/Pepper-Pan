@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
@@ -31,14 +31,22 @@ export const metadata: Metadata = {
   title: "Pepper Pan — Home of Taiwan-Style Black Pepper Noodles",
   description:
     "Taiwan-style black pepper noodles, rice meals and milktea, made fresh daily in Apalit. Order ahead for pickup or delivery.",
+  // The manifest is what lets a phone keep this on its home screen — and on
+  // iOS that is not cosmetic: Safari only allows notifications for a site
+  // that has been added to the home screen, so without this the owner's
+  // iPhone could never be reached at all.
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Pepper Pan",
+    statusBarStyle: "black-translucent",
+  },
 };
 
-/**
- * Runs before first paint so the real page never flashes before the
- * overlay. The intro plays on every page load; only a reduced-motion
- * preference skips it. Client-side route changes don't re-run this, so
- * navigating between pages stays instant.
- */
+export const viewport: Viewport = {
+  themeColor: "#1a1310",
+};
+
 /**
  * Runs before first paint so the real page never flashes before the overlay.
  *

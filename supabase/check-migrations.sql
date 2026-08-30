@@ -28,7 +28,8 @@ with expected(migration, kind, name) as (values
   ('0012','column','chat_threads.taken_over'),
   ('0013','table','shop_hours'),
   ('0013','table','shop_settings'),
-  ('0013','column','orders.scheduled_for')
+  ('0013','column','orders.scheduled_for'),
+  ('0014','table','push_subscriptions')
 )
 select migration as "run this file", kind, name as "missing"
 from expected e

@@ -1,17 +1,20 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { STATUS_LABELS, type OrderStatus } from "@/lib/orders";
+import { pushConfigured, pushToStaff, pushToUser } from "@/lib/push";
 
 /**
- * Telling the customer their order moved, once they've closed the tab.
+ * Telling people something happened once they've closed the tab.
  *
- * Everything else in this system reaches people only while they're looking at
- * it, and a stall's customers order on a phone and put it away. This is the
- * one channel that follows them.
+ * Everything else in this system reaches someone only while they're looking
+ * at it, and both sides of a food stall put their phone away: the customer
+ * after ordering, the owner because they're cooking. These are the channels
+ * that follow them.
  *
- * Optional by design. With no RESEND_API_KEY nothing is sent and nothing
- * breaks — the same bargain as the rest of the shop: no key, no bill, one
- * feature quietly off rather than a broken page.
+ * Two of them, and either can be absent. Email needs a paid key
+ * (RESEND_API_KEY); push needs a VAPID keypair the shop generates itself and
+ * therefore costs nothing. Whichever is configured is used, and with neither
+ * configured nothing is sent and nothing breaks.
  */
 
 export function emailConfigured() {
@@ -65,14 +68,91 @@ function bodyFor(
 }
 
 /**
- * Send one status update, at most once per step.
+ * The same news, in the length a lock screen actually shows.
  *
- * `notified_status` is written before the send so a retry or a double status
- * change can't email twice; a failed send costs one notification rather than
- * risking a customer's inbox.
+ * An email can afford a greeting; a notification gets about forty characters
+ * before the phone truncates it, so the useful word goes first.
+ */
+function pushBodyFor(status: OrderStatus, fulfillment: string): string {
+  switch (status) {
+    case "confirmed":
+      return "Nasa kusina na — we'll tell you when it's ready.";
+    case "ready":
+      return fulfillment === "delivery"
+        ? "Ready and waiting for a rider."
+        : "Ready for pickup — in front of Palengkeni, beside Osave.";
+    case "out_for_delivery":
+      return "Papunta na sa'yo. Keep your phone nearby. 🛵";
+    case "cancelled":
+      return "Sorry — we had to cancel this one. Tap for details.";
+    default:
+      return "There's an update on your order.";
+  }
+}
+
+function pushTitleFor(status: OrderStatus, ref: string): string {
+  switch (status) {
+    case "confirmed":
+      return `Order confirmed · #${ref}`;
+    case "ready":
+      return `Handa na ang order mo 🍜 · #${ref}`;
+    case "out_for_delivery":
+      return `On the way 🛵 · #${ref}`;
+    case "cancelled":
+      return `Order cancelled · #${ref}`;
+    default:
+      return `Order update · #${ref}`;
+  }
+}
+
+async function sendEmail(
+  to: string,
+  status: OrderStatus,
+  ref: string,
+  firstName: string,
+  fulfillment: string,
+  reason: string | null
+): Promise<void> {
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      from: process.env.SHOP_FROM_EMAIL,
+      to,
+      subject: subjectFor(status, ref),
+      text: [
+        `Hi ${firstName},`,
+        "",
+        bodyFor(status, fulfillment, reason),
+        "",
+        `Status: ${STATUS_LABELS[status]}`,
+        `Order #${ref}`,
+        "",
+        "Pepper Pan — in front of Palengkeni, beside Osave, Apalit",
+        "+63 947 353 3060",
+      ].join("\n"),
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+}
+
+/**
+ * Send one status update, at most once per step, on every channel that's set
+ * up.
+ *
+ * `notified_status` is claimed before anything is sent, so a retry or a
+ * double status change can't tell someone twice. One claim covers both
+ * channels deliberately: claiming per channel would mean a mail failure
+ * suppressing the push, and two claims would mean a customer with both
+ * getting told twice.
  */
 export async function notifyOrderStatus(orderId: string): Promise<void> {
-  if (!emailConfigured()) return;
+  const email = emailConfigured();
+  const push = pushConfigured();
+  if (!email && !push) return;
 
   try {
     const db = createAdminClient();
@@ -91,11 +171,6 @@ export async function notifyOrderStatus(orderId: string): Promise<void> {
     if (!WORTH_SENDING.includes(status)) return;
     if (order.notified_status === status) return;
 
-    // The address lives on the auth user, not the profile.
-    const { data: userRes } = await db.auth.admin.getUserById(order.customer_id);
-    const to = userRes?.user?.email;
-    if (!to) return;
-
     // Claim the step first: a send that fails is better than one that repeats.
     const { data: claimed } = await db
       .from("orders")
@@ -108,32 +183,84 @@ export async function notifyOrderStatus(orderId: string): Promise<void> {
     const ref = order.id.slice(0, 8);
     const firstName = (order.contact_name ?? "").trim().split(/\s+/)[0] || "there";
 
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        from: process.env.SHOP_FROM_EMAIL,
-        to,
-        subject: subjectFor(status, ref),
-        text: [
-          `Hi ${firstName},`,
-          "",
-          bodyFor(status, order.fulfillment, order.cancelled_reason),
-          "",
-          `Status: ${STATUS_LABELS[status]}`,
-          `Order #${ref}`,
-          "",
-          "Pepper Pan — in front of Palengkeni, beside Osave, Apalit",
-          "+63 947 353 3060",
-        ].join("\n"),
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
+    // Neither channel may hold up the other, and neither may throw: the order
+    // moving is what actually matters.
+    await Promise.allSettled([
+      push
+        ? pushToUser(order.customer_id, {
+            title: pushTitleFor(status, ref),
+            body: pushBodyFor(status, order.fulfillment),
+            url: "/orders",
+            // One order, one slot on the lock screen.
+            tag: `order-${order.id}`,
+          })
+        : Promise.resolve(),
+      email
+        ? (async () => {
+            // The address lives on the auth user, not the profile.
+            const { data: userRes } = await db.auth.admin.getUserById(
+              order.customer_id
+            );
+            const to = userRes?.user?.email;
+            if (!to) return;
+            await sendEmail(
+              to,
+              status,
+              ref,
+              firstName,
+              order.fulfillment,
+              order.cancelled_reason
+            );
+          })()
+        : Promise.resolve(),
+    ]);
   } catch {
     // A notification is a courtesy. It must never take down the status change
     // that triggered it — the order moving is what actually matters.
+  }
+}
+
+/**
+ * Tell the shop an order just came in.
+ *
+ * This is the notification the business actually runs on. Without it, an
+ * order is only seen if someone happens to be looking at the Orders tab, and
+ * a stall's owner is by definition not looking at a screen. There's no
+ * claim-once guard because there's no retry path: an order is inserted once.
+ */
+export async function notifyNewOrder(orderId: string): Promise<void> {
+  if (!pushConfigured()) return;
+
+  try {
+    const db = createAdminClient();
+    const { data: order } = await db
+      .from("orders")
+      .select(
+        "id, contact_name, fulfillment, revenue, delivery_fee, scheduled_for"
+      )
+      .eq("id", orderId)
+      .maybeSingle();
+    if (!order) return;
+
+    const total =
+      Number(order.revenue ?? 0) + Number(order.delivery_fee ?? 0);
+    const who = (order.contact_name ?? "").trim() || "Walk-in";
+    const how = order.fulfillment === "delivery" ? "Delivery" : "Pickup";
+
+    // An advance order that reads like a normal one gets cooked immediately,
+    // so the notification has to say so before anything else does.
+    const when = order.scheduled_for ? " · SCHEDULED" : "";
+
+    await pushToStaff({
+      title: `Bagong order · ₱${total.toLocaleString("en-PH")}`,
+      body: `${who} · ${how}${when}`,
+      url: "/admin/orders",
+      // Not collapsed by order: two orders in a minute are two things to
+      // cook, and one must never hide the other.
+      tag: `new-order-${order.id}`,
+    });
+  } catch {
+    // Same bargain: the order is already saved. A silent notification is a
+    // missed ping; a thrown one would be a lost sale.
   }
 }

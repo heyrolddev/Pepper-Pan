@@ -12,6 +12,7 @@ import {
   type PaymentPlan,
   type PaymentSettings,
 } from "@/lib/payments";
+import { notifyNewOrder } from "@/lib/notify";
 
 type PlaceOrderInput = {
   // `name` is the browser's copy, used only to name a sold-out dish back to
@@ -289,6 +290,12 @@ export async function placeOrder(
   if (linesError) {
     return { error: linesError.message };
   }
+
+  // Ring the shop's phones. Awaited rather than fired and forgotten: on
+  // serverless the function can be frozen the moment the response returns,
+  // which would drop a dangling promise silently. It swallows its own
+  // failures, so a notification problem can never cost a placed order.
+  await notifyNewOrder(order.id);
 
   return { error: null };
 }
