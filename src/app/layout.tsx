@@ -119,13 +119,26 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <Preloader />
           <Cursor />
           <ScrollProgress />
+          {/* Above the nav, not below it — and that ordering is load-bearing.
+              Every page's masthead uses `.under-nav`, which pulls itself up by
+              exactly the nav's height so the dark hero runs behind a
+              transparent header. That only works while the masthead is the
+              nav's next sibling. With the banner in between, the hero rose by
+              the banner's height instead of the nav's: it stopped short of the
+              top, leaving a strip of cream page showing with the logo and the
+              account chip straddling the edge of it, and it covered the banner
+              itself — so the one message that says "we're closed today" was
+              painted over by the page it was warning about.
+
+              Anything added here later belongs above this line, not between
+              the banner and the page. */}
+          <ShopStatusBanner />
           <Nav
             signedIn={!!viewer}
             staff={isStaff(viewer)}
             name={viewer?.profile?.full_name ?? null}
             activeOrders={activeOrders}
           />
-          <ShopStatusBanner />
           {children}
           <FloatingCart />
           <AskWidget messengerUrl={chat.messengerUrl} />
