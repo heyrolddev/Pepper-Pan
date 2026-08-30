@@ -14,6 +14,7 @@ import { EtaCountdown } from "@/components/eta-countdown";
 export type AdminOrder = {
   id: string;
   created_at: string;
+  scheduled_for: string | null;
   status: OrderStatus;
   fulfillment: string;
   revenue: number;
@@ -84,6 +85,14 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
             {o.contact_phone || p?.phone || "no number"} · {o.fulfillment} ·{" "}
             {formatDateTimeFull(o.created_at)}
           </p>
+
+          {/* An advance order that looks like a normal one gets cooked
+              immediately, so this is stated loudly rather than as a detail. */}
+          {o.scheduled_for && (
+            <p className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-gold-400 px-3 py-1 text-xs font-black text-ink-950">
+              📅 For {formatDateTimeFull(o.scheduled_for)}
+            </p>
+          )}
           {o.customer_id && (
             <p className="text-xs text-ink-800/55">
               {o.completedBefore} completed order{o.completedBefore === 1 ? "" : "s"} before
@@ -111,7 +120,11 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
               <EtaPicker orderId={o.id} eta={o.eta_minutes} />
             </span>
           )}
-          <OrderStatusPicker orderId={o.id} status={o.status} />
+          <OrderStatusPicker
+            orderId={o.id}
+            status={o.status}
+            fulfillment={o.fulfillment}
+          />
         </div>
       </div>
 

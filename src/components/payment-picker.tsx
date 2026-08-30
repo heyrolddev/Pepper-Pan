@@ -201,6 +201,7 @@ export function PaymentPicker({
                   className="object-contain"
                 />
               </div>
+              <QrDownload url={settings.gcash_qr_url} />
             </div>
           )}
 
@@ -258,5 +259,58 @@ export function PaymentPicker({
         <p className="text-xs text-ink-800/60">{settings.instructions}</p>
       )}
     </fieldset>
+  );
+}
+
+/**
+ * Save the shop's GCash QR to the phone.
+ *
+ * A `download` attribute is ignored across origins, so the image is fetched
+ * and saved from a blob instead — that's what makes it land in the gallery
+ * where the GCash app's own scanner can pick it up. If the fetch is blocked
+ * we fall back to opening it, which at least lets them long-press and save.
+ */
+function QrDownload({ url }: { url: string }) {
+  const [state, setState] = useState<"idle" | "working" | "saved">("idle");
+
+  async function save() {
+    setState("working");
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("fetch failed");
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = "pepper-pan-gcash-qr.png";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+      setState("saved");
+      setTimeout(() => setState("idle"), 2500);
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+      setState("idle");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={save}
+      disabled={state === "working"}
+      className={`rounded-full px-4 py-1.5 text-xs font-bold transition-colors disabled:opacity-60 ${
+        state === "saved"
+          ? "bg-jade-600 text-cream-50"
+          : "bg-ink-950 text-cream-50 hover:bg-brand-600"
+      }`}
+    >
+      {state === "working"
+        ? "Saving…"
+        : state === "saved"
+          ? "Saved to your phone ✓"
+          : "⬇ Save QR to scan in GCash"}
+    </button>
   );
 }

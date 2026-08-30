@@ -3,14 +3,17 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setOrderStatus } from "@/app/admin/orders/actions";
-import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
+import { STATUS_LABELS, statusesFor, type OrderStatus } from "@/lib/orders";
 
 export function OrderStatusPicker({
   orderId,
   status,
+  fulfillment,
 }: {
   orderId: string;
   status: OrderStatus;
+  /** Pickup orders never go "on the way", so that step isn't offered. */
+  fulfillment: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -35,11 +38,11 @@ export function OrderStatusPicker({
         value={status}
         disabled={pending}
         onChange={(e) => change(e.target.value as OrderStatus)}
-        className="rounded-full border-2 border-ink-950/15 bg-cream-50 px-4 py-2 text-sm font-bold capitalize text-ink-950 outline-none transition-colors focus:border-brand-600 disabled:opacity-60"
+        className="rounded-full border-2 border-ink-950/15 bg-cream-50 px-4 py-2 text-sm font-bold text-ink-950 outline-none transition-colors focus:border-brand-600 disabled:opacity-60"
       >
-        {ORDER_STATUSES.map((s) => (
+        {statusesFor(fulfillment).map((s) => (
           <option key={s} value={s}>
-            {s}
+            {STATUS_LABELS[s]}
           </option>
         ))}
       </select>

@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getSchedule } from "@/lib/hours-server";
+import { canScheduleFor, parseManilaLocal } from "@/lib/hours";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 import { DEFAULT_DELIVERY, quoteDelivery, type DeliverySettings } from "@/lib/delivery";
 import {
@@ -12,7 +14,14 @@ import {
 } from "@/lib/payments";
 
 type PlaceOrderInput = {
-  items: { mealId: string; qty: number }[];
+  // `name` is the browser's copy, used only to name a sold-out dish back to
+  // the same customer. Prices and availability always come from the database.
+  items: { mealId: string; qty: number; name?: string }[];
+  /**
+   * Manila wall-clock, as a `datetime-local` value ("2026-09-01T18:30").
+   * Null means "as soon as you can".
+   */
+  scheduledFor?: string | null;
   contactName: string;
   contactPhone: string;
   fulfillment: "pickup" | "delivery";
@@ -74,16 +83,28 @@ export async function placeOrder(
   const mealIds = input.items.map((i) => i.mealId);
   const { data: meals, error: mealsError } = await supabase
     .from("meals")
-    .select("id, price")
+    .select("id, name, price")
     .in("id", mealIds);
   if (mealsError || !meals) {
     return { error: "Could not verify menu prices." };
   }
 
   const priceById = new Map(meals.map((m) => [m.id, Number(m.price)]));
+  // Name the dish. "One of the items in your cart" makes the customer open
+  // every line to work out which — and a sold-out dish is annoying enough
+  // without a guessing game on top.
+  const soldOut = input.items
+    .filter((item) => !priceById.has(item.mealId))
+    .map((item) => item.name?.trim())
+    .filter(Boolean) as string[];
   for (const item of input.items) {
     if (!priceById.has(item.mealId)) {
-      return { error: "One of the items in your cart is no longer available." };
+      return {
+        error:
+          soldOut.length > 0
+            ? `${soldOut.join(" and ")} just sold out — please remove it from your cart and try again.`
+            : "One of the items in your cart just sold out. Please review your cart and try again.",
+      };
     }
   }
 
@@ -199,10 +220,38 @@ export async function placeOrder(
       ? amountDueNow(orderTotal, "downpayment", Number(paymentSettings.downpayment_percent))
       : 0;
 
+  // --- when the order is for ------------------------------------------------
+  // Re-checked here rather than trusted: the browser decides what to show, the
+  // server decides what the shop is committed to cooking.
+  const schedule = await getSchedule();
+  let scheduledAt: string | null = null;
+
+  if (input.scheduledFor) {
+    // Read as the shop's wall clock — the same conversion the picker uses,
+    // so the browser and the server can never disagree about what 6pm meant.
+    const when = parseManilaLocal(input.scheduledFor);
+    const verdict = canScheduleFor(
+      when,
+      schedule.hours,
+      schedule.closures,
+      schedule.settings
+    );
+    if (!verdict.ok) return { error: verdict.reason };
+    scheduledAt = when.toISOString();
+  } else if (schedule.configured && !schedule.state.isOpen) {
+    return {
+      error: schedule.settings.accepting_orders
+        ? `${schedule.state.reason ?? "We're closed right now."} You can still order ahead — pick a time at checkout.`
+        : (schedule.settings.paused_message?.trim() ??
+          "We've paused orders for now — please check back a little later."),
+    };
+  }
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
       customer_id: user.id,
+      scheduled_for: scheduledAt,
       fulfillment: input.fulfillment,
       payment_method: method,
       // A GCash order arrives claiming to be paid; it stays "submitted" until

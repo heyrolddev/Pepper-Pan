@@ -10,13 +10,14 @@ type ThreadRow = {
   contact_phone: string | null;
   needs_human: boolean;
   handled: boolean;
+  taken_over: boolean;
   last_message_at: string;
   created_at: string;
 };
 
 type MessageRow = {
   thread_id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "staff";
   content: string;
   created_at: string;
 };
@@ -28,7 +29,7 @@ export default async function AdminInboxPage() {
     supabase
       .from("chat_threads")
       .select(
-        "id, customer_id, channel, contact_name, contact_phone, needs_human, handled, last_message_at, created_at"
+        "id, customer_id, channel, contact_name, contact_phone, needs_human, handled, taken_over, last_message_at, created_at"
       )
       .order("last_message_at", { ascending: false })
       .limit(200),
@@ -95,6 +96,7 @@ export default async function AdminInboxPage() {
       signedIn: Boolean(r.customer_id),
       needsHuman: r.needs_human,
       handled: r.handled,
+      takenOver: Boolean(r.taken_over),
       lastMessageAt: r.last_message_at,
       messages: (byThread.get(r.id) ?? []).map((m) => ({
         role: m.role,

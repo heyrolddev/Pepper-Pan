@@ -1,8 +1,17 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  openState,
+  describeWeek,
+  type Closure,
+  type DayHours,
+  type ShopSettings,
+} from "@/lib/hours";
 
-export type ChatTurn = { role: "user" | "assistant"; content: string };
+export type ChatTurn = { role: "user" | "assistant" | "staff"; content: string };
 export type AssistantReply = { text: string; needsHuman: boolean };
+
+type FaqEntry = { id: string; answer: string; triggers: string[]; priority: number };
 
 /**
  * "Ask Pepper Pan" answers from the shop's own data — no AI model, no API key,
@@ -24,6 +33,10 @@ type Meal = {
 };
 
 type Facts = {
+  faq: FaqEntry[];
+  hours: DayHours[];
+  closures: Closure[];
+  shop: ShopSettings | null;
   meals: Meal[];
   bestSeller: string | null;
   delivery: {
@@ -60,10 +73,30 @@ export function assistantConfigured() {
 // Reading the shop
 // ---------------------------------------------------------------------------
 
+/**
+ * The shop's facts change when the owner edits them, not between two
+ * messages of one conversation — so re-reading the menu, both settings rows
+ * and two thousand order lines on every single reply was pure waste. A short
+ * cache keeps a busy evening cheap while still picking up a price change
+ * within a minute.
+ */
+let factsCache: { at: number; facts: Facts } | null = null;
+const FACTS_TTL_MS = 60_000;
+
 async function loadFacts(): Promise<Facts> {
+  const cached = factsCache;
+  if (cached && Date.now() - cached.at < FACTS_TTL_MS) return cached.facts;
+
+  const facts = await readFacts();
+  factsCache = { at: Date.now(), facts };
+  return facts;
+}
+
+async function readFacts(): Promise<Facts> {
   const db = createAdminClient();
 
-  const [mealsRes, deliveryRes, paymentRes, linesRes] = await Promise.all([
+  const [mealsRes, deliveryRes, paymentRes, linesRes, faqRes, hoursRes, closuresRes, shopRes] =
+    await Promise.all([
     db
       .from("meals")
       .select("name, price, description, is_available")
@@ -79,6 +112,26 @@ async function loadFacts(): Promise<Facts> {
       .select("qty, meals(name), orders!inner(status)")
       .neq("orders.status", "cancelled")
       .limit(2000),
+    // The service-role client bypasses RLS, so the is_active filter has to be
+    // spelled out here — a switched-off answer must stay switched off.
+    db
+      .from("faq_entries")
+      .select("id, answer, triggers, priority")
+      .eq("is_active", true)
+      .order("priority", { ascending: false })
+      .limit(200),
+    db.from("shop_hours").select("weekday, is_open, opens, closes").order("weekday"),
+    db
+      .from("shop_closures")
+      .select("closed_on, reason")
+      .gte("closed_on", new Date().toISOString().slice(0, 10))
+      .order("closed_on")
+      .limit(30),
+    db
+      .from("shop_settings")
+      .select("accepting_orders, paused_message, min_lead_hours, max_days_ahead")
+      .eq("id", 1)
+      .maybeSingle(),
   ]);
 
   const tally = new Map<string, number>();
@@ -95,6 +148,12 @@ async function loadFacts(): Promise<Facts> {
   const p = paymentRes.data;
 
   return {
+    // Missing table (migration 0012 not run yet) simply means no custom
+    // answers — the built-in ones still work.
+    faq: (faqRes.data ?? []) as FaqEntry[],
+    hours: (hoursRes.data ?? []) as DayHours[],
+    closures: (closuresRes.data ?? []) as Closure[],
+    shop: (shopRes.data as ShopSettings | null) ?? null,
     meals: (mealsRes.data ?? []) as Meal[],
     bestSeller,
     delivery: d
@@ -195,6 +254,35 @@ function mealsMentioned(message: string, meals: Meal[]): Meal[] {
   }
 
   return hits.sort((a, b) => b.score - a.score).map((h) => h.meal);
+}
+
+/**
+ * The owner's own answer for this message, if one fits.
+ *
+ * Checked before every built-in reply, because an answer the owner wrote by
+ * hand is the shop correcting us — if they've written something about
+ * delivery, their words beat our generated sentence.
+ *
+ * Ties break on the owner's priority, then on the longest trigger matched, so
+ * a specific entry ("chicken wings") wins over a broad one ("chicken").
+ */
+function matchFaq(message: string, faq: FaqEntry[]): FaqEntry | null {
+  const n = normalize(message);
+  let best: { entry: FaqEntry; score: number } | null = null;
+
+  for (const entry of faq) {
+    let longest = 0;
+    for (const raw of entry.triggers ?? []) {
+      const trigger = normalize(raw);
+      if (trigger && has(n, [trigger])) longest = Math.max(longest, trigger.length);
+    }
+    if (longest === 0) continue;
+
+    const score = entry.priority * 1000 + longest;
+    if (!best || score > best.score) best = { entry, score };
+  }
+
+  return best?.entry ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -300,6 +388,41 @@ function priceAnswer(meals: Meal[], tl: boolean): string {
     : `Here you go:\n${lines}${blurb}\n\nYou can order it on the Menu page.`;
 }
 
+/**
+ * The real schedule, and whether the shop is open as they ask.
+ *
+ * This used to send people to the phone because there was nothing to read.
+ * Now the week comes from the same rows the checkout enforces, so the
+ * assistant can never promise hours the site won't honour.
+ */
+function hoursAnswer(f: Facts, tl: boolean): string {
+  if (f.hours.length === 0) {
+    return tl
+      ? `Para sigurado po sa oras namin ngayong araw, tawag lang po sa ${PHONE}. Nasa ${WHERE} po kami.`
+      : `For today's exact hours give us a ring on ${PHONE}. You'll find us ${WHERE}.`;
+  }
+
+  const settings: ShopSettings = f.shop ?? {
+    accepting_orders: true,
+    paused_message: null,
+    min_lead_hours: 2,
+    max_days_ahead: 14,
+  };
+  const state = openState(f.hours, f.closures, settings);
+
+  const now = state.isOpen
+    ? tl
+      ? "Bukas po kami ngayon! 🧡"
+      : "We're open right now! 🧡"
+    : `${state.reason ?? (tl ? "Sarado po kami ngayon." : "We're closed at the moment.")}${
+        state.opensNext ? ` ${state.opensNext}.` : ""
+      }`;
+
+  return tl
+    ? `${now}\n\nSchedule po namin:\n${describeWeek(f.hours)}\n\nNasa ${WHERE} po kami.`
+    : `${now}\n\nOur week:\n${describeWeek(f.hours)}\n\nYou'll find us ${WHERE}.`;
+}
+
 function bestSellerAnswer(f: Facts, tl: boolean): string {
   const name = f.bestSeller;
   const meal = name ? f.meals.find((m) => m.name === name) : null;
@@ -371,6 +494,19 @@ export async function askAssistant(history: ChatTurn[]): Promise<AssistantReply>
 
   const facts = await loadFacts();
 
+  // --- the owner's own answers, before any of ours -------------------------
+  const owned = matchFaq(message, facts.faq);
+  if (owned) {
+    // Counting the hit is best-effort: an answer that reached the customer
+    // shouldn't fail because a statistic didn't save.
+    try {
+      await createAdminClient().rpc("bump_faq_hit", { p_id: owned.id });
+    } catch {
+      /* the answer still went out, which is what matters */
+    }
+    return { text: owned.answer, needsHuman: false };
+  }
+
   // --- specific dish, with or without a price word -------------------------
   const named = mealsMentioned(message, facts.meals);
   const asksPrice = has(n, [
@@ -398,12 +534,7 @@ export async function askAssistant(history: ChatTurn[]): Promise<AssistantReply>
 
   // --- hours ---------------------------------------------------------------
   if (has(n, ["oras", "open", "bukas", "sarado", "close", "closed", "what time", "anong time", "hours", "schedule"])) {
-    return {
-      text: tl
-        ? `Bukas po kami araw-araw — pero para sigurado sa oras ngayong araw, tawag lang po sa ${PHONE}. Nasa ${WHERE} po kami.`
-        : `We're open daily — for today's exact hours give us a ring on ${PHONE}. You'll find us ${WHERE}.`,
-      needsHuman: false,
-    };
+    return { text: hoursAnswer(facts, tl), needsHuman: false };
   }
 
   // --- where are you -------------------------------------------------------

@@ -3,9 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { sendChatMessage, saveChatContact } from "@/app/ask/actions";
+import {
+  sendChatMessage,
+  saveChatContact,
+  fetchChatMessages,
+} from "@/app/ask/actions";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { id?: number; role: "user" | "assistant" | "staff"; content: string };
+
+/** How often an open chat asks for anything new. Closed chats never poll. */
+const POLL_MS = 4000;
 
 const GUEST_KEY = "pepperpan_chat_key";
 
@@ -37,12 +44,15 @@ export function AskWidget({ messengerUrl }: { messengerUrl: string | null }) {
   const [busy, setBusy] = useState(false);
   const [needsHuman, setNeedsHuman] = useState(false);
   const [contactSent, setContactSent] = useState(false);
+  const [takenOver, setTakenOver] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const keyRef = useRef<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Highest message id already on screen, so a poll only asks for what's new.
+  const lastIdRef = useRef(0);
 
   useEffect(() => {
     keyRef.current = readGuestKey();
@@ -51,6 +61,64 @@ export function AskWidget({ messengerUrl }: { messengerUrl: string | null }) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs, busy]);
+
+  // Live updates while the panel is open: the owner can join the conversation
+  // from HQ, and their reply should appear here without the visitor
+  // refreshing. Polling stops the moment the panel closes.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    async function pull() {
+      if (!keyRef.current) return;
+      const res = await fetchChatMessages({
+        guestKey: keyRef.current,
+        sinceId: lastIdRef.current,
+      });
+      if (cancelled) return;
+
+      setTakenOver(res.takenOver);
+      if (res.messages.length === 0) return;
+
+      setMsgs((current) => {
+        // Our own optimistic turns have no id yet; anything the server
+        // returns is authoritative, so drop the local echo of it.
+        const seen = new Set(
+          current.map((m) => (m.id ? `#${m.id}` : `${m.role}:${m.content}`))
+        );
+        const fresh = res.messages.filter(
+          (m) => !seen.has(`#${m.id}`) && !seen.has(`${m.role}:${m.content}`)
+        );
+        return fresh.length === 0 ? current : [...current, ...fresh];
+      });
+
+      lastIdRef.current = Math.max(
+        lastIdRef.current,
+        ...res.messages.map((m) => m.id)
+      );
+    }
+
+    void pull();
+    let timer = setInterval(pull, POLL_MS);
+
+    // A chat left open in a background tab shouldn't keep asking. Polling
+    // pauses when the tab is hidden and catches up the moment it's back —
+    // which is also the only moment the visitor could see a new message.
+    function onVisibility() {
+      clearInterval(timer);
+      if (document.visibilityState === "visible") {
+        void pull();
+        timer = setInterval(pull, POLL_MS);
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [open]);
 
   // The admin surface is the shop's own workspace — the customer chat has no
   // place on it, and it would sit under the floating cart anyway.
@@ -71,7 +139,12 @@ export function AskWidget({ messengerUrl }: { messengerUrl: string | null }) {
         setError(res.error);
         return;
       }
-      setMsgs((m) => [...m, { role: "assistant", content: res.reply }]);
+      if (res.reply) {
+        setMsgs((m) => [...m, { role: "assistant", content: res.reply }]);
+      } else {
+        // The owner has taken this conversation over, so nothing auto-replied.
+        setTakenOver(true);
+      }
       if (res.needsHuman) setNeedsHuman(true);
     } catch {
       setError("Couldn't send that. Please try again, or message us on Facebook.");
@@ -156,17 +229,30 @@ export function AskWidget({ messengerUrl }: { messengerUrl: string | null }) {
 
               <ul className="flex flex-col gap-3">
                 {msgs.map((m, i) => (
-                  <li
-                    key={i}
-                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                      m.role === "user"
-                        ? "self-end bg-brand-600 text-cream-50"
-                        : "self-start bg-cream-100 text-ink-800"
-                    }`}
-                  >
-                    {m.content}
+                  <li key={m.id ?? `local-${i}`} className="flex flex-col">
+                    {m.role === "staff" && (
+                      <span className="mb-1 self-start rounded-full bg-gold-400 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-ink-950">
+                        Pepper Pan · owner
+                      </span>
+                    )}
+                    <span
+                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+                        m.role === "user"
+                          ? "self-end bg-brand-600 text-cream-50"
+                          : m.role === "staff"
+                            ? "self-start bg-ink-950 text-cream-100 ring-2 ring-gold-400/50"
+                            : "self-start bg-cream-100 text-ink-800"
+                      }`}
+                    >
+                      {m.content}
+                    </span>
                   </li>
                 ))}
+                {takenOver && !busy && (
+                  <li className="self-center rounded-full bg-gold-50 px-3 py-1 text-[11px] font-semibold text-ink-800/70 ring-1 ring-gold-400/40">
+                    You&apos;re talking to the owner now
+                  </li>
+                )}
                 {busy && (
                   <li className="self-start rounded-2xl bg-cream-100 px-4 py-2.5 text-sm text-ink-800/60">
                     <span className="inline-flex gap-1">

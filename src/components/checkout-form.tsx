@@ -8,6 +8,17 @@ import { placeOrder } from "@/app/checkout/actions";
 import { MapPicker, type Pin } from "@/components/map-picker";
 import { PaymentPicker } from "@/components/payment-picker";
 import { AddressField } from "@/components/address-field";
+import { OrderTiming } from "@/components/order-timing";
+import { formatDateTimeFull } from "@/lib/format-date";
+import { EmptyPan, EmptyState } from "@/components/spot-art";
+import {
+  canScheduleFor,
+  parseManilaLocal,
+  type Closure,
+  type DayHours,
+  type OpenState,
+  type ShopSettings,
+} from "@/lib/hours";
 import { quoteDelivery, type DeliverySettings } from "@/lib/delivery";
 import {
   amountDueNow,
@@ -23,11 +34,21 @@ const labelClass =
 
 const peso = (n: number) => "₱" + n.toFixed(2);
 
+export type CheckoutSchedule = {
+  hours: DayHours[];
+  closures: Closure[];
+  settings: ShopSettings;
+  state: OpenState;
+  configured: boolean;
+};
+
 export function CheckoutForm({
   defaults,
   delivery,
   payments,
+  schedule,
 }: {
+  schedule: CheckoutSchedule;
   defaults: {
     name: string;
     phone: string;
@@ -41,6 +62,13 @@ export function CheckoutForm({
   const { items, total, clear } = useCart();
   const router = useRouter();
 
+  // Only offered when a pin was saved alongside it — an address with no pin
+  // can't answer "where does the rider go", which is the whole point.
+  const savedAddress =
+    defaults.address.trim() && defaults.lat != null && defaults.lng != null
+      ? { address: defaults.address.trim(), lat: defaults.lat, lng: defaults.lng }
+      : null;
+
   const [contactName, setContactName] = useState(defaults.name);
   const [contactPhone, setContactPhone] = useState(defaults.phone);
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
@@ -51,6 +79,15 @@ export function CheckoutForm({
       : null
   );
   const [notes, setNotes] = useState("");
+  // Null means "as soon as you can" — what most orders are. A date means the
+  // customer booked it for later, which is the only way to order while the
+  // shop is shut.
+  const [scheduledFor, setScheduledFor] = useState<string | null>(null);
+  // Set when what they typed and where the pin sits look like different
+  // places — a warning, never a block: the customer knows their own street
+  // better than a geocoder does.
+  const [pinWarning, setPinWarning] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>(
     payments.cod_enabled ? "cod" : "gcash"
   );
@@ -63,6 +100,13 @@ export function CheckoutForm({
   const shop = { lat: delivery.shop_lat, lng: delivery.shop_lng };
 
   // Preview only — the server recomputes this and stores its own figure.
+  const usingSaved =
+    !!savedAddress &&
+    address.trim() === savedAddress.address &&
+    !!pin &&
+    Math.abs(pin.lat - savedAddress.lat) < 1e-6 &&
+    Math.abs(pin.lng - savedAddress.lng) < 1e-6;
+
   const quote = useMemo(
     () => (pin ? quoteDelivery(delivery, pin.lat, pin.lng, total) : null),
     [pin, delivery, total]
@@ -89,32 +133,107 @@ export function CheckoutForm({
       ? "Add your GCash reference number or a screenshot of the receipt."
       : null;
 
-  const blockedReason = deliveryBlocked ?? paymentBlocked;
+  // Closed doesn't mean "no orders" — it means "not for right now". Booking
+  // ahead is exactly the order a shut shop still wants.
+  const mustSchedule = schedule.configured && !schedule.state.isOpen;
+  const scheduleCheck =
+    scheduledFor && schedule.configured
+      ? canScheduleFor(
+          parseManilaLocal(scheduledFor),
+          schedule.hours,
+          schedule.closures,
+          schedule.settings
+        )
+      : null;
+
+  const timingBlocked =
+    mustSchedule && !scheduledFor
+      ? schedule.settings.accepting_orders
+        ? "We're closed right now — pick a time to collect or be delivered, and we'll have it ready."
+        : (schedule.settings.paused_message?.trim() ??
+          "We've paused orders for now — please check back a little later.")
+      : scheduleCheck && !scheduleCheck.ok
+        ? scheduleCheck.reason
+        : null;
+
+  const blockedReason = timingBlocked ?? deliveryBlocked ?? paymentBlocked;
 
   if (items.length === 0) {
     return (
-      <div className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-10 text-center">
-        <p className="font-display text-2xl font-bold text-ink-950">Your cart is empty</p>
-        <Link
-          href="/menu"
-          className="mt-6 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
-        >
-          Browse the menu →
-        </Link>
-      </div>
+      <EmptyState
+        art={<EmptyPan className="h-full w-full" />}
+        title="Wala pang laman"
+        action={
+          <Link
+            href="/menu"
+            className="mt-2 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
+          >
+            Browse the menu →
+          </Link>
+        }
+      >
+        There&apos;s nothing to check out yet.
+      </EmptyState>
     );
+  }
+
+  /**
+   * Does the typed address point anywhere near the pin?
+   *
+   * Best-effort and advisory. Geocoders are wrong about Philippine barangay
+   * addresses often enough that blocking on this would cost real orders — so
+   * a mismatch warns and the customer decides.
+   */
+  async function checkPinMatchesAddress(): Promise<string | null> {
+    if (!isDelivery || !pin || address.trim().length < 10) return null;
+    try {
+      const res = await fetch(
+        `/api/geocode?q=${encodeURIComponent(address)}`,
+        { signal: AbortSignal.timeout(6000) }
+      );
+      const body = (await res.json()) as { hits?: { lat: number; lng: number }[] };
+      const hit = body.hits?.[0];
+      if (!hit) return null;
+
+      // Rough great-circle distance; precision beyond a kilometre is noise here.
+      const toRad = (d: number) => (d * Math.PI) / 180;
+      const dLat = toRad(hit.lat - pin.lat);
+      const dLng = toRad(hit.lng - pin.lng);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(pin.lat)) * Math.cos(toRad(hit.lat)) * Math.sin(dLng / 2) ** 2;
+      const km = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+      if (km < 3) return null;
+      return `Your pin is about ${Math.round(km)} km from the address you typed. The rider goes to the pin — please check it's on the right spot, or fix the address.`;
+    } catch {
+      // No answer from the geocoder is not evidence of a mismatch.
+      return null;
+    }
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (blockedReason) return setError(blockedReason);
 
+    // Two gates before an order is placed: does the pin agree with the
+    // address, and has the customer seen exactly what they're ordering.
+    if (!confirming) {
+      setError(null);
+      setSubmitting(true);
+      const warning = await checkPinMatchesAddress();
+      setSubmitting(false);
+      setPinWarning(warning);
+      setConfirming(true);
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
     try {
       const result = await placeOrder({
-        items: items.map((i) => ({ mealId: i.mealId, qty: i.qty })),
+        items: items.map((i) => ({ mealId: i.mealId, qty: i.qty, name: i.name })),
         contactName,
         contactPhone,
         fulfillment,
@@ -126,9 +245,11 @@ export function CheckoutForm({
         paymentPlan: method === "gcash" ? plan : "full",
         paymentReference: method === "gcash" ? reference : undefined,
         paymentReceipt: method === "gcash" ? receipt : null,
+        scheduledFor,
       });
 
       if (result.error) {
+        setConfirming(false);
         setError(result.error);
         return;
       }
@@ -216,21 +337,83 @@ export function CheckoutForm({
         )}
       </fieldset>
 
+      {schedule.configured && (
+        <OrderTiming
+          state={schedule.state}
+          settings={schedule.settings}
+          hours={schedule.hours}
+          closures={schedule.closures}
+          value={scheduledFor}
+          onChange={setScheduledFor}
+          mustSchedule={mustSchedule}
+        />
+      )}
+
       {isDelivery && (
         <div className="flex flex-col gap-4 rounded-3xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
+          {/* One tap for the address they already saved — the common case,
+              and the one most likely to be typed wrong from memory. */}
+          {savedAddress && (
+            <button
+              type="button"
+              onClick={() => {
+                setAddress(savedAddress.address);
+                setPin({ lat: savedAddress.lat, lng: savedAddress.lng });
+                setPinWarning(null);
+              }}
+              className={`flex items-start gap-3 rounded-2xl p-4 text-left ring-2 transition-colors ${
+                usingSaved
+                  ? "bg-jade-50 ring-jade-600"
+                  : "bg-cream-50 ring-ink-950/10 hover:ring-brand-600"
+              }`}
+            >
+              <span className="mt-0.5 text-lg">📍</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-bold uppercase tracking-widest text-ink-800/55">
+                  {usingSaved ? "Using your saved address" : "Use my saved address"}
+                </span>
+                <span className="mt-0.5 block text-sm font-semibold text-ink-950">
+                  {savedAddress.address}
+                </span>
+              </span>
+              {usingSaved && (
+                <span className="shrink-0 text-sm font-black text-jade-700">✓</span>
+              )}
+            </button>
+          )}
+
           <AddressField
             required
             value={address}
-            onChange={setAddress}
-            onPick={(picked) => setPin(picked)}
+            onChange={(next) => {
+              setAddress(next);
+              setPinWarning(null);
+            }}
+            onPick={(picked) => {
+              setPin(picked);
+              setPinWarning(null);
+            }}
           />
 
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-800">
               Pin your exact location <span className="text-brand-600">*required</span>
             </p>
-            <MapPicker value={pin} onChange={setPin} shop={shop} />
+            <MapPicker
+              value={pin}
+              onChange={(next) => {
+                setPin(next);
+                setPinWarning(null);
+              }}
+              shop={shop}
+            />
           </div>
+
+          {pinWarning && (
+            <p className="rounded-2xl bg-gold-50 px-5 py-3 text-sm font-semibold text-ink-800 ring-1 ring-gold-400/60">
+              ⚠︎ {pinWarning}
+            </p>
+          )}
 
           {quote && (
             <div
@@ -325,12 +508,116 @@ export function CheckoutForm({
         </p>
       )}
 
+      {/* The last look before money moves: everything they're about to buy,
+          where it's going, and what it costs — on one screen, so a wrong
+          address or a stray extra item is caught here rather than by a rider
+          standing outside the wrong house. */}
+      {confirming && (
+        <div className="flex flex-col gap-4 rounded-3xl bg-gold-50 p-6 ring-2 ring-gold-400">
+          <div>
+            <p className="font-display text-xl font-black text-ink-950">
+              Tama ba ang order?
+            </p>
+            <p className="mt-0.5 text-sm text-ink-800/70">
+              Have one last look before we start cooking.
+            </p>
+          </div>
+
+          <ul className="flex flex-col gap-1.5">
+            {items.map((i) => (
+              <li
+                key={i.mealId}
+                className="flex items-center justify-between gap-3 rounded-xl bg-cream-50 px-4 py-2.5 text-sm"
+              >
+                <span className="min-w-0 truncate font-semibold text-ink-950">
+                  {i.qty}× {i.name}
+                </span>
+                <span className="shrink-0 font-mono text-ink-800/70">
+                  {peso(i.price * i.qty)}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="rounded-xl bg-cream-50 px-4 py-3">
+            <p className="flex items-center justify-between text-sm">
+              <span className="text-ink-800/70">Total to pay</span>
+              <span className="font-display text-xl font-black text-ink-950">
+                {peso(grandTotal)}
+              </span>
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-cream-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">
+              When
+            </p>
+            <p className="mt-1 text-sm font-semibold text-ink-950">
+              {scheduledFor
+                ? formatDateTimeFull(parseManilaLocal(scheduledFor))
+                : "As soon as you can"}
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-cream-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">
+              {isDelivery ? "Delivering to" : "Picking up"}
+            </p>
+            {isDelivery ? (
+              <>
+                <p className="mt-1 text-sm font-semibold text-ink-950">{address}</p>
+                {/* Coordinates mean nothing to a customer — what they need
+                    to know is that the rider has a spot to go to, and how
+                    far it is. */}
+                {pin && (
+                  <p className="mt-1 text-[11px] font-semibold text-jade-700">
+                    ✓ Pin dropped
+                    {quote?.ok ? ` · about ${quote.km} km from the stall` : ""}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-1 text-sm font-semibold text-ink-950">
+                In front of Palengkeni, beside Osave — Apalit
+              </p>
+            )}
+            <p className="mt-2 text-sm text-ink-800/70">
+              {contactName} · {contactPhone}
+            </p>
+          </div>
+
+          {pinWarning && (
+            <p className="rounded-xl bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700">
+              ⚠︎ {pinWarning}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="self-start text-sm font-bold text-ink-800 hover:text-brand-600"
+          >
+            ← Let me fix something
+          </button>
+        </div>
+      )}
+
       <button
         type="submit"
         disabled={submitting || Boolean(blockedReason)}
-        className="rounded-full bg-brand-600 px-7 py-4 font-bold text-cream-50 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
+        className={`rounded-full px-7 py-4 font-bold transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 ${
+          confirming
+            ? "bg-jade-600 text-cream-50"
+            : "bg-brand-600 text-cream-50"
+        }`}
       >
-        {submitting ? "Placing order…" : "Place order →"}
+        {submitting
+          ? confirming
+            ? "Placing order…"
+            : "Checking…"
+          : confirming
+            ? "Yes, place my order →"
+            : "Review my order →"}
       </button>
       <p className="text-center text-xs text-ink-800/50">
         {method === "gcash"

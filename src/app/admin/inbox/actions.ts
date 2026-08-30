@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { deriveTriggers } from "@/lib/faq";
 
 /**
  * Clear (or re-raise) a conversation.
@@ -74,5 +75,148 @@ export async function saveChatSettings(input: {
   }
 
   revalidatePath("/admin/inbox");
+  return { error: null };
+}
+
+/**
+ * Reply to a customer as the shop.
+ *
+ * Written through the owner's own session, so the `staff_write_messages`
+ * policy — which demands `is_staff()` *and* `role = 'staff'` — is what proves
+ * this is really the shop talking. The first reply also takes the thread over,
+ * which stops the automatic answers on it for good.
+ */
+export async function replyToThread(
+  threadId: string,
+  text: string
+): Promise<{ error: string | null }> {
+  const body = text.trim();
+  if (!body) return { error: "Type a reply first." };
+  if (body.length > 2000) return { error: "That's too long for one message." };
+
+  const supabase = await createClient();
+
+  const { error: msgError } = await supabase.from("chat_messages").insert({
+    thread_id: threadId,
+    role: "staff",
+    content: body,
+  });
+
+  if (msgError) {
+    return {
+      error: `${msgError.message}. If this mentions role or chat_messages, run migration 0012 in the Supabase SQL Editor.`,
+    };
+  }
+
+  const { error: threadError } = await supabase
+    .from("chat_threads")
+    .update({
+      taken_over: true,
+      taken_over_at: new Date().toISOString(),
+      last_message_at: new Date().toISOString(),
+      // You've replied, so it's no longer waiting on you.
+      needs_human: false,
+    })
+    .eq("id", threadId);
+
+  if (threadError) return { error: threadError.message };
+
+  revalidatePath("/admin/inbox");
+  return { error: null };
+}
+
+/**
+ * Turn a question the assistant fumbled into an answer it will always give.
+ *
+ * Triggers default to the meaningful words of the question itself, so the
+ * owner can save a working answer without thinking about keywords — and edit
+ * them later on the FAQ page if it fires too often or too rarely.
+ */
+export async function teachAnswer(input: {
+  question: string;
+  answer: string;
+  triggers: string;
+  threadId?: string;
+}): Promise<{ error: string | null }> {
+  const question = input.question.trim().slice(0, 300);
+  const answer = input.answer.trim().slice(0, 2000);
+  if (!question) return { error: "What was the question?" };
+  if (!answer) return { error: "Write the answer you'd give." };
+
+  const triggers = deriveTriggers(input.triggers || question);
+  if (triggers.length === 0) {
+    return {
+      error:
+        "Add at least one word that should reach this answer — for example 'parking' or 'delivery'.",
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("faq_entries")
+    .insert({ question, answer, triggers });
+
+  if (error) {
+    return {
+      error: `${error.message}. If this mentions faq_entries, run migration 0012 in the Supabase SQL Editor.`,
+    };
+  }
+
+  if (input.threadId) {
+    await supabase
+      .from("chat_threads")
+      .update({ handled: true, handled_at: new Date().toISOString(), needs_human: false })
+      .eq("id", input.threadId);
+  }
+
+  revalidatePath("/admin/faq");
+  revalidatePath("/admin/inbox");
+  return { error: null };
+}
+
+/** Update an existing answer — the "mali ang sagot" fix. */
+export async function updateFaqEntry(input: {
+  id: string;
+  question: string;
+  answer: string;
+  triggers: string;
+  isActive: boolean;
+  priority: number;
+}): Promise<{ error: string | null }> {
+  const question = input.question.trim().slice(0, 300);
+  const answer = input.answer.trim().slice(0, 2000);
+  if (!question || !answer) return { error: "A question and an answer are both needed." };
+
+  const triggers = deriveTriggers(input.triggers);
+  if (triggers.length === 0) {
+    return { error: "Keep at least one trigger word, or this answer can never be reached." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("faq_entries")
+    .update({
+      question,
+      answer,
+      triggers,
+      is_active: input.isActive,
+      priority: Math.max(0, Math.min(99, Math.round(input.priority) || 0)),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.id)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "That answer couldn't be updated." };
+
+  revalidatePath("/admin/faq");
+  return { error: null };
+}
+
+export async function deleteFaqEntry(id: string): Promise<{ error: string | null }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("faq_entries").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/faq");
   return { error: null };
 }

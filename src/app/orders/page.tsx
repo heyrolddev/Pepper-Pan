@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState, OrderBag } from "@/components/spot-art";
 import { OrderTracker, type TrackedOrder } from "@/components/order-tracker";
 import type { ReviewableItem } from "@/components/order-review-panel";
 import {
@@ -25,6 +26,7 @@ type Order = {
   fulfillment: string;
   revenue: number;
   eta_minutes: number | null;
+  scheduled_for: string | null;
   cancelled_reason: string | null;
   delivery_address: string | null;
   delivery_fee: number;
@@ -77,13 +79,31 @@ export default async function OrdersPage() {
     );
   }
 
-  const { data: orders } = await supabase
+  const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name))"
+      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, scheduled_for, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
+
+  // "You have no orders" is a lie when the query itself failed, and it's the
+  // kind of lie that makes a customer order twice.
+  if (ordersError) {
+    return (
+      <main className="under-nav mx-auto max-w-3xl px-6 py-16">
+        <div className="rounded-3xl bg-brand-50 p-8 ring-2 ring-brand-600/40">
+          <h1 className="font-display text-2xl font-black text-brand-700">
+            We couldn&apos;t load your orders
+          </h1>
+          <p className="mt-2 text-sm text-ink-800/70">
+            Your orders are safe — this is our problem, not yours. Please try
+            again in a moment, or call us on +63 947 353 3060.
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   const typedOrders = (orders ?? []) as unknown as Order[];
 
@@ -132,6 +152,7 @@ export default async function OrdersPage() {
     eta_minutes: o.eta_minutes,
     cancelled_reason: o.cancelled_reason,
     eta_set_at: o.eta_set_at,
+    scheduled_for: o.scheduled_for,
     delivery_address: o.delivery_address,
     delivery_fee: Number(o.delivery_fee ?? 0),
     payment_method: (o.payment_method === "gcash" ? "gcash" : "cod") as PaymentMethod,
@@ -165,20 +186,20 @@ export default async function OrdersPage() {
 
       <section className="mx-auto max-w-2xl px-6 py-14">
         {tracked.length === 0 ? (
-          <div className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-10 text-center">
-            <p className="font-display text-2xl font-bold text-ink-950">
-              No orders yet
-            </p>
-            <p className="mt-2 text-ink-800/70">
-              Your first craving is one click away.
-            </p>
-            <Link
-              href="/menu"
-              className="mt-6 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
-            >
-              Browse the menu →
-            </Link>
-          </div>
+          <EmptyState
+            art={<OrderBag className="h-full w-full" />}
+            title="No orders yet"
+            action={
+              <Link
+                href="/menu"
+                className="mt-2 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
+              >
+                Browse the menu →
+              </Link>
+            }
+          >
+            Your first craving is one click away.
+          </EmptyState>
         ) : (
           <OrderTracker orders={tracked} customerId={user.id} />
         )}

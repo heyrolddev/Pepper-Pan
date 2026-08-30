@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { PageHeader } from "@/components/page-header";
+import { EmptyPan, EmptyState } from "@/components/spot-art";
 
 export default function CartPage() {
   const { items, setQty, removeItem, total } = useCart();
@@ -22,20 +23,20 @@ export default function CartPage() {
 
       <section className="mx-auto max-w-3xl px-6 py-14">
         {items.length === 0 ? (
-          <div className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-10 text-center">
-            <p className="font-display text-2xl font-bold text-ink-950">
-              Your cart is empty
-            </p>
-            <p className="mt-2 text-ink-800/70">
-              Nothing here yet — let&apos;s fix that.
-            </p>
-            <Link
-              href="/menu"
-              className="mt-6 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
-            >
-              Browse the menu →
-            </Link>
-          </div>
+          <EmptyState
+            art={<EmptyPan className="h-full w-full" />}
+            title="Wala pang laman"
+            action={
+              <Link
+                href="/menu"
+                className="mt-2 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
+              >
+                Browse the menu →
+              </Link>
+            }
+          >
+            Your cart&apos;s still empty — the pan is waiting.
+          </EmptyState>
         ) : (
           <>
             <ul className="flex flex-col gap-3">
