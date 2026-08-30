@@ -7,7 +7,7 @@ import {
   teachAnswer,
 } from "@/app/admin/inbox/actions";
 import { useChatRealtime } from "@/lib/use-chat-realtime";
-import { deriveTriggers } from "@/lib/faq";
+import { deriveTriggers, GAVE_UP } from "@/lib/faq";
 import { formatDateTime } from "@/lib/format-date";
 import { AdminSearch } from "@/components/admin-search";
 
@@ -31,9 +31,6 @@ export type InboxThread = {
 };
 
 type Filter = "waiting" | "all" | "handled";
-
-/** How the assistant says it doesn't know, in either language. */
-const GAVE_UP = ["not sure about that", "hindi ko po sigurado"];
 
 /**
  * The customer message worth turning into an answer.

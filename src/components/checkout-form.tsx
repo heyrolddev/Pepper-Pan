@@ -180,7 +180,7 @@ export function CheckoutForm({
 
     try {
       const result = await placeOrder({
-        items: items.map((i) => ({ mealId: i.mealId, qty: i.qty })),
+        items: items.map((i) => ({ mealId: i.mealId, qty: i.qty, name: i.name })),
         contactName,
         contactPhone,
         fulfillment,
@@ -489,10 +489,13 @@ export function CheckoutForm({
             {isDelivery ? (
               <>
                 <p className="mt-1 text-sm font-semibold text-ink-950">{address}</p>
+                {/* Coordinates mean nothing to a customer — what they need
+                    to know is that the rider has a spot to go to, and how
+                    far it is. */}
                 {pin && (
-                  <p className="mt-1 font-mono text-[11px] text-ink-800/55">
-                    pin {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}
-                    {quote?.ok ? ` · ~${quote.km} km from the stall` : ""}
+                  <p className="mt-1 text-[11px] font-semibold text-jade-700">
+                    ✓ Pin dropped
+                    {quote?.ok ? ` · about ${quote.km} km from the stall` : ""}
                   </p>
                 )}
               </>

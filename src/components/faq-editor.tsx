@@ -6,7 +6,7 @@ import {
   updateFaqEntry,
   deleteFaqEntry,
 } from "@/app/admin/inbox/actions";
-import { deriveTriggers } from "@/lib/faq";
+import { deriveTriggers, type Unanswered } from "@/lib/faq";
 import { formatDateTime } from "@/lib/format-date";
 
 export type FaqRow = {
@@ -51,13 +51,77 @@ function TriggerPreview({ source }: { source: string }) {
   );
 }
 
-export function FaqEditor({ rows }: { rows: FaqRow[] }) {
+export function FaqEditor({
+  rows,
+  gaps = [],
+}: {
+  rows: FaqRow[];
+  /** Topics customers keep asking about that nothing here covers yet. */
+  gaps?: Unanswered[];
+}) {
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [seed, setSeed] = useState<{ question: string; triggers: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  function answerGap(gap: Unanswered) {
+    setSeed({ question: gap.examples[0], triggers: gap.topic });
+    setAdding(true);
+  }
 
   return (
     <div className="flex flex-col gap-4">
+      {gaps.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-3xl bg-ink-950 p-6 text-cream-100">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-gold-400">
+              People keep asking
+            </p>
+            <p className="mt-1 font-display text-xl font-black text-cream-50">
+              {gaps.length} thing{gaps.length === 1 ? "" : "s"} you haven&apos;t
+              answered yet
+            </p>
+            <p className="mt-1 text-sm text-cream-100/60">
+              Each of these came up more than once and nothing here covers it.
+              Answer one and it&apos;s handled for everyone from now on.
+            </p>
+          </div>
+
+          <ul className="flex flex-col gap-2">
+            {gaps.map((gap) => (
+              <li
+                key={gap.topic}
+                className="flex flex-wrap items-center gap-3 rounded-2xl bg-cream-50/5 p-4 ring-1 ring-cream-50/10"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gold-400 font-mono text-sm font-black text-ink-950">
+                  {gap.count}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-mono text-sm font-bold text-gold-400">
+                    {gap.topic}
+                  </span>
+                  <span className="mt-0.5 block text-sm text-cream-100/70">
+                    &ldquo;{gap.examples[0]}&rdquo;
+                    {gap.examples.length > 1 && (
+                      <span className="text-cream-100/40">
+                        {" "}
+                        + {gap.examples.length - 1} more like it
+                      </span>
+                    )}
+                  </span>
+                </span>
+                <button
+                  onClick={() => answerGap(gap)}
+                  className="shrink-0 rounded-full bg-gold-400 px-4 py-2 text-xs font-bold text-ink-950 transition-transform hover:scale-105"
+                >
+                  Answer this
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {error && (
         <p className="rounded-2xl bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700">
           {error}
@@ -65,7 +129,17 @@ export function FaqEditor({ rows }: { rows: FaqRow[] }) {
       )}
 
       {adding ? (
-        <NewAnswer onDone={() => setAdding(false)} onError={setError} />
+        <NewAnswer
+          // Remounts when a different gap is picked, so the form actually
+          // reloads with the new question instead of keeping the old one.
+          key={seed?.question ?? "blank"}
+          seed={seed}
+          onDone={() => {
+            setAdding(false);
+            setSeed(null);
+          }}
+          onError={setError}
+        />
       ) : (
         <button
           onClick={() => setAdding(true)}
@@ -150,15 +224,17 @@ export function FaqEditor({ rows }: { rows: FaqRow[] }) {
 }
 
 function NewAnswer({
+  seed,
   onDone,
   onError,
 }: {
+  seed?: { question: string; triggers: string } | null;
   onDone: () => void;
   onError: (m: string) => void;
 }) {
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(seed?.question ?? "");
   const [answer, setAnswer] = useState("");
-  const [triggers, setTriggers] = useState("");
+  const [triggers, setTriggers] = useState(seed?.triggers ?? "");
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -178,7 +254,7 @@ function NewAnswer({
   return (
     <div className="flex flex-col gap-3 rounded-3xl bg-gold-50 p-5 ring-1 ring-gold-400/50">
       <p className="font-display text-lg font-black text-ink-950">
-        A new answer
+        {seed ? "Answer what they keep asking" : "A new answer"}
       </p>
 
       <label className={labelClass}>

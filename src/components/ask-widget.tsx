@@ -99,10 +99,24 @@ export function AskWidget({ messengerUrl }: { messengerUrl: string | null }) {
     }
 
     void pull();
-    const timer = setInterval(pull, POLL_MS);
+    let timer = setInterval(pull, POLL_MS);
+
+    // A chat left open in a background tab shouldn't keep asking. Polling
+    // pauses when the tab is hidden and catches up the moment it's back —
+    // which is also the only moment the visitor could see a new message.
+    function onVisibility() {
+      clearInterval(timer);
+      if (document.visibilityState === "visible") {
+        void pull();
+        timer = setInterval(pull, POLL_MS);
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       cancelled = true;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [open]);
 

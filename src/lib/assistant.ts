@@ -63,7 +63,26 @@ export function assistantConfigured() {
 // Reading the shop
 // ---------------------------------------------------------------------------
 
+/**
+ * The shop's facts change when the owner edits them, not between two
+ * messages of one conversation — so re-reading the menu, both settings rows
+ * and two thousand order lines on every single reply was pure waste. A short
+ * cache keeps a busy evening cheap while still picking up a price change
+ * within a minute.
+ */
+let factsCache: { at: number; facts: Facts } | null = null;
+const FACTS_TTL_MS = 60_000;
+
 async function loadFacts(): Promise<Facts> {
+  const cached = factsCache;
+  if (cached && Date.now() - cached.at < FACTS_TTL_MS) return cached.facts;
+
+  const facts = await readFacts();
+  factsCache = { at: Date.now(), facts };
+  return facts;
+}
+
+async function readFacts(): Promise<Facts> {
   const db = createAdminClient();
 
   const [mealsRes, deliveryRes, paymentRes, linesRes, faqRes] = await Promise.all([

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { FaqEditor, type FaqRow } from "@/components/faq-editor";
+import { GAVE_UP, groupUnanswered, type Unanswered } from "@/lib/faq";
 
 export default async function AdminFaqPage() {
   const supabase = await createClient();
@@ -27,6 +28,48 @@ export default async function AdminFaqPage() {
   }
 
   const rows = (data ?? []) as FaqRow[];
+
+  // What people asked that nothing could answer. Read in thread order so a
+  // question can be paired with the reply it drew.
+  const { data: msgData } = await supabase
+    .from("chat_messages")
+    .select("thread_id, role, content")
+    .order("id", { ascending: true })
+    .limit(1000);
+
+  const byThread = new Map<string, { role: string; content: string }[]>();
+  for (const m of (msgData ?? []) as {
+    thread_id: string;
+    role: string;
+    content: string;
+  }[]) {
+    const list = byThread.get(m.thread_id);
+    if (list) list.push(m);
+    else byThread.set(m.thread_id, [m]);
+  }
+
+  const stumpers: string[] = [];
+  for (const messages of byThread.values()) {
+    for (let i = 1; i < messages.length; i++) {
+      const reply = messages[i];
+      const asked = messages[i - 1];
+      if (
+        reply.role === "assistant" &&
+        asked.role === "user" &&
+        GAVE_UP.some((phrase) => reply.content.toLowerCase().includes(phrase))
+      ) {
+        stumpers.push(asked.content);
+      }
+    }
+  }
+
+  // Anything already covered by a live answer isn't a gap any more.
+  const covered = new Set(
+    rows.filter((r) => r.is_active).flatMap((r) => r.triggers)
+  );
+  const gaps: Unanswered[] = groupUnanswered(stumpers).filter(
+    (g) => !covered.has(g.topic)
+  );
   const live = rows.filter((r) => r.is_active).length;
   const used = rows.reduce((sum, r) => sum + (r.hits ?? 0), 0);
 
@@ -61,7 +104,7 @@ export default async function AdminFaqPage() {
         </p>
       </div>
 
-      <FaqEditor rows={rows} />
+      <FaqEditor rows={rows} gaps={gaps} />
     </div>
   );
 }
