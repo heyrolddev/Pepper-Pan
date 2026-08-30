@@ -20,10 +20,13 @@ export function Nav({
   signedIn,
   staff,
   name,
+  activeOrders = 0,
 }: {
   signedIn: boolean;
   staff: boolean;
   name: string | null;
+  /** Orders still in flight — badged so a customer can find the countdown. */
+  activeOrders?: number;
 }) {
   // First name only in the nav — a full name rarely fits, and "Harold" reads
   // more like *their* account than the full legal name would.
@@ -113,9 +116,35 @@ export function Nav({
           {signedIn && !staff && (
             <Link
               href="/orders"
-              className={`hidden rounded-full px-3 py-2 transition-colors sm:block ${linkClass}`}
+              className={`relative hidden rounded-full px-3 py-2 transition-colors sm:block ${linkClass}`}
             >
               My orders
+              {activeOrders > 0 && (
+                <motion.span
+                  key={activeOrders}
+                  initial={{ scale: 0.5 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                  title={`${activeOrders} order${activeOrders === 1 ? "" : "s"} in progress`}
+                  className="absolute -right-0.5 -top-0.5 grid h-5 w-5 place-items-center rounded-full bg-jade-600 text-[11px] font-bold text-white"
+                >
+                  {activeOrders}
+                </motion.span>
+              )}
+            </Link>
+          )}
+
+          {/* On a phone the "My orders" link is hidden for space — but an
+              order in progress is exactly what someone opens the site to
+              check, so it earns a spot of its own while it's live. */}
+          {signedIn && !staff && activeOrders > 0 && (
+            <Link
+              href="/orders"
+              title={`${activeOrders} order${activeOrders === 1 ? "" : "s"} in progress`}
+              className="flex items-center gap-1.5 rounded-full bg-jade-600 px-3 py-1.5 text-xs font-bold text-cream-50 sm:hidden"
+            >
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cream-50" />
+              {activeOrders}
             </Link>
           )}
 

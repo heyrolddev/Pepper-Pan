@@ -12,6 +12,11 @@ const STOPWORDS = new Set([
   "the", "and", "for", "you", "your", "our", "are", "is", "was", "can", "do",
   "does", "did", "with", "from", "that", "this", "have", "has", "how", "what",
   "when", "where", "why", "who", "will", "would", "about", "any", "all",
+  // Courtesy and filler. A trigger of "salamat" or "sige" would fire on
+  // half the messages a polite Filipino customer ever sends.
+  "salamat", "sige", "opo", "oo", "hindi", "please", "thanks", "thank",
+  "hello", "hi", "kumusta", "kamusta", "good", "morning", "afternoon",
+  "evening", "ok", "okay", "lang", "naman", "talaga", "din", "rin", "pala",
 ]);
 
 /**

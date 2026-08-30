@@ -8,7 +8,7 @@ import { Cursor } from "@/components/cursor";
 import { ScrollProgress } from "@/components/scroll-progress";
 import { Preloader } from "@/components/preloader";
 import { SiteFooter } from "@/components/site-footer";
-import { getViewer, isStaff } from "@/lib/auth";
+import { countActiveOrders, getViewer, isStaff } from "@/lib/auth";
 import { AskWidget } from "@/components/ask-widget";
 import { getChatSettings } from "@/lib/chat-settings";
 
@@ -45,7 +45,11 @@ else{d.classList.add('intro-lock');}
 }catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [viewer, chat] = await Promise.all([getViewer(), getChatSettings()]);
+  const [viewer, chat, activeOrders] = await Promise.all([
+    getViewer(),
+    getChatSettings(),
+    countActiveOrders(),
+  ]);
 
   return (
     <html
@@ -67,6 +71,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             signedIn={!!viewer}
             staff={isStaff(viewer)}
             name={viewer?.profile?.full_name ?? null}
+            activeOrders={activeOrders}
           />
           {children}
           <FloatingCart />

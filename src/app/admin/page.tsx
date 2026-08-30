@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
+import { DateRangePicker } from "@/components/date-range-picker";
 import { formatDateTime } from "@/lib/format-date";
 
 // Shop-timezone day labels, so a bar is filed under the day the shop had,
@@ -73,13 +74,28 @@ function Delta({ now, before, label }: { now: number; before: number; label: str
   );
 }
 
-export default async function AdminDashboard() {
+export default async function AdminDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
+  const params = await searchParams;
   const supabase = await createClient();
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
   const yesterdayStr = new Date(now.getTime() - 864e5).toISOString().slice(0, 10);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+
+  // The owner can look at any window they like; this month is only the
+  // default because it's what they check most days.
+  const isDate = (v?: string) => Boolean(v && /^\d{4}-\d{2}-\d{2}$/.test(v));
+  const rangeFrom = isDate(params.from) ? params.from! : monthStart;
+  const rangeTo = isDate(params.to) ? params.to! : todayStr;
+  // A backwards range is a slip, not an instruction — read it the way they meant.
+  const [fromDate, toDate] =
+    rangeFrom <= rangeTo ? [rangeFrom, rangeTo] : [rangeTo, rangeFrom];
+  const customRange = fromDate !== monthStart || toDate !== todayStr;
   const last30 = new Date(now.getTime() - 30 * 864e5).toISOString().slice(0, 10);
 
   const [ordersRes, linesRes, customersRes, leadsRes] = await Promise.all([
@@ -113,6 +129,25 @@ export default async function AdminDashboard() {
   const todays = live.filter((o) => o.date === todayStr);
   const yesterdays = live.filter((o) => o.date === yesterdayStr);
   const monthly = live.filter((o) => o.date >= monthStart);
+  const inRange = live.filter((o) => o.date >= fromDate && o.date <= toDate);
+
+  // The same length of window immediately before it, so the range carries a
+  // comparison rather than a bare number.
+  const spanDays =
+    Math.round(
+      (new Date(toDate + "T00:00:00Z").getTime() -
+        new Date(fromDate + "T00:00:00Z").getTime()) /
+        864e5
+    ) + 1;
+  const prevTo = new Date(new Date(fromDate + "T00:00:00Z").getTime() - 864e5)
+    .toISOString()
+    .slice(0, 10);
+  const prevFrom = new Date(
+    new Date(prevTo + "T00:00:00Z").getTime() - (spanDays - 1) * 864e5
+  )
+    .toISOString()
+    .slice(0, 10);
+  const inPrevRange = live.filter((o) => o.date >= prevFrom && o.date <= prevTo);
   const needsAction = orders.filter((o) =>
     ["pending", "confirmed", "preparing"].includes(o.status)
   );
@@ -191,7 +226,8 @@ export default async function AdminDashboard() {
       <LiveOrdersBanner />
 
       {/* KPI row */}
-      <section>
+      <section className="flex flex-col gap-4">
+        <DateRangePicker from={fromDate} to={toDate} isDefault={!customRange} />
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <div className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
             <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">
@@ -206,11 +242,22 @@ export default async function AdminDashboard() {
             <Delta now={sum(todays)} before={sum(yesterdays)} label="yesterday" />
           </div>
 
-          <StatTile
-            label="Sales this month"
-            value={peso(sum(monthly))}
-            detail={`${monthly.length} order${monthly.length === 1 ? "" : "s"}`}
-          />
+          <div className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">
+              {customRange ? "Sales in range" : "Sales this month"}
+            </p>
+            <p className="mt-2 font-display text-3xl font-black text-ink-950">
+              {peso(sum(inRange))}
+            </p>
+            <p className="mt-1 text-sm text-ink-800/60">
+              {inRange.length} order{inRange.length === 1 ? "" : "s"}
+            </p>
+            <Delta
+              now={sum(inRange)}
+              before={sum(inPrevRange)}
+              label={`the ${spanDays} days before`}
+            />
+          </div>
           <StatTile
             label="Average order"
             value={peso(avgOrder)}

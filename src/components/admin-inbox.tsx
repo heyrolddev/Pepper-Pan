@@ -32,6 +32,34 @@ export type InboxThread = {
 
 type Filter = "waiting" | "all" | "handled";
 
+/** How the assistant says it doesn't know, in either language. */
+const GAVE_UP = ["not sure about that", "hindi ko po sigurado"];
+
+/**
+ * The customer message worth turning into an answer.
+ *
+ * The last thing someone types is usually "salamat po" — the question that
+ * actually stumped the assistant is the one right before it gave up. Falling
+ * back to the longest message beats falling back to the newest, since a real
+ * question carries more words than a sign-off.
+ */
+function questionToTeach(messages: InboxMessage[]): InboxMessage | null {
+  for (let i = messages.length - 1; i > 0; i--) {
+    const m = messages[i];
+    if (
+      m.role === "assistant" &&
+      GAVE_UP.some((phrase) => m.content.toLowerCase().includes(phrase)) &&
+      messages[i - 1]?.role === "user"
+    ) {
+      return messages[i - 1];
+    }
+  }
+
+  const asked = messages.filter((m) => m.role === "user");
+  if (asked.length === 0) return null;
+  return asked.reduce((best, m) => (m.content.length > best.content.length ? m : best));
+}
+
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "waiting", label: "Needs a reply" },
   { key: "all", label: "All" },
@@ -160,6 +188,10 @@ export function AdminInbox({ threads }: { threads: InboxThread[] }) {
                 const lastUser = [...t.messages]
                   .reverse()
                   .find((m) => m.role === "user");
+                // The question worth teaching is the one the assistant
+                // fumbled — not "salamat po", which is usually what came
+                // last. Fall back to the longest thing they said.
+                const stumper = questionToTeach(t.messages) ?? lastUser;
                 return (
                   <li
                     key={t.id}
@@ -302,9 +334,13 @@ export function AdminInbox({ threads }: { threads: InboxThread[] }) {
                               onClick={() =>
                                 setTeaching(teaching === t.id ? null : t.id)
                               }
-                              className="rounded-full bg-gold-400 px-4 py-2 text-xs font-bold text-ink-950"
+                              className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${
+                                teaching === t.id
+                                  ? "bg-ink-950 text-gold-400"
+                                  : "bg-gold-400 text-ink-950"
+                              }`}
                             >
-                              {teaching === t.id ? "Cancel" : "Teach this answer"}
+                              Teach this answer
                             </button>
                           )}
                           {t.phone && (
@@ -319,7 +355,7 @@ export function AdminInbox({ threads }: { threads: InboxThread[] }) {
 
                         {teaching === t.id && lastUser && (
                           <TeachPanel
-                            question={lastUser.content}
+                            question={(stumper ?? lastUser).content}
                             threadId={t.id}
                             onDone={() => setTeaching(null)}
                             onError={setError}

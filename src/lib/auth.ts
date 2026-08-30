@@ -48,3 +48,34 @@ export async function getViewer(): Promise<Viewer> {
 export function isStaff(viewer: Viewer) {
   return viewer?.profile?.role === "owner" || viewer?.profile?.role === "staff";
 }
+
+/** Statuses that mean "this order is still happening" for the customer. */
+const ACTIVE_STATUSES = ["pending", "confirmed", "preparing", "ready", "out_for_delivery"];
+
+/**
+ * How many orders this customer has in flight.
+ *
+ * Drives the badge on "My orders" — a stall's customers order and then close
+ * the tab, and a number in the header is what brings them back to the
+ * countdown instead of ringing the shop.
+ */
+export async function countActiveOrders(): Promise<number> {
+  if (!isConfigured()) return 0;
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    const { count, error } = await supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_id", user.id)
+      .in("status", ACTIVE_STATUSES);
+
+    return error ? 0 : (count ?? 0);
+  } catch {
+    return 0;
+  }
+}
