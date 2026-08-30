@@ -7,6 +7,7 @@ import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { cancelMyOrder, submitPayment, updateMyOrder } from "@/app/orders/actions";
 import { LiveDotIcon } from "@/components/icons";
 import { OrderReviewPanel, type ReviewableItem } from "@/components/order-review-panel";
+import { ReorderButton } from "@/components/reorder-button";
 import { formatDateTime, formatDateTimeFull } from "@/lib/format-date";
 import { EtaCountdown } from "@/components/eta-countdown";
 import {
@@ -454,6 +455,14 @@ function OrderCard({ order }: { order: TrackedOrder }) {
                 )}
               </div>
             )}
+        </div>
+      )}
+
+      {/* Offered on anything that's finished — including a cancelled one,
+          where wanting the same food again is exactly the recovery. */}
+      {(order.status === "completed" || cancelled) && (
+        <div className="border-t border-ink-950/10 px-6 py-4">
+          <ReorderButton orderId={order.id} />
         </div>
       )}
 

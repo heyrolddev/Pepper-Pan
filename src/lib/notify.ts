@@ -76,13 +76,13 @@ function bodyFor(
 function pushBodyFor(status: OrderStatus, fulfillment: string): string {
   switch (status) {
     case "confirmed":
-      return "Nasa kusina na — we'll tell you when it's ready.";
+      return "The kitchen has it. We'll tell you when it's ready.";
     case "ready":
       return fulfillment === "delivery"
         ? "Ready and waiting for a rider."
         : "Ready for pickup — in front of Palengkeni, beside Osave.";
     case "out_for_delivery":
-      return "Papunta na sa'yo. Keep your phone nearby. 🛵";
+      return "On its way to you. Keep your phone nearby. 🛵";
     case "cancelled":
       return "Sorry — we had to cancel this one. Tap for details.";
     default:
@@ -95,7 +95,7 @@ function pushTitleFor(status: OrderStatus, ref: string): string {
     case "confirmed":
       return `Order confirmed · #${ref}`;
     case "ready":
-      return `Handa na ang order mo 🍜 · #${ref}`;
+      return `Your order is ready 🍜 · #${ref}`;
     case "out_for_delivery":
       return `On the way 🛵 · #${ref}`;
     case "cancelled":
@@ -252,7 +252,7 @@ export async function notifyNewOrder(orderId: string): Promise<void> {
     const when = order.scheduled_for ? " · SCHEDULED" : "";
 
     await pushToStaff({
-      title: `Bagong order · ₱${total.toLocaleString("en-PH")}`,
+      title: `New order · ₱${total.toLocaleString("en-PH")}`,
       body: `${who} · ${how}${when}`,
       url: "/admin/orders",
       // Not collapsed by order: two orders in a minute are two things to

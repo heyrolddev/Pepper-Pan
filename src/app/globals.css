@@ -93,6 +93,20 @@
  * nav's light type always sits on dark. Every page's first section uses
  * this, which is what lets the nav flip light→dark purely on scroll.
  */
+/*
+ * Nothing may drag the page sideways.
+ *
+ * Scroll-reveal cards start life offset a few dozen pixels to one side, and a
+ * decorative blur is deliberately wider than its section — off the right edge
+ * of a phone, both become a horizontal scrollbar and a page that slides under
+ * the thumb. `clip` rather than `hidden` on purpose: `hidden` would turn the
+ * body into a scroll container and the sticky header would stop sticking.
+ */
+html,
+body {
+  overflow-x: clip;
+}
+
 .under-nav {
   margin-top: calc(-1 * var(--nav-h));
   padding-top: var(--nav-h);

@@ -12,6 +12,7 @@ import { ShopStatusBanner } from "@/components/shop-status-banner";
 import { countActiveOrders, getViewer, isStaff } from "@/lib/auth";
 import { AskWidget } from "@/components/ask-widget";
 import { getChatSettings } from "@/lib/chat-settings";
+import { SHOP, siteUrl } from "@/lib/site";
 
 // Warm display serif — reads artisanal and appetising rather than corporate.
 const fraunces = Fraunces({
@@ -28,9 +29,36 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Pepper Pan — Home of Taiwan-Style Black Pepper Noodles",
-  description:
-    "Taiwan-style black pepper noodles, rice meals and milktea, made fresh daily in Apalit. Order ahead for pickup or delivery.",
+  // Absolute URLs are mandatory for share cards: Facebook and Messenger
+  // silently ignore a relative image, which is the failure that reads as
+  // "the picture doesn't show up when I paste the link".
+  metadataBase: new URL(siteUrl()),
+  title: {
+    default: `${SHOP.name} — ${SHOP.tagline}`,
+    // Inner pages get "Menu · Pepper Pan" without each one repeating it.
+    template: `%s · ${SHOP.name}`,
+  },
+  description: SHOP.description,
+  keywords: [
+    "Pepper Pan",
+    "Taiwanese food Apalit",
+    "black pepper noodles",
+    "Ji Pai",
+    "milktea Apalit",
+    "food delivery Apalit Pampanga",
+  ],
+  openGraph: {
+    type: "website",
+    siteName: SHOP.name,
+    title: `${SHOP.name} — ${SHOP.tagline}`,
+    description: SHOP.description,
+    locale: "en_PH",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SHOP.name} — ${SHOP.tagline}`,
+    description: SHOP.description,
+  },
   // The manifest is what lets a phone keep this on its home screen — and on
   // iOS that is not cosmetic: Safari only allows notifications for a site
   // that has been added to the home screen, so without this the owner's

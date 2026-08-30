@@ -162,7 +162,7 @@ export function CheckoutForm({
     return (
       <EmptyState
         art={<EmptyPan className="h-full w-full" />}
-        title="Wala pang laman"
+        title="Your cart is empty"
         action={
           <Link
             href="/menu"
@@ -516,7 +516,7 @@ export function CheckoutForm({
         <div className="flex flex-col gap-4 rounded-3xl bg-gold-50 p-6 ring-2 ring-gold-400">
           <div>
             <p className="font-display text-xl font-black text-ink-950">
-              Tama ba ang order?
+              Does this look right?
             </p>
             <p className="mt-0.5 text-sm text-ink-800/70">
               Have one last look before we start cooking.

@@ -16,10 +16,12 @@ const POLL_MS = 4000;
 
 const GUEST_KEY = "pepperpan_chat_key";
 
+// Mostly English, with one Taglish opener kept on purpose: it is the quickest
+// way to show a customer that asking in Filipino will work too.
 const OPENERS = [
   "What's your bestseller?",
+  "What time do you open?",
   "Magkano ang delivery sa Apalit?",
-  "Anong oras kayo bukas?",
 ];
 
 /** A stable per-browser key so a visitor keeps their own thread. */

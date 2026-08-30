@@ -20,6 +20,7 @@ import {
 } from "@/components/spot-art";
 import { getPublicReviews } from "@/lib/reviews-server";
 import { isConfigured } from "@/lib/auth";
+import { ShopSchema } from "@/components/shop-schema";
 
 const ADDRESS =
   "In front of Palengkeni (New Apalit Public Market), beside Osave!, Apalit, Philippines";
@@ -126,6 +127,10 @@ export default async function Home() {
 
   return (
     <main className="flex-1">
+      {/* Hours, address, phone and rating for search engines — read from
+          the shop's own data, so what Google shows is what the owner set. */}
+      <ShopSchema />
+
       {/* ---------------------------------------------------------- */}
       {/* Hero                                                        */}
       {/* ---------------------------------------------------------- */}

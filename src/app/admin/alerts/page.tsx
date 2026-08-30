@@ -52,26 +52,25 @@ export default async function AdminAlertsPage() {
       <div>
         <h2 className="font-display text-2xl font-black text-ink-950">Alerts</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
-          Ang tanging paraan para malaman mong may bagong order habang hindi mo
-          nakabukas ang HQ. Walang bayad ito — walang SMS load, walang
-          subscription.
+          The only way to hear about an order while HQ isn&apos;t open in front
+          of you. It costs nothing — no SMS load, no subscription.
         </p>
       </div>
 
       {tableMissing ? (
         <div className="rounded-3xl bg-gold-50 p-8 ring-1 ring-gold-400/40">
           <p className="font-display text-xl font-black text-ink-950">
-            Isang hakbang na lang
+            One step left
           </p>
           <p className="mt-2 max-w-xl text-sm text-ink-800/70">
-            Patakbuhin ang <strong>migration 0014</strong> sa Supabase SQL
-            Editor para mabuksan ito.
+            Run <strong>migration 0014</strong> in the Supabase SQL Editor to
+            switch this on.
           </p>
         </div>
       ) : readError ? (
         <div className="rounded-3xl bg-brand-50 p-8 ring-1 ring-brand-600/40">
           <p className="font-display text-xl font-black text-brand-700">
-            Hindi mabasa ang mga device
+            Couldn&apos;t read your devices
           </p>
           <p className="mt-2 max-w-xl font-mono text-sm text-ink-800/70">
             {readError}
@@ -89,7 +88,7 @@ export default async function AdminAlertsPage() {
       {devices.length > 0 && (
         <section>
           <h3 className="font-display text-lg font-black text-ink-950">
-            Mga device na tinutunog
+            Devices we ring
           </h3>
           <ul className="mt-3 flex flex-col gap-2">
             {devices.map((d) => (
@@ -98,36 +97,36 @@ export default async function AdminAlertsPage() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-cream-100 px-5 py-3 ring-1 ring-ink-950/10"
               >
                 <span className="text-sm font-semibold text-ink-950">
-                  {d.label ?? "Isang device"}
+                  {d.label ?? "A device"}
                 </span>
                 <span className="text-xs text-ink-800/50">
                   {d.last_sent_at
-                    ? `Huling tinunog ${formatDateTime(d.last_sent_at)}`
-                    : `Naka-on mula ${formatDateTime(d.created_at)}`}
+                    ? `Last rang ${formatDateTime(d.last_sent_at)}`
+                    : `On since ${formatDateTime(d.created_at)}`}
                 </span>
               </li>
             ))}
           </ul>
           <p className="mt-3 text-xs text-ink-800/50">
-            Para patayin ang isang device, buksan ang page na ito doon mismo at
-            pindutin ang &ldquo;Turn off&rdquo; — para hindi mo maaksidenteng
-            mapatay ang phone na hawak mo ngayon.
+            To switch one off, open this page on that device and press
+            &ldquo;Turn off&rdquo; — so you can&apos;t accidentally silence the
+            phone in your hand.
           </p>
         </section>
       )}
 
       <section className="rounded-3xl bg-cream-100 p-6 ring-1 ring-ink-950/10">
         <h3 className="font-display text-lg font-black text-ink-950">
-          Ano ang ipapadala nito
+          What this sends
         </h3>
         <ul className="mt-3 flex flex-col gap-2 text-sm text-ink-800/70">
           <li>
-            <strong>Sa&apos;yo:</strong> bawat bagong order — pangalan, halaga,
-            pickup o delivery, at kung advance order ba.
+            <strong>To you:</strong> every new order — the name, the total,
+            pickup or delivery, and whether it&apos;s booked ahead.
           </li>
           <li>
-            <strong>Sa customer:</strong> confirmed, handa na, papunta na, at
-            kanselado. Wala nang iba — walang promo, walang paulit-ulit.
+            <strong>To the customer:</strong> confirmed, ready, on the way, and
+            cancelled. Nothing else — no promos, no repeats.
           </li>
         </ul>
       </section>
