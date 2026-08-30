@@ -114,7 +114,7 @@ export async function sendTestPush(): Promise<Result> {
 
   const sent = await pushToUser(user.id, {
     title: "Pepper Pan · test",
-    body: "Ito ang hitsura ng notification. Gumagana. 🍜",
+    body: "This is what a notification looks like. It works. 🍜",
     url: "/",
     tag: "pepper-pan-test",
   });

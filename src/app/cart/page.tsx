@@ -1,12 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { PageHeader } from "@/components/page-header";
 import { EmptyPan, EmptyState } from "@/components/spot-art";
 
 export default function CartPage() {
+  return (
+    // useSearchParams needs a Suspense boundary to keep this page static.
+    <Suspense fallback={<Cart missing={null} />}>
+      <CartWithNotice />
+    </Suspense>
+  );
+}
+
+/** Names anything a reorder couldn't bring across, where they'll look for it. */
+function CartWithNotice() {
+  return <Cart missing={useSearchParams().get("missing")} />;
+}
+
+function Cart({ missing }: { missing: string | null }) {
   const { items, setQty, removeItem, total } = useCart();
 
   return (
@@ -22,10 +38,16 @@ export default function CartPage() {
       />
 
       <section className="mx-auto max-w-3xl px-6 py-14">
+        {missing && (
+          <p className="mb-6 rounded-2xl bg-gold-400/20 px-5 py-4 text-sm font-semibold text-ink-800">
+            We couldn&apos;t add <strong>{missing}</strong> — it isn&apos;t on
+            the menu right now. Everything else from that order is here.
+          </p>
+        )}
         {items.length === 0 ? (
           <EmptyState
             art={<EmptyPan className="h-full w-full" />}
-            title="Wala pang laman"
+            title="Your cart is empty"
             action={
               <Link
                 href="/menu"

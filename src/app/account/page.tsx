@@ -3,6 +3,7 @@ import { getViewer, isConfigured } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { AccountForm } from "@/components/account-form";
 import { getDeliverySettings } from "@/lib/delivery-server";
+import { SignOutButton } from "@/components/sign-out-button";
 
 export default async function AccountPage() {
   if (!isConfigured()) {
@@ -95,6 +96,13 @@ export default async function AccountPage() {
           <Link href="/menu" className="text-brand-600 hover:underline">
             Browse the menu →
           </Link>
+        </div>
+
+        {/* The header drops sign-out on a phone, where it wrapped onto two
+            lines and pushed the row into the logo. It belongs here anyway:
+            this is where the account chip beside it already leads. */}
+        <div className="mt-10 border-t border-ink-950/10 pt-6">
+          <SignOutButton />
         </div>
       </section>
     </main>

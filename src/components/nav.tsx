@@ -16,6 +16,23 @@ const links = [
   { href: "/#visit", label: "Visit" },
 ];
 
+/**
+ * One shared shape for every count in the header.
+ *
+ * The old badge was a fixed 20px circle, which fits "4" and bursts at "12" —
+ * the digits spilled over the edge of their own dot. A pill that is at least
+ * as wide as it is tall grows with the number instead, and tabular figures
+ * keep it from jittering as the count changes.
+ */
+function countClass(tone: string) {
+  return `grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[11px] font-bold tabular-nums text-white ${tone}`;
+}
+
+/** Past 99 the exact number stops being useful and starts breaking the row. */
+function countLabel(n: number) {
+  return n > 99 ? "99+" : String(n);
+}
+
 export function Nav({
   signedIn,
   staff,
@@ -60,7 +77,7 @@ export function Nav({
       }`}
     >
       <div className="mx-auto flex h-[var(--nav-h)] max-w-6xl items-center justify-between px-6">
-        <Link href="/" aria-label="Pepper Pan — home" className="group block">
+        <Link href="/" aria-label="Pepper Pan — home" className="group block shrink-0">
           <Logo
             priority
             width={220}
@@ -68,7 +85,15 @@ export function Nav({
           />
         </Link>
 
-        <nav className="flex items-center gap-1 text-sm font-semibold sm:gap-2">
+        {/* Three tiers, and the middle one is measured rather than guessed.
+            Under 640px: an order count, the name chip, the cart. From 640 the
+            section links join them — a tablet with no way to reach the menu
+            is a worse trade than any wrap. The last two, the "My orders" text
+            link and sign-out, wait until 880px, because below that the full
+            row ran about 860px beside the logo: "Sign out" broke onto two
+            lines and the page picked up a sideways scroll. The order count
+            still shows the whole way down, as its own pill. */}
+        <nav className="flex min-w-0 items-center gap-1.5 text-sm font-semibold sm:gap-2">
           {/* Staff get a deliberately bare header: the owner signed in to run
               the shop, not to browse it, and the HQ badge is the way in. */}
           {!staff &&
@@ -116,7 +141,8 @@ export function Nav({
           {signedIn && !staff && (
             <Link
               href="/orders"
-              className={`relative hidden rounded-full px-3 py-2 transition-colors sm:block ${linkClass}`}
+              title={`${activeOrders} order${activeOrders === 1 ? "" : "s"} in progress`}
+              className={`hidden items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 transition-colors min-[880px]:inline-flex ${linkClass}`}
             >
               My orders
               {activeOrders > 0 && (
@@ -125,10 +151,9 @@ export function Nav({
                   initial={{ scale: 0.5 }}
                   animate={{ scale: 1 }}
                   transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                  title={`${activeOrders} order${activeOrders === 1 ? "" : "s"} in progress`}
-                  className="absolute -right-0.5 -top-0.5 grid h-5 w-5 place-items-center rounded-full bg-jade-600 text-[11px] font-bold text-white"
+                  className={countClass("bg-jade-600")}
                 >
-                  {activeOrders}
+                  {countLabel(activeOrders)}
                 </motion.span>
               )}
             </Link>
@@ -141,10 +166,10 @@ export function Nav({
             <Link
               href="/orders"
               title={`${activeOrders} order${activeOrders === 1 ? "" : "s"} in progress`}
-              className="flex items-center gap-1.5 rounded-full bg-jade-600 px-3 py-1.5 text-xs font-bold text-cream-50 sm:hidden"
+              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-jade-600 px-2.5 py-1.5 text-xs font-bold text-cream-50 min-[880px]:hidden"
             >
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cream-50" />
-              {activeOrders}
+              {countLabel(activeOrders)}
             </Link>
           )}
 
@@ -154,7 +179,7 @@ export function Nav({
             <Link
               href="/account"
               title="Your account"
-              className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-1 font-bold transition-all hover:scale-105 sm:pr-3 ${
+              className={`flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 font-bold transition-all hover:scale-105 min-[880px]:pr-3 ${
                 scrolled
                   ? "bg-ink-950/5 text-ink-950 ring-1 ring-ink-950/10"
                   : "bg-cream-50/10 text-cream-50 ring-1 ring-cream-50/20"
@@ -163,7 +188,7 @@ export function Nav({
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-600 text-xs font-black text-cream-50">
                 {(firstName ?? "?").charAt(0).toUpperCase()}
               </span>
-              <span className="hidden max-w-24 truncate text-xs sm:block">
+              <span className="hidden max-w-24 truncate text-xs min-[880px]:block">
                 {firstName ?? "Account"}
               </span>
             </Link>
@@ -172,7 +197,7 @@ export function Nav({
           {!staff && (
           <Link
             href="/cart"
-            className={`relative rounded-full px-3 py-2 transition-colors ${linkClass}`}
+            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 transition-colors ${linkClass}`}
           >
             Cart
             {count > 0 && (
@@ -181,20 +206,26 @@ export function Nav({
                 initial={{ scale: 0.5 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                className="absolute -right-0.5 -top-0.5 grid h-5 w-5 place-items-center rounded-full bg-brand-600 text-[11px] font-bold text-white"
+                className={countClass("bg-brand-600")}
               >
-                {count}
+                {countLabel(count)}
               </motion.span>
             )}
           </Link>
           )}
 
           {signedIn ? (
-            <SignOutButton scrolled={scrolled} />
+            // Hidden on the compact row, where it wrapped to two lines and
+            // shoved everything else into the logo.
+            // It lives on the account page instead, which is where the
+            // account chip beside it already leads.
+            <span className="hidden min-[880px]:block">
+              <SignOutButton scrolled={scrolled} />
+            </span>
           ) : (
             <Link
               href="/login"
-              className={`rounded-full px-4 py-2 font-bold transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 font-bold transition-colors ${
                 scrolled
                   ? "bg-ink-950 text-cream-50 hover:bg-brand-600"
                   : "bg-gold-400 text-ink-950 hover:bg-gold-300"

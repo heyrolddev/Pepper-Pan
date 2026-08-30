@@ -170,12 +170,12 @@ export function PushToggle({
       }
 
       setState("on");
-      setNote("Naka-on na. Sending a test now…");
+      setNote("Turned on. Sending a test now…");
       const test = await sendTestPush();
       setNote(
         test.error
-          ? "Naka-on na — but the test didn't arrive. Check that notifications are allowed for this site."
-          : "Naka-on na. Check your notifications for the test."
+          ? "Turned on — but the test didn't arrive. Check that notifications are allowed for this site."
+          : "Turned on. Check your notifications for the test."
       );
     } catch (err) {
       setError(
@@ -220,14 +220,14 @@ export function PushToggle({
   const copy =
     audience === "owner"
       ? {
-          title: "Alertong bagong order",
+          title: "New order alerts",
           blurb:
-            "Tumutunog ang phone mo kapag may pumasok na order, kahit nakasara ang browser. Ito ang tanging paraan para malaman mo agad ang order habang nagluluto ka.",
+            "Your phone rings the moment an order comes in, even with the browser closed. It is the only way to hear about an order while you are cooking.",
         }
       : {
-          title: "Order updates sa phone mo",
+          title: "Order updates on your phone",
           blurb:
-            "Papaalalahanan ka namin kapag handa na ang order mo, kahit naka-close na ang page. Hindi mo na kailangang balik-balikan.",
+            "We will tell you the moment your food is ready, even after you close the page — no need to keep checking back.",
         };
 
   return (
@@ -250,46 +250,44 @@ export function PushToggle({
       <div className="mt-5">
         {!vapidKey ? (
           <p className="rounded-2xl bg-gold-400/20 p-4 text-sm text-ink-800/80">
-            Hindi pa naka-setup sa server. Kailangan ng{" "}
-            <code className="font-mono text-xs">VAPID</code> keys sa Vercel —
-            libre ito, walang bayad. Tingnan ang README para sa dalawang linyang
-            hakbang.
+            Not set up on the server yet. This needs a pair of{" "}
+            <code className="font-mono text-xs">VAPID</code> keys in Vercel —
+            free, no billing. The README has the two-line setup.
           </p>
         ) : state === "checking" ? (
           <p className="text-sm text-ink-800/50">Checking this device…</p>
         ) : state === "unsupported" ? (
           <p className="text-sm text-ink-800/70">
-            Hindi kaya ng browser na ito ang notifications. Subukan ang Chrome
-            sa Android, o kahit anong browser sa computer.
+            This browser can&apos;t do notifications. Try Chrome on Android, or
+            any browser on a computer.
           </p>
         ) : state === "needs-install" ? (
           <div className="rounded-2xl bg-cream-50 p-4 text-sm text-ink-800/80 ring-1 ring-ink-950/10">
             <p className="font-bold text-ink-950">
-              Sa iPhone, i-install muna ang site.
+              On iPhone, install the site first.
             </p>
             <ol className="mt-2 list-decimal space-y-1 pl-5">
               <li>
-                Pindutin ang <strong>Share</strong> (yung kahon na may pataas na
-                arrow)
+                Tap <strong>Share</strong> (the box with an arrow pointing up)
               </li>
               <li>
-                Piliin ang <strong>Add to Home Screen</strong>
+                Choose <strong>Add to Home Screen</strong>
               </li>
               <li>
-                Buksan ang Pepper Pan mula sa home screen, balik ka dito, tapos
-                i-on
+                Open Pepper Pan from the home screen, come back here, and turn
+                it on
               </li>
             </ol>
             <p className="mt-2 text-ink-800/60">
-              Kahilingan ito ng Apple, hindi ng system natin — sa Android at sa
-              computer, gumagana agad.
+              That&apos;s Apple&apos;s rule, not ours — on Android and on a
+              computer it works straight away.
             </p>
           </div>
         ) : state === "blocked" ? (
           <p className="rounded-2xl bg-brand-600/10 p-4 text-sm text-ink-800/80">
-            Naka-block ang notifications para sa site na ito. Buksan ang padlock
-            🔒 sa tabi ng address, hanapin ang <strong>Notifications</strong>,
-            piliin ang <strong>Allow</strong>, tapos i-refresh.
+            Notifications are blocked for this site. Open the padlock 🔒 beside
+            the address, find <strong>Notifications</strong>, choose{" "}
+            <strong>Allow</strong>, then refresh.
           </p>
         ) : state === "on" ? (
           <div className="flex flex-wrap gap-2">
@@ -314,7 +312,7 @@ export function PushToggle({
             disabled={busy}
             className="rounded-full bg-brand-600 px-6 py-3 font-bold text-cream-50 transition-transform hover:scale-105 disabled:opacity-50"
           >
-            {busy ? "Setting up…" : "I-on ang notifications"}
+            {busy ? "Setting up…" : "Turn on notifications"}
           </button>
         )}
       </div>
@@ -324,8 +322,8 @@ export function PushToggle({
 
       {(state === "on" || state === "off") && vapidKey && (
         <p className="mt-4 text-xs text-ink-800/50">
-          Bawat device ay hiwalay — kung gusto mong tumunog din ang isa pang
-          phone o tablet, buksan ito doon at i-on din.
+          Each device is separate — to make another phone or tablet ring too,
+          open this page there and turn it on as well.
         </p>
       )}
     </div>
