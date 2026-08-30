@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
+import { ColumnChart, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { formatDateTime } from "@/lib/format-date";
@@ -96,19 +96,14 @@ export default async function AdminDashboard({
   const [fromDate, toDate] =
     rangeFrom <= rangeTo ? [rangeFrom, rangeTo] : [rangeTo, rangeFrom];
   const customRange = fromDate !== monthStart || toDate !== todayStr;
-  const last30 = new Date(now.getTime() - 30 * 864e5).toISOString().slice(0, 10);
 
-  const [ordersRes, linesRes, customersRes, leadsRes] = await Promise.all([
+  const [ordersRes, customersRes, leadsRes] = await Promise.all([
     supabase
       .from("orders")
       .select(
         "id, created_at, date, status, fulfillment, revenue, delivery_fee, payment_status, payment_method, contact_name"
       )
       .order("created_at", { ascending: false }),
-    supabase
-      .from("order_lines")
-      .select("qty, price_at_sale, meals(name), orders!inner(date)")
-      .gte("orders.date", last30),
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer"),
     // Chat leads waiting on a person. Errors (before migration 0011) count
     // as zero — a missing inbox shouldn't take the dashboard down with it.
@@ -171,43 +166,6 @@ export default async function AdminDashboard({
       value,
     };
   });
-
-  // --- Busiest hours (last 30 days) ---------------------------------------
-  const hourTally = new Array(24).fill(0);
-  for (const o of live) {
-    if (o.date >= last30) hourTally[new Date(o.created_at).getHours()] += 1;
-  }
-  // Trim to trading hours so 3am dead space doesn't squash the real bars.
-  const firstHour = Math.max(0, hourTally.findIndex((v) => v > 0));
-  const lastHour = 23 - [...hourTally].reverse().findIndex((v) => v > 0);
-  const hours: Bar[] =
-    firstHour >= 0 && lastHour >= firstHour
-      ? hourTally.slice(firstHour, lastHour + 1).map((value, i) => {
-          const h = firstHour + i;
-          const label = h % 12 === 0 ? 12 : h % 12;
-          return {
-            label: String(label),
-            caption: `${label}${h < 12 ? "am" : "pm"}`,
-            value,
-          };
-        })
-      : [];
-
-  // --- Best sellers (last 30 days) ----------------------------------------
-  type Line = { qty: number; price_at_sale: number; meals: { name: string } | null };
-  const tally = new Map<string, { qty: number; revenue: number }>();
-  for (const line of (linesRes.data ?? []) as unknown as Line[]) {
-    const name = line.meals?.name ?? "Unknown item";
-    const cur = tally.get(name) ?? { qty: 0, revenue: 0 };
-    cur.qty += Number(line.qty);
-    cur.revenue += Number(line.qty) * Number(line.price_at_sale);
-    tally.set(name, cur);
-  }
-  const ranked = [...tally.entries()].map(([name, v]) => ({ name, ...v }));
-  const topItems: Bar[] = ranked
-    .sort((a, b) => b.qty - a.qty)
-    .slice(0, 7)
-    .map((r) => ({ label: r.name, value: r.qty, caption: peso(r.revenue) }));
 
   const pickup = live.filter((o) => o.fulfillment === "pickup").length;
   const delivery = live.filter((o) => o.fulfillment === "delivery").length;
@@ -337,38 +295,25 @@ export default async function AdminDashboard({
         </div>
       </section>
 
-      <div className="grid gap-10 lg:grid-cols-2">
-        {/* Best sellers */}
-        <section>
-          <h2 className="font-display text-2xl font-black text-ink-950">Best sellers</h2>
-          <p className="mt-1 text-sm text-ink-800/60">Units sold, last 30 days</p>
-          {topItems.length === 0 ? (
-            <p className="mt-5 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-              No sales recorded in the last 30 days yet.
-            </p>
-          ) : (
-            <div className="mt-5 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
-              <RankedBars data={topItems} hue="count" suffix={(r) => r.caption ?? ""} />
-            </div>
-          )}
-        </section>
-
-        {/* Busiest hours */}
-        <section>
-          <h2 className="font-display text-2xl font-black text-ink-950">Busiest hours</h2>
-          <p className="mt-1 text-sm text-ink-800/60">
-            Orders by hour of day, last 30 days — plan your prep around these
-          </p>
-          <div className="mt-5 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
-            <ColumnChart
-              data={hours}
-              hue="count"
-              format="plain"
-              emptyLabel="Not enough orders yet to show a pattern."
-            />
-          </div>
-        </section>
-      </div>
+      {/* Best sellers and busiest hours used to sit here as well as on
+          Insights → Analytics. Two pages showing the same chart makes the
+          owner wonder which one is right; Today is now purely "what needs
+          doing", and understanding the shop lives in one place. */}
+      <Link
+        href="/admin/analytics"
+        className="flex flex-wrap items-center gap-3 rounded-2xl bg-cream-100 px-5 py-4 ring-1 ring-ink-950/10 transition-colors hover:bg-cream-200"
+      >
+        <span className="text-lg">📈</span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-bold text-ink-950">
+            Best sellers, busiest hours, what&apos;s not moving
+          </span>
+          <span className="block text-sm text-ink-800/60">
+            All of it lives in Insights, with a date range you can set.
+          </span>
+        </span>
+        <span className="font-bold text-brand-600">Open Insights →</span>
+      </Link>
 
       {/* Recent orders */}
       <section>

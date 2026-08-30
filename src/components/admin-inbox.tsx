@@ -10,6 +10,7 @@ import { useChatRealtime } from "@/lib/use-chat-realtime";
 import { deriveTriggers, GAVE_UP } from "@/lib/faq";
 import { formatDateTime } from "@/lib/format-date";
 import { AdminSearch } from "@/components/admin-search";
+import { ChatSteam, EmptyState } from "@/components/spot-art";
 
 export type InboxMessage = {
   role: "user" | "assistant" | "staff";
@@ -173,11 +174,16 @@ export function AdminInbox({ threads }: { threads: InboxThread[] }) {
       >
         {(shown) =>
           shown.length === 0 ? (
-            <p className="rounded-3xl bg-cream-100 px-6 py-10 text-center text-sm text-ink-800/60 ring-1 ring-ink-950/10">
+            <EmptyState
+              art={<ChatSteam className="h-full w-full" />}
+              title={
+                filter === "waiting" ? "Nothing waiting on you" : "No conversations yet"
+              }
+            >
               {filter === "waiting"
-                ? "Nothing waiting on you. 🎉"
-                : "No conversations here yet."}
-            </p>
+                ? "Every customer who needed a person has had one. Nice."
+                : "When someone asks Pepper Pan something, it lands here."}
+            </EmptyState>
           ) : (
             <ul className="flex flex-col gap-3">
               {shown.map((t) => {

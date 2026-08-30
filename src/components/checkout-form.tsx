@@ -10,6 +10,7 @@ import { PaymentPicker } from "@/components/payment-picker";
 import { AddressField } from "@/components/address-field";
 import { OrderTiming } from "@/components/order-timing";
 import { formatDateTimeFull } from "@/lib/format-date";
+import { EmptyPan, EmptyState } from "@/components/spot-art";
 import {
   canScheduleFor,
   parseManilaLocal,
@@ -159,15 +160,20 @@ export function CheckoutForm({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-10 text-center">
-        <p className="font-display text-2xl font-bold text-ink-950">Your cart is empty</p>
-        <Link
-          href="/menu"
-          className="mt-6 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
-        >
-          Browse the menu →
-        </Link>
-      </div>
+      <EmptyState
+        art={<EmptyPan className="h-full w-full" />}
+        title="Wala pang laman"
+        action={
+          <Link
+            href="/menu"
+            className="mt-2 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
+          >
+            Browse the menu →
+          </Link>
+        }
+      >
+        There&apos;s nothing to check out yet.
+      </EmptyState>
     );
   }
 

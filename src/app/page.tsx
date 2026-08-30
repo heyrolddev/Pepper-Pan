@@ -11,6 +11,13 @@ import { WhyUs } from "@/components/why-us";
 import { FanFavorites } from "@/components/fan-favorites";
 import { CustomerAvatar } from "@/components/customer-avatar";
 import { Stars } from "@/components/stars";
+import {
+  SectionMark,
+  NoodleBowl,
+  Chili,
+  OrderBag,
+  ChatSteam,
+} from "@/components/spot-art";
 import { getPublicReviews } from "@/lib/reviews-server";
 import { isConfigured } from "@/lib/auth";
 
@@ -247,9 +254,12 @@ export default async function Home() {
         <div className="relative mx-auto max-w-6xl px-6">
           <Reveal className="mb-10 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <span className="text-xs font-bold uppercase tracking-widest text-gold-400">
+              <SectionMark
+                art={<NoodleBowl className="h-full w-full" />}
+                className="text-gold-400"
+              >
                 Crowd pleasers
-              </span>
+              </SectionMark>
               <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-cream-50">
                 Fan Favorites
               </h2>
@@ -298,9 +308,12 @@ export default async function Home() {
       <section id="story" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-24">
         <div className="grid gap-14 lg:grid-cols-2 lg:items-center">
           <Reveal direction="right">
-            <span className="text-xs font-bold uppercase tracking-widest text-brand-600">
+            <SectionMark
+              art={<Chili className="h-full w-full" />}
+              className="text-brand-600"
+            >
               Our story
-            </span>
+            </SectionMark>
             <h2 className="mt-3 font-display text-4xl font-black leading-tight tracking-tight text-ink-950 sm:text-5xl">
               No passport required.
             </h2>
@@ -451,9 +464,12 @@ export default async function Home() {
       <section id="visit" className="scroll-mt-24 bg-cream-100 py-24">
         <div className="mx-auto max-w-6xl px-6">
           <Reveal>
-            <span className="text-xs font-bold uppercase tracking-widest text-brand-600">
+            <SectionMark
+              art={<OrderBag className="h-full w-full" />}
+              className="text-brand-600"
+            >
               Come see us
-            </span>
+            </SectionMark>
             <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-ink-950 sm:text-5xl">
               Visit Pepper Pan
             </h2>
@@ -491,9 +507,12 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       <section className="mx-auto max-w-3xl px-6 py-24">
         <Reveal className="mb-8">
-          <span className="text-xs font-bold uppercase tracking-widest text-brand-600">
+          <SectionMark
+            art={<ChatSteam className="h-full w-full" />}
+            className="text-brand-600"
+          >
             Good to know
-          </span>
+          </SectionMark>
           <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-ink-950">
             Frequently asked questions
           </h2>

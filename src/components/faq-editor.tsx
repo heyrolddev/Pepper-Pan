@@ -8,6 +8,7 @@ import {
 } from "@/app/admin/inbox/actions";
 import { deriveTriggers, type Unanswered } from "@/lib/faq";
 import { formatDateTime } from "@/lib/format-date";
+import { EmptyState, ChatSteam } from "@/components/spot-art";
 
 export type FaqRow = {
   id: string;
@@ -150,18 +151,16 @@ export function FaqEditor({
       )}
 
       {rows.length === 0 ? (
-        <div className="rounded-3xl bg-cream-100 px-6 py-10 text-center ring-1 ring-ink-950/10">
-          <p className="text-sm text-ink-800/60">
-            No custom answers yet. Ask Pepper Pan still handles the menu,
-            prices, delivery, payment, hours and your bestseller on its own —
-            this is for everything else.
-          </p>
-          <p className="mt-2 text-sm text-ink-800/60">
-            The quickest way to start: open <strong>Inbox</strong>, find a
-            question it couldn&apos;t answer, and press{" "}
-            <strong>Teach this answer</strong>.
-          </p>
-        </div>
+        <EmptyState
+          art={<ChatSteam className="h-full w-full" />}
+          title="No custom answers yet"
+        >
+          Ask Pepper Pan still handles the menu, prices, delivery, payment,
+          hours and your bestseller on its own — this is for everything else.
+          The quickest way to start: open <strong>Inbox</strong>, find a
+          question it couldn&apos;t answer, and press{" "}
+          <strong>Teach this answer</strong>.
+        </EmptyState>
       ) : (
         <ul className="flex flex-col gap-3">
           {rows.map((row) =>

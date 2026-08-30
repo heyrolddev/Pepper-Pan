@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
+import { EmptyState, OrderBag } from "@/components/spot-art";
 import { OrderTracker, type TrackedOrder } from "@/components/order-tracker";
 import type { ReviewableItem } from "@/components/order-review-panel";
 import {
@@ -185,20 +186,20 @@ export default async function OrdersPage() {
 
       <section className="mx-auto max-w-2xl px-6 py-14">
         {tracked.length === 0 ? (
-          <div className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-10 text-center">
-            <p className="font-display text-2xl font-bold text-ink-950">
-              No orders yet
-            </p>
-            <p className="mt-2 text-ink-800/70">
-              Your first craving is one click away.
-            </p>
-            <Link
-              href="/menu"
-              className="mt-6 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
-            >
-              Browse the menu →
-            </Link>
-          </div>
+          <EmptyState
+            art={<OrderBag className="h-full w-full" />}
+            title="No orders yet"
+            action={
+              <Link
+                href="/menu"
+                className="mt-2 inline-block rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
+              >
+                Browse the menu →
+              </Link>
+            }
+          >
+            Your first craving is one click away.
+          </EmptyState>
         ) : (
           <OrderTracker orders={tracked} customerId={user.id} />
         )}

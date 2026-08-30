@@ -39,10 +39,25 @@ export const metadata: Metadata = {
  * preference skips it. Client-side route changes don't re-run this, so
  * navigating between pages stays instant.
  */
+/**
+ * Runs before first paint so the real page never flashes before the overlay.
+ *
+ * The intro is a first-impression, not a toll booth: it plays once per visit
+ * and every load after that goes straight to the page. A hungry customer
+ * coming back to check their order should not wait two seconds to see it,
+ * and neither should anyone who reloads. A reduced-motion preference skips
+ * it entirely. Client-side route changes never re-run this.
+ */
 const introScript = `(function(){try{
 var d=document.documentElement;
-if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){d.setAttribute('data-intro','skip');}
-else{d.classList.add('intro-lock');}
+var seen=false;
+try{seen=sessionStorage.getItem('pp_intro')==='1';}catch(e){seen=false;}
+if(seen||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+  d.setAttribute('data-intro','skip');
+}else{
+  d.classList.add('intro-lock');
+  try{sessionStorage.setItem('pp_intro','1');}catch(e){}
+}
 }catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
