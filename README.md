@@ -45,6 +45,38 @@ back office for staff (inventory, batches, orders, waste, finance).
    Customers can add items to a cart, sign in with an emailed magic link, place
    an order, and see their order history at `/orders`.
 
+## Notifications
+
+The shop can reach a phone with the browser closed, and it costs nothing.
+
+Web Push has no account and no vendor behind it — the "key" is a keypair you
+generate yourself. Once, on any machine with Node:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Put the two values in the hosting environment (Vercel → Settings →
+Environment Variables) as `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and
+`VAPID_PRIVATE_KEY`, then redeploy. The public one is meant to be public; the
+private one must never leave the server.
+
+After that, **⚙ Setup → Alerts** in HQ turns notifications on for whichever
+device you're holding — turn it on separately on every phone that should ring.
+Customers get the same switch on `/orders`.
+
+Two things worth knowing:
+
+- **Per device, not per account.** A subscription belongs to one browser on
+  one phone. Turning it on at home doesn't turn it on at the stall.
+- **iPhones need the site installed first.** Safari only allows notifications
+  for a site added to the Home Screen (Share → Add to Home Screen). The Alerts
+  screen says so and walks through it. Android and desktop work immediately.
+
+With no keys set, the Alerts screen says it isn't configured and everything
+else behaves exactly as before. Email status updates (`RESEND_API_KEY`,
+`SHOP_FROM_EMAIL`) are optional in the same way.
+
 ## Project structure
 
 - `src/app` — Next.js App Router pages: `/` (menu), `/cart`, `/login`

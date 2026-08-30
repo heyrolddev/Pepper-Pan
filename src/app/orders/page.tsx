@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState, OrderBag } from "@/components/spot-art";
 import { OrderTracker, type TrackedOrder } from "@/components/order-tracker";
+import { PushToggle } from "@/components/push-toggle";
+import { pushConfigured } from "@/lib/push";
 import type { ReviewableItem } from "@/components/order-review-panel";
 import {
   PAYMENT_STATUSES,
@@ -201,7 +203,19 @@ export default async function OrdersPage() {
             Your first craving is one click away.
           </EmptyState>
         ) : (
-          <OrderTracker orders={tracked} customerId={user.id} />
+          <div className="flex flex-col gap-8">
+            {/* Offered here rather than at checkout on purpose: a permission
+                prompt in the middle of paying is a prompt people dismiss, and
+                a dismissal is permanent. Someone who has just ordered and is
+                now watching for it is the one moment the ask makes sense. */}
+            {pushConfigured() && (
+              <PushToggle
+                audience="customer"
+                vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
+              />
+            )}
+            <OrderTracker orders={tracked} customerId={user.id} />
+          </div>
         )}
       </section>
     </main>

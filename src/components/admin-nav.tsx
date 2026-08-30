@@ -52,6 +52,7 @@ const SECTIONS: Section[] = [
       { href: "/admin/hours", label: "Hours" },
       { href: "/admin/delivery", label: "Delivery" },
       { href: "/admin/payments", label: "Payments" },
+      { href: "/admin/alerts", label: "Alerts" },
     ],
   },
 ];

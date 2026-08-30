@@ -1,0 +1,25 @@
+{
+  "name": "Pepper Pan",
+  "short_name": "Pepper Pan",
+  "description": "Taiwan-style black pepper noodles, rice meals and milktea, made fresh daily in Apalit.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fdf8f0",
+  "theme_color": "#1a1310",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
