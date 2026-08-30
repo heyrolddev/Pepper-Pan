@@ -12,6 +12,7 @@ const links = [
   { href: "/admin/payments", label: "Payments" },
   { href: "/admin/reviews", label: "Reviews" },
   { href: "/admin/inbox", label: "Inbox" },
+  { href: "/admin/faq", label: "Answers" },
   { href: "/admin/analytics", label: "Analytics" },
 ];
 

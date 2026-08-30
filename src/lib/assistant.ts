@@ -1,8 +1,10 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export type ChatTurn = { role: "user" | "assistant"; content: string };
+export type ChatTurn = { role: "user" | "assistant" | "staff"; content: string };
 export type AssistantReply = { text: string; needsHuman: boolean };
+
+type FaqEntry = { id: string; answer: string; triggers: string[]; priority: number };
 
 /**
  * "Ask Pepper Pan" answers from the shop's own data — no AI model, no API key,
@@ -24,6 +26,7 @@ type Meal = {
 };
 
 type Facts = {
+  faq: FaqEntry[];
   meals: Meal[];
   bestSeller: string | null;
   delivery: {
@@ -63,7 +66,7 @@ export function assistantConfigured() {
 async function loadFacts(): Promise<Facts> {
   const db = createAdminClient();
 
-  const [mealsRes, deliveryRes, paymentRes, linesRes] = await Promise.all([
+  const [mealsRes, deliveryRes, paymentRes, linesRes, faqRes] = await Promise.all([
     db
       .from("meals")
       .select("name, price, description, is_available")
@@ -79,6 +82,14 @@ async function loadFacts(): Promise<Facts> {
       .select("qty, meals(name), orders!inner(status)")
       .neq("orders.status", "cancelled")
       .limit(2000),
+    // The service-role client bypasses RLS, so the is_active filter has to be
+    // spelled out here — a switched-off answer must stay switched off.
+    db
+      .from("faq_entries")
+      .select("id, answer, triggers, priority")
+      .eq("is_active", true)
+      .order("priority", { ascending: false })
+      .limit(200),
   ]);
 
   const tally = new Map<string, number>();
@@ -95,6 +106,9 @@ async function loadFacts(): Promise<Facts> {
   const p = paymentRes.data;
 
   return {
+    // Missing table (migration 0012 not run yet) simply means no custom
+    // answers — the built-in ones still work.
+    faq: (faqRes.data ?? []) as FaqEntry[],
     meals: (mealsRes.data ?? []) as Meal[],
     bestSeller,
     delivery: d
@@ -195,6 +209,35 @@ function mealsMentioned(message: string, meals: Meal[]): Meal[] {
   }
 
   return hits.sort((a, b) => b.score - a.score).map((h) => h.meal);
+}
+
+/**
+ * The owner's own answer for this message, if one fits.
+ *
+ * Checked before every built-in reply, because an answer the owner wrote by
+ * hand is the shop correcting us — if they've written something about
+ * delivery, their words beat our generated sentence.
+ *
+ * Ties break on the owner's priority, then on the longest trigger matched, so
+ * a specific entry ("chicken wings") wins over a broad one ("chicken").
+ */
+function matchFaq(message: string, faq: FaqEntry[]): FaqEntry | null {
+  const n = normalize(message);
+  let best: { entry: FaqEntry; score: number } | null = null;
+
+  for (const entry of faq) {
+    let longest = 0;
+    for (const raw of entry.triggers ?? []) {
+      const trigger = normalize(raw);
+      if (trigger && has(n, [trigger])) longest = Math.max(longest, trigger.length);
+    }
+    if (longest === 0) continue;
+
+    const score = entry.priority * 1000 + longest;
+    if (!best || score > best.score) best = { entry, score };
+  }
+
+  return best?.entry ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +413,19 @@ export async function askAssistant(history: ChatTurn[]): Promise<AssistantReply>
   }
 
   const facts = await loadFacts();
+
+  // --- the owner's own answers, before any of ours -------------------------
+  const owned = matchFaq(message, facts.faq);
+  if (owned) {
+    // Counting the hit is best-effort: an answer that reached the customer
+    // shouldn't fail because a statistic didn't save.
+    try {
+      await createAdminClient().rpc("bump_faq_hit", { p_id: owned.id });
+    } catch {
+      /* the answer still went out, which is what matters */
+    }
+    return { text: owned.answer, needsHuman: false };
+  }
 
   // --- specific dish, with or without a price word -------------------------
   const named = mealsMentioned(message, facts.meals);

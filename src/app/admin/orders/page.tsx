@@ -48,13 +48,36 @@ type CustomerInfo = {
 export default async function AdminOrdersPage() {
   const supabase = await createClient();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("orders")
     .select(
       "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
     )
     .order("created_at", { ascending: false })
     .limit(200);
+
+  // A failed query used to render as "no orders yet", which is the worst
+  // possible lie for this page — the shop would sit waiting on orders that
+  // were already in the database. Say what actually went wrong instead.
+  if (error) {
+    return (
+      <div className="rounded-3xl bg-brand-50 p-8 ring-2 ring-brand-600/40">
+        <h2 className="font-display text-2xl font-black text-brand-700">
+          Couldn&apos;t load your orders
+        </h2>
+        <p className="mt-2 max-w-xl text-sm text-ink-800/70">
+          This is a database error, not an empty shop — your orders are safe.
+          If the message below mentions a column that doesn&apos;t exist, a
+          migration hasn&apos;t been run yet. Run any missing files from{" "}
+          <code className="font-mono text-xs">supabase/migrations/</code> in the
+          Supabase SQL Editor, in number order.
+        </p>
+        <p className="mt-3 rounded-xl bg-cream-50 px-4 py-3 font-mono text-xs text-ink-800/70">
+          {error.message}
+        </p>
+      </div>
+    );
+  }
 
   const rows = (data ?? []) as unknown as OrderRow[];
 

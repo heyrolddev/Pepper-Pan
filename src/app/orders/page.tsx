@@ -77,13 +77,31 @@ export default async function OrdersPage() {
     );
   }
 
-  const { data: orders } = await supabase
+  const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
       "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
+
+  // "You have no orders" is a lie when the query itself failed, and it's the
+  // kind of lie that makes a customer order twice.
+  if (ordersError) {
+    return (
+      <main className="under-nav mx-auto max-w-3xl px-6 py-16">
+        <div className="rounded-3xl bg-brand-50 p-8 ring-2 ring-brand-600/40">
+          <h1 className="font-display text-2xl font-black text-brand-700">
+            We couldn&apos;t load your orders
+          </h1>
+          <p className="mt-2 text-sm text-ink-800/70">
+            Your orders are safe — this is our problem, not yours. Please try
+            again in a moment, or call us on +63 947 353 3060.
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   const typedOrders = (orders ?? []) as unknown as Order[];
 

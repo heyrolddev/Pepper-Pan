@@ -53,11 +53,12 @@ export async function sendChatMessage(input: {
   // Find or open this visitor's thread.
   const { data: existing } = await db
     .from("chat_threads")
-    .select("id")
+    .select("id, taken_over")
     .eq("guest_key", input.guestKey)
     .maybeSingle();
 
   let threadId = existing?.id as string | undefined;
+  const takenOver = Boolean(existing?.taken_over);
   if (!threadId) {
     const { data: created, error } = await db
       .from("chat_threads")
@@ -96,6 +97,23 @@ export async function sendChatMessage(input: {
     role: "user",
     content: message,
   });
+
+  // Once the owner has joined this conversation the automatic replies stop.
+  // Nothing reads worse to a customer than a bot answering over the person
+  // they were just talking to.
+  if (takenOver) {
+    await db
+      .from("chat_threads")
+      .update({
+        last_message_at: new Date().toISOString(),
+        needs_human: true,
+        handled: false,
+      })
+      .eq("id", threadId);
+
+    revalidatePath("/admin/inbox");
+    return { reply: "", needsHuman: true, error: null };
+  }
 
   const reply = await askAssistant(history);
 
@@ -146,4 +164,52 @@ export async function saveChatContact(input: {
 
   revalidatePath("/admin/inbox");
   return { error: null };
+}
+
+export type ChatMessage = { id: number; role: "user" | "assistant" | "staff"; content: string };
+
+/**
+ * Everything said on this visitor's thread after `sinceId`.
+ *
+ * This is how the widget stays live. Supabase Realtime can't carry it: an
+ * anonymous visitor has no session, and their thread is deliberately readable
+ * only through the browser-held key rather than through any policy a stranger
+ * could enumerate. So the widget asks, holding that key, while it's open.
+ */
+export async function fetchChatMessages(input: {
+  guestKey: string;
+  sinceId: number;
+}): Promise<{ messages: ChatMessage[]; takenOver: boolean; error: string | null }> {
+  if (!/^[a-z0-9-]{8,64}$/i.test(input.guestKey)) {
+    return { messages: [], takenOver: false, error: null };
+  }
+
+  try {
+    const db = createAdminClient();
+
+    const { data: thread } = await db
+      .from("chat_threads")
+      .select("id, taken_over")
+      .eq("guest_key", input.guestKey)
+      .maybeSingle();
+
+    if (!thread) return { messages: [], takenOver: false, error: null };
+
+    const { data } = await db
+      .from("chat_messages")
+      .select("id, role, content")
+      .eq("thread_id", thread.id)
+      .gt("id", Number.isFinite(input.sinceId) ? input.sinceId : 0)
+      .order("id", { ascending: true })
+      .limit(50);
+
+    return {
+      messages: (data ?? []) as ChatMessage[],
+      takenOver: Boolean(thread.taken_over),
+      error: null,
+    };
+  } catch {
+    // A failed poll is not worth showing anyone — the next one is 4s away.
+    return { messages: [], takenOver: false, error: null };
+  }
 }

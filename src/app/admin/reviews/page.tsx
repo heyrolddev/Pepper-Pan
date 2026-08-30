@@ -18,11 +18,24 @@ export default async function AdminReviewsPage() {
   const supabase = await createClient();
 
   // Staff RLS returns hidden reviews too, which is the point of this page.
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("reviews")
     .select("id, customer_id, meal_id, rating, comment, shop_reply, is_hidden, created_at")
     .order("created_at", { ascending: false })
     .limit(300);
+
+  if (error) {
+    return (
+      <div className="rounded-3xl bg-brand-50 p-8 ring-2 ring-brand-600/40">
+        <h2 className="font-display text-2xl font-black text-brand-700">
+          Couldn&apos;t load reviews
+        </h2>
+        <p className="mt-3 rounded-xl bg-cream-50 px-4 py-3 font-mono text-xs text-ink-800/70">
+          {error.message}
+        </p>
+      </div>
+    );
+  }
 
   const rows = (data ?? []) as Row[];
 
