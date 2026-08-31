@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ColumnChart, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { DateRangePicker } from "@/components/date-range-picker";
-import { formatDateTime } from "@/lib/format-date";
+import { formatDateTime, shopToday } from "@/lib/format-date";
 import { StatTile, Delta, pesoRound } from "@/components/stat-tile";
 
 // Shop-timezone day labels, so a bar is filed under the day the shop had,
@@ -29,6 +29,7 @@ type OrderRow = {
   status: string;
   fulfillment: string;
   revenue: number;
+  cogs: number;
   delivery_fee: number | null;
   payment_status: string;
   payment_method: string;
@@ -44,7 +45,7 @@ export default async function AdminDashboard({
   const supabase = await createClient();
 
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = shopToday(now);
   const yesterdayStr = new Date(now.getTime() - 864e5).toISOString().slice(0, 10);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
 
@@ -62,7 +63,7 @@ export default async function AdminDashboard({
     supabase
       .from("orders")
       .select(
-        "id, created_at, date, status, fulfillment, revenue, delivery_fee, payment_status, payment_method, contact_name"
+        "id, created_at, date, status, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
       )
       .order("created_at", { ascending: false }),
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer"),
@@ -82,6 +83,17 @@ export default async function AdminDashboard({
   const live = orders.filter((o) => o.status !== "cancelled");
 
   const sum = (rows: OrderRow[]) => rows.reduce((s, o) => s + Number(o.revenue || 0), 0);
+  // What was left after ingredients. `cogs` is snapshotted onto each order at
+  // the moment it's sold, so this is what the food actually cost that day and
+  // not what the same recipe would cost at today's prices.
+  const kept = (rows: OrderRow[]) =>
+    rows.reduce((s, o) => s + Number(o.revenue || 0) - Number(o.cogs || 0), 0);
+  // Orders that earned money but carry no cost. Every order placed before
+  // costing existed is one of these, and so is any order of a dish with no
+  // recipe — in both cases the profit above is a ceiling, not a figure. Said
+  // out loud rather than quietly inflating the number.
+  const uncosted = (rows: OrderRow[]) =>
+    rows.filter((o) => Number(o.revenue || 0) > 0 && Number(o.cogs || 0) <= 0).length;
   const todays = live.filter((o) => o.date === todayStr);
   const yesterdays = live.filter((o) => o.date === yesterdayStr);
   const monthly = live.filter((o) => o.date >= monthStart);
@@ -168,10 +180,23 @@ export default async function AdminDashboard({
             />
           </StatTile>
           <StatTile
-            label="Average order"
-            value={peso(avgOrder)}
-            detail={`across ${completed.length} completed`}
-          />
+            label={customRange ? "Kept in range" : "Kept this month"}
+            value={peso(kept(inRange))}
+            detail={
+              uncosted(inRange) > 0
+                ? `Best case — ${uncosted(inRange)} order${
+                    uncosted(inRange) === 1 ? " has" : "s have"
+                  } no cost recorded`
+                : "After ingredients, before everything else"
+            }
+            tone={uncosted(inRange) > 0 ? "plain" : "good"}
+          >
+            <Delta
+              now={kept(inRange)}
+              before={kept(inPrevRange)}
+              label={`the ${spanDays} days before`}
+            />
+          </StatTile>
           <StatTile
             label="Needs action"
             value={String(needsAction.length)}
@@ -181,6 +206,11 @@ export default async function AdminDashboard({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatTile
+            label="Average order"
+            value={peso(avgOrder)}
+            detail={`across ${completed.length} completed`}
+          />
           <StatTile
             label="Ready to hand over"
             value={String(readyNow.length)}

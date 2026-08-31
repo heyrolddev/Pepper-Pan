@@ -1,13 +1,6 @@
 import { getViewer } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  costBatches,
-  isLow,
-  stockValue,
-  type Batch,
-  type BatchIngredient,
-  type Ingredient,
-} from "@/lib/costing";
+import { loadCostBook } from "@/lib/costing-server";
+import { isLow, stockValue } from "@/lib/costing";
 import { InventoryView, type BatchRow, type StockRow } from "@/components/inventory-view";
 
 // Stock moves every service. A cached shopping list is the wrong shopping list.
@@ -20,26 +13,7 @@ export default async function AdminInventoryPage() {
   // rather than the whole page.
   const canSeeCosts = viewer?.profile?.role === "owner";
 
-  const supabase = createAdminClient();
-  const [ing, bat, batIng] = await Promise.all([
-    supabase.from("ingredients").select("*").order("name"),
-    supabase.from("batches").select("*").order("name"),
-    supabase.from("batch_ingredients").select("*"),
-  ]);
-
-  const failed = [
-    ing.error && "ingredients",
-    bat.error && "batches",
-    batIng.error && "batch recipes",
-  ].filter(Boolean) as string[];
-
-  const ingredients = (ing.data ?? []) as Ingredient[];
-  const batches = (bat.data ?? []) as Batch[];
-  const batchCosts = costBatches(
-    batches,
-    (batIng.data ?? []) as BatchIngredient[],
-    ingredients
-  );
+  const { ingredients, batchCosts, failed } = await loadCostBook();
 
   const stock: StockRow[] = ingredients.map((i) => ({
     id: i.id,

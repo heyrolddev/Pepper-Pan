@@ -51,3 +51,21 @@ export function formatDate(value: string | Date): string {
 export function formatDateTimeFull(value: string | Date): string {
   return dateTimeFull.format(new Date(value));
 }
+
+/**
+ * The date an order gets filed under, as the database files it.
+ *
+ * `orders.date` defaults to Postgres `current_date`, and a Supabase project
+ * runs in UTC — so the shop's trading day, as recorded, runs 08:00 Manila to
+ * 08:00 Manila rather than midnight to midnight. Anything sold in the small
+ * hours counts towards the night it started, which for a stall that closes
+ * late is arguably the more useful day boundary, but it is an accident of the
+ * default rather than a decision.
+ *
+ * What matters is that every screen agrees with the column. This is that
+ * agreement, in one place: comparing a Manila calendar date against a UTC
+ * `date` column silently reads empty for the first eight hours of every day.
+ */
+export function shopToday(at: Date = new Date()): string {
+  return at.toISOString().slice(0, 10);
+}

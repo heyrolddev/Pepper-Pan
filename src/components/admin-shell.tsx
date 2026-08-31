@@ -44,6 +44,7 @@ const GROUPS: Group[] = [
     title: "Every day",
     items: [
       { href: "/admin", label: "Today", icon: "◉" },
+      { href: "/admin/counter", label: "Counter", icon: "◫" },
       { href: "/admin/orders", label: "Orders", icon: "▤", badge: "orders" },
       { href: "/admin/menu", label: "Menu", icon: "☰" },
       { href: "/admin/inbox", label: "Inbox", icon: "✉", badge: "inbox" },

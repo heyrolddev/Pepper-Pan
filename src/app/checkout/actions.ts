@@ -13,6 +13,7 @@ import {
   type PaymentSettings,
 } from "@/lib/payments";
 import { notifyNewOrder } from "@/lib/notify";
+import { recordOrderCost } from "@/lib/costing-server";
 
 type PlaceOrderInput = {
   // `name` is the browser's copy, used only to name a sold-out dish back to
@@ -327,6 +328,11 @@ export async function placeOrder(
   if (linesError) {
     return { error: linesError.message };
   }
+
+  // What the order cost to make, priced now. Awaited before the notification
+  // so a sale is never left uncosted by a slow push; it swallows its own
+  // failures, so it can't cost a placed order either.
+  await recordOrderCost(order.id);
 
   // Ring the shop's phones. Awaited rather than fired and forgotten: on
   // serverless the function can be frozen the moment the response returns,

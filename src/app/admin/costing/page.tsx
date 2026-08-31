@@ -1,16 +1,6 @@
 import { getViewer } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  costBatches,
-  costMeals,
-  marginFor,
-  type Batch,
-  type BatchIngredient,
-  type Ingredient,
-  type Meal,
-  type MealComponent,
-  type MealIngredient,
-} from "@/lib/costing";
+import { loadCostBook } from "@/lib/costing-server";
+import { marginFor } from "@/lib/costing";
 import { DishCosts, type DishRow } from "@/components/dish-costs";
 
 // Recipes and prices change from the Menu screen; a cached cost is a wrong one.
@@ -34,43 +24,7 @@ export default async function AdminCostingPage() {
     );
   }
 
-  const supabase = createAdminClient();
-  const [ing, bat, batIng, mea, meaIng, meaComp] = await Promise.all([
-    supabase.from("ingredients").select("*"),
-    supabase.from("batches").select("*"),
-    supabase.from("batch_ingredients").select("*"),
-    supabase.from("meals").select("*").order("name"),
-    supabase.from("meal_ingredients").select("*"),
-    supabase.from("meal_components").select("*"),
-  ]);
-
-  // supabase-js returns errors rather than throwing, so one failed read would
-  // otherwise show up as an empty recipe on every dish — which reads exactly
-  // like "no recipes entered". Said out loud instead.
-  const failed = [
-    ing.error && "ingredients",
-    bat.error && "batches",
-    batIng.error && "batch recipes",
-    mea.error && "dishes",
-    meaIng.error && "dish recipes",
-    meaComp.error && "combos",
-  ].filter(Boolean) as string[];
-
-  const ingredients = (ing.data ?? []) as Ingredient[];
-  const batches = (bat.data ?? []) as Batch[];
-
-  const batchCosts = costBatches(
-    batches,
-    (batIng.data ?? []) as BatchIngredient[],
-    ingredients
-  );
-  const mealCosts = costMeals(
-    (mea.data ?? []) as Meal[],
-    (meaIng.data ?? []) as MealIngredient[],
-    (meaComp.data ?? []) as MealComponent[],
-    ingredients,
-    batchCosts
-  );
+  const { mealCosts, failed } = await loadCostBook();
 
   // Maps don't survive the trip to a client component, and the client has no
   // business re-deriving arithmetic the server already did.
