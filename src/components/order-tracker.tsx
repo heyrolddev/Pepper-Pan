@@ -67,12 +67,28 @@ const STEP_COPY: Record<string, { label: string; blurb: string }> = {
   confirmed: { label: "Confirmed", blurb: "Confirmed! It's queued for the kitchen." },
   preparing: { label: "Cooking", blurb: "Your food is on the pan right now. 🔥" },
   ready: { label: "Ready", blurb: "Your food is ready and waiting." },
+  // Overridden per fulfilment below — see readyBlurb.
   out_for_delivery: {
     label: "On the way",
     blurb: "Your rider has left the stall — keep your phone nearby. 🛵",
   },
   completed: { label: "Done", blurb: "Enjoy! Salamat sa order. 🧡" },
 };
+
+/**
+ * "Ready" is two different pieces of news depending on who is coming to whom.
+ *
+ * A pickup customer needs to know where to walk. A delivery customer needs to
+ * know that nothing more will happen on this screen — the rider has their
+ * number and will ring, so the useful instruction is to stop watching the page
+ * and watch the phone. The countdown is gone by this point, and without a
+ * replacement the page would just sit there saying "ready" with no next step.
+ */
+function readyBlurb(fulfillment: string): string {
+  return fulfillment === "delivery"
+    ? "Ready and waiting for a rider. They'll call or text you when they're close — keep your phone nearby. 📱"
+    : "Ready for pickup! We're in front of Palengkeni (New Apalit Public Market), beside Osave.";
+}
 
 const peso = (n: number) => "₱" + Number(n).toFixed(2);
 
@@ -243,7 +259,9 @@ function OrderCard({ order }: { order: TrackedOrder }) {
 
           <StatusRail status={order.status} fulfillment={order.fulfillment} />
           <p className="mt-4 text-center text-sm font-semibold text-ink-800">
-            {STEP_COPY[order.status]?.blurb ?? ""}
+            {order.status === "ready"
+              ? readyBlurb(order.fulfillment)
+              : (STEP_COPY[order.status]?.blurb ?? "")}
           </p>
         </div>
       )}

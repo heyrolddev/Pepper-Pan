@@ -16,6 +16,23 @@ function revalidateOrders() {
   revalidatePath("/orders");
 }
 
+/**
+ * Once the food is ready, the ETA has done its job and becomes a lie.
+ *
+ * The countdown answers one question — "how long until my food is ready?" —
+ * and the moment the shop marks it ready that question is settled. Leaving it
+ * running means a customer standing at the stall with their food in front of
+ * them watching a clock that says four more minutes. And on a delivery order
+ * the shop's cooking estimate says nothing about when a rider will arrive;
+ * only the rider knows that, and they will ring.
+ */
+const ETA_IS_OVER: OrderStatus[] = [
+  "ready",
+  "out_for_delivery",
+  "completed",
+  "cancelled",
+];
+
 export async function setOrderStatus(
   orderId: string,
   status: OrderStatus
@@ -32,7 +49,16 @@ export async function setOrderStatus(
   // row-level security policy silently matched nothing.
   const { data, error } = await supabase
     .from("orders")
-    .update({ status })
+    .update({
+      status,
+      // Cleared in the same write as the status, not in a second one: two
+      // updates would leave a window where the order is ready and the clock
+      // is still counting, and that window is exactly when the customer is
+      // looking.
+      ...(ETA_IS_OVER.includes(status)
+        ? { eta_minutes: null, eta_set_at: null }
+        : {}),
+    })
     .eq("id", orderId)
     .select("id");
 
@@ -96,7 +122,12 @@ export async function cancelOrderAsStaff(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("orders")
-    .update({ status: "cancelled", cancelled_reason: reason.trim() || "Cancelled by the shop" })
+    .update({
+      status: "cancelled",
+      cancelled_reason: reason.trim() || "Cancelled by the shop",
+      eta_minutes: null,
+      eta_set_at: null,
+    })
     .eq("id", orderId)
     .select("id");
 

@@ -112,7 +112,13 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
               </span>
             )}
           </span>
-          {!["completed", "cancelled"].includes(o.status) && (
+          {/* The ETA answers "how long until it's ready", so it retires the
+              moment the answer is "it is". Setting the status to ready clears
+              the stored ETA too — this just stops offering a control that can
+              only produce a wrong promise. */}
+          {!["ready", "out_for_delivery", "completed", "cancelled"].includes(
+            o.status
+          ) && (
             <span className="flex items-center gap-2">
               {o.eta_minutes != null && (
                 <EtaCountdown minutes={o.eta_minutes} from={o.eta_set_at} />
