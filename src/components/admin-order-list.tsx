@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { alertEtaElapsed } from "@/app/admin/orders/actions";
 import { OrderStatusPicker } from "@/components/order-status-picker";
 import { EtaPicker } from "@/components/eta-picker";
 import { AdminSearch } from "@/components/admin-search";
@@ -158,7 +158,14 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
           ) && (
             <span className="flex items-center gap-2">
               {o.eta_minutes != null && (
-                <EtaCountdown minutes={o.eta_minutes} from={o.eta_set_at} />
+                <EtaCountdown
+                  minutes={o.eta_minutes}
+                  from={o.eta_set_at}
+                  overdueLabel
+                  // The tablet is the timer; this turns it into a buzz on the
+                  // owner's phone, which is where they actually are.
+                  onElapsed={() => void alertEtaElapsed(o.id)}
+                />
               )}
               <EtaPicker orderId={o.id} eta={o.eta_minutes} />
             </span>
@@ -235,32 +242,49 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
 }
 
 /**
- * A finished order, folded down to one line.
+ * Every order, folded to one line until you want it.
  *
- * Completed is the queue that grows forever — a month of trading is hundreds
- * of cards, and every one of them is the same six controls for an order
- * nobody is going to touch again. Folded, the whole month scans in a screen,
- * and the full card is one tap away for the times it matters (a customer
- * ringing about last Tuesday, or chasing a balance).
+ * This started as a fix for Completed, which grows forever — but a lunch rush
+ * has the same problem for a different reason. Eight open orders is eight full
+ * cards of controls, and finding the one a customer is ringing about means
+ * scrolling past seven you aren't dealing with. The line carries what you scan
+ * for (who, what state, how much, whether it's late); the card carries what
+ * you act on.
  *
- * Open, unfolded, and closed, folded — the shape of the row says which kind
- * of order it is before you read anything.
+ * Live queues start open, because during service the controls *are* the point
+ * and folding them would cost a tap on every order. Closed queues start folded,
+ * because nobody is going to touch them again. Either way the same control
+ * flips it, and it's a real button rather than a hairline of text — this gets
+ * used with one thumb, in a hurry, by someone holding a ladle.
  */
-function ClosedRow({ order: o }: { order: AdminOrder }) {
-  const [open, setOpen] = useState(false);
+function OrderRow({ order: o, startOpen }: { order: AdminOrder; startOpen: boolean }) {
+  const [open, setOpen] = useState(startOpen);
   const money = moneyState(o);
   const owed = money.balance > 0;
 
+  const Chevron = (
+    <span
+      aria-hidden
+      className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink-950 text-base leading-none text-cream-50 transition-transform ${
+        open ? "rotate-180" : ""
+      }`}
+    >
+      ⌄
+    </span>
+  );
+
   if (open) {
     return (
-      <li className="flex flex-col gap-2">
+      <li className="flex flex-col">
+        <OrderCard order={o} />
         <button
           onClick={() => setOpen(false)}
-          className="self-start text-xs font-bold text-ink-800/60 hover:text-brand-600"
+          aria-expanded
+          className="mx-auto -mt-3 flex items-center gap-2 rounded-full bg-ink-950 px-5 py-2 text-sm font-bold text-cream-50 shadow-lg transition-transform hover:scale-105"
         >
-          ▾ Fold this one back up
+          {Chevron}
+          Fold up
         </button>
-        <OrderCard order={o} />
       </li>
     );
   }
@@ -270,11 +294,9 @@ function ClosedRow({ order: o }: { order: AdminOrder }) {
       <button
         onClick={() => setOpen(true)}
         aria-expanded={false}
-        className="flex w-full items-center gap-3 rounded-xl bg-cream-100 px-4 py-3 text-left ring-1 ring-ink-950/10 transition-colors hover:bg-cream-200/60"
+        className="flex w-full items-center gap-3 rounded-2xl bg-cream-100 px-3 py-2.5 text-left ring-1 ring-ink-950/10 transition-colors hover:bg-cream-200/60"
       >
-        <span aria-hidden className="shrink-0 text-xs text-ink-800/40">
-          ▸
-        </span>
+        {Chevron}
         <span
           className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
             STATUS_TONES[o.status].chip
@@ -285,14 +307,22 @@ function ClosedRow({ order: o }: { order: AdminOrder }) {
         <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-950">
           {o.contact_name || o.customer?.full_name || "Walk-in"}
         </span>
-        {/* An unpaid balance is the one reason to look twice at a closed
-            order, so it survives the fold. */}
+        {/* Two things survive the fold, because they're the two reasons to
+            open a row: it's late, or it hasn't been paid for. */}
+        {o.eta_minutes != null && STATUS_TONES[o.status].live && (
+          <EtaCountdown
+            minutes={o.eta_minutes}
+            from={o.eta_set_at}
+            overdueLabel
+            className="hidden shrink-0 scale-90 sm:inline-flex"
+          />
+        )}
         {owed && (
           <span className="shrink-0 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cream-50">
             ⚠ {peso(money.balance)}
           </span>
         )}
-        <span className="hidden shrink-0 text-xs text-ink-800/50 sm:block">
+        <span className="hidden shrink-0 text-xs text-ink-800/50 md:block">
           {formatDateTimeFull(o.created_at)}
         </span>
         <span className="shrink-0 font-display text-sm font-black tabular-nums text-ink-950">
@@ -351,6 +381,8 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
           if (ACTIVE_ORDER_STATUSES.includes(o.status)) counts.open += 1;
         }
 
+        const live = view === "open" || STATUS_TONES[view].live;
+
         const shown =
           view === "open"
             ? filtered.filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status))
@@ -380,28 +412,18 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
                     : `No orders are ${STATUS_LABELS[view].toLowerCase()} right now.`}
               </p>
             ) : (
-              <ul className={`flex flex-col ${view === "open" || STATUS_TONES[view].live ? "gap-4" : "gap-1.5"}`}>
+              <ul className={`flex flex-col ${live ? "gap-4" : "gap-1.5"}`}>
                 {/* Only the live queues animate. Watching forty completed
                     orders spring into place every time you open History is
                     motion for its own sake, and it costs a frame each. */}
-                {view === "open" || STATUS_TONES[view].live ? (
-                  <AnimatePresence initial={false}>
-                    {shown.map((o) => (
-                      <motion.div
-                        key={o.id}
-                        layout
-                        initial={{ opacity: 0, y: -12, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.98 }}
-                        transition={{ type: "spring", stiffness: 340, damping: 30 }}
-                      >
-                        <OrderCard order={o} />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                ) : (
-                  shown.map((o) => <ClosedRow key={o.id} order={o} />)
-                )}
+                {shown.map((o) => (
+                  <OrderRow
+                    key={o.id}
+                    order={o}
+                    // Live work opens to its controls; finished work doesn't.
+                    startOpen={live}
+                  />
+                ))}
               </ul>
             )}
           </div>

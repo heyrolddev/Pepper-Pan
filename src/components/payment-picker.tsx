@@ -54,6 +54,7 @@ export function PaymentPicker({
   receipt,
   onReceiptChange,
   total,
+  scheduled = false,
 }: {
   settings: PaymentSettings;
   method: PaymentMethod;
@@ -65,6 +66,8 @@ export function PaymentPicker({
   receipt: File | null;
   onReceiptChange: (f: File | null) => void;
   total: number;
+  /** Ordering ahead — cash isn't an option, because the slot is a booking. */
+  scheduled?: boolean;
 }) {
   const percent = settings.downpayment_percent;
   const downNow = downpaymentFor(total, percent);
@@ -76,7 +79,11 @@ export function PaymentPicker({
       id: "cod",
       label: "Cash",
       blurb: "Pay on delivery or at the stall",
-      on: settings.cod_enabled,
+      // A booked slot means ingredients bought and prep time set aside. Cash
+      // on the day doesn't hold either of those, so ordering ahead is paid
+      // for. The server enforces this too — this just stops someone picking
+      // an option that was only ever going to be rejected.
+      on: settings.cod_enabled && !scheduled,
     },
     {
       id: "gcash",
@@ -92,6 +99,14 @@ export function PaymentPicker({
       <legend className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-800">
         How are you paying?
       </legend>
+
+      {scheduled && settings.cod_enabled && (
+        <p className="rounded-2xl bg-gold-400/20 px-4 py-3 text-sm text-ink-800/80">
+          Ordering ahead is paid for up front — in full, or with a down
+          payment. It&apos;s what holds your slot: we buy for it and set the
+          time aside.
+        </p>
+      )}
 
       <div className={`grid gap-3 ${available.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
         {available.map((o) => (

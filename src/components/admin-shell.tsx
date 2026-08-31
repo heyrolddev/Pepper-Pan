@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Logo } from "@/components/logo";
 import type { AdminBadges } from "@/lib/admin-badges";
 import { SignOutButton } from "@/components/sign-out-button";
+import { useOrderRealtime } from "@/lib/use-order-realtime";
 
 /**
  * HQ as a workspace rather than a web page.
@@ -103,12 +104,14 @@ function Rail({
   email,
   role,
   badges,
+  connected,
 }: {
   pathname: string;
   onNavigate?: () => void;
   email: string;
   role: string;
   badges: AdminBadges;
+  connected: boolean;
 }) {
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto bg-ink-950 px-4 py-6">
@@ -176,6 +179,17 @@ function Rail({
         <p className="truncate px-3 pb-1 pt-3 text-[11px] text-cream-100/35">
           {email}
         </p>
+        {/* Says whether the counts above can be trusted to be current. A
+            sidebar that quietly stopped updating looks exactly like a quiet
+            afternoon. */}
+        <p className="flex items-center gap-2 px-3 pb-1 text-[11px] text-cream-100/35">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              connected ? "animate-pulse bg-jade-400" : "bg-cream-100/25"
+            }`}
+          />
+          {connected ? "Live" : "Reconnecting…"}
+        </p>
         {/* Last thing in the rail, under the account it signs out of. HQ had
             no way out at all — the only sign-out lived in the shop header,
             which the rail replaces, so leaving HQ meant leaving HQ first. */}
@@ -198,6 +212,13 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const waiting = badges.orders + badges.inbox + badges.payments;
+
+  // Subscribed here, in the shell, so *every* HQ screen stays current — and
+  // with it the counts in the rail, which are fetched by the layout this sits
+  // in. It used to live only in the orders banner, which is on two pages: the
+  // owner could sit on Payments while three orders came in and the rail would
+  // go on saying nothing until they navigated.
+  const { connected } = useOrderRealtime({ channelKey: "shell" });
   // The drawer remembers which page it was opened on, and is only open while
   // that's still the page. Derived rather than synchronised: every link
   // already closes it on click, but the back button changes the path without
@@ -224,7 +245,13 @@ export function AdminShell({
     <div className="flex min-h-screen bg-cream-50">
       {/* Desktop rail — always there, never in the way. */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 lg:block">
-        <Rail pathname={pathname} email={email} role={role} badges={badges} />
+        <Rail
+          pathname={pathname}
+          email={email}
+          role={role}
+          badges={badges}
+          connected={connected}
+        />
       </aside>
 
       {/* Phone drawer — the same rail, over the page. */}
@@ -241,6 +268,7 @@ export function AdminShell({
               email={email}
               role={role}
               badges={badges}
+              connected={connected}
               onNavigate={() => setOpen(false)}
             />
           </div>

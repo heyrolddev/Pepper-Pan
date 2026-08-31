@@ -7,6 +7,13 @@ import { createClient } from "@/lib/supabase/client";
 type Options = {
   /** Limit to one customer's orders. Omit on the admin side to watch them all. */
   customerId?: string;
+  /**
+   * Distinguishes two subscriptions watching the same rows. HQ has one in the
+   * shell (so every screen and the sidebar counts stay current) and one in the
+   * orders banner (which also chimes) — same filter, different jobs, and they
+   * need separate channels or the second silently replaces the first.
+   */
+  channelKey?: string;
   /** Fired for rows that are genuinely new (admin: "a new order came in"). */
   onInsert?: (row: Record<string, unknown>) => void;
   /** Fired when an existing row changes (customer: "status moved to ready"). */
@@ -26,7 +33,12 @@ type Options = {
  * Returns the connection state so the UI can show an honest "Live" indicator
  * rather than implying live updates that may not be arriving.
  */
-export function useOrderRealtime({ customerId, onInsert, onUpdate }: Options = {}) {
+export function useOrderRealtime({
+  customerId,
+  channelKey,
+  onInsert,
+  onUpdate,
+}: Options = {}) {
   const router = useRouter();
   const [connected, setConnected] = useState(false);
 
@@ -48,7 +60,9 @@ export function useOrderRealtime({ customerId, onInsert, onUpdate }: Options = {
     const filter = customerId ? `customer_id=eq.${customerId}` : undefined;
 
     const channel = supabase
-      .channel(customerId ? `orders:${customerId}` : "orders:all")
+      .channel(
+        `orders:${customerId ?? "all"}${channelKey ? `:${channelKey}` : ""}`
+      )
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders", ...(filter && { filter }) },
@@ -73,7 +87,7 @@ export function useOrderRealtime({ customerId, onInsert, onUpdate }: Options = {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [customerId, router]);
+  }, [customerId, channelKey, router]);
 
   return { connected };
 }
