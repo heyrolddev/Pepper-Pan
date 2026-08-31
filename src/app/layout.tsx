@@ -124,7 +124,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: introScript }} />
       </head>
       <body className="flex min-h-full flex-col bg-cream-50 font-sans text-ink-900">
-        <CartProvider>
+        <CartProvider staff={isStaff(viewer)}>
           {/* Mounted everywhere on purpose. It skips itself inside HQ via the
               data-intro attribute the head script sets; unmounting it while
               the intro is still running would strand the scroll lock. */}
@@ -159,9 +159,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           {children}
 
           <ShopChrome>
-            <FloatingCart />
+            <FloatingCart staff={isStaff(viewer)} />
             <AskWidget messengerUrl={chat.messengerUrl} />
-            <SiteFooter year={new Date().getFullYear()} />
+            <SiteFooter year={new Date().getFullYear()} staff={isStaff(viewer)} />
           </ShopChrome>
         </CartProvider>
       </body>

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ACTIVE_ORDER_STATUSES } from "@/lib/orders";
 
@@ -85,4 +86,23 @@ export async function countActiveOrders(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+/**
+ * Send shop staff away from the customer's side of the site.
+ *
+ * The shop can't be its own customer: an owner order lands in the kitchen
+ * queue, counts toward the day's takings and shows up in analytics, so a few
+ * taps while testing become sales the shop never made.
+ *
+ * Guarded in a layout rather than each page, because a layout runs before the
+ * page renders whether that page is a server or a client component — /cart is
+ * a client component and could not check for itself.
+ *
+ * This is convenience, not security. The button being hidden and the page
+ * redirecting only shape what's easy; `createOrder` is what actually refuses.
+ */
+export async function redirectStaffToHQ(): Promise<void> {
+  const viewer = await getViewer();
+  if (isStaff(viewer)) redirect("/admin");
 }

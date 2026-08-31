@@ -20,9 +20,13 @@ import {
 export function ResetPanel({ counts }: { counts: ResetCounts }) {
   const router = useRouter();
   const [scope, setScope] = useState<ResetScope>({
-    orders: true,
+    // Nothing destructive is pre-ticked any more. The narrow option is the
+    // one most likely to be wanted, and it's the one that can't cost the shop
+    // a real customer's history.
+    orders: false,
     menu: false,
-    chat: true,
+    chat: false,
+    staffOrders: true,
   });
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -36,6 +40,13 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
     detail: string;
     count: number;
   }[] = [
+    {
+      key: "staffOrders",
+      label: "Your own test orders",
+      detail:
+        "Orders placed from an owner or staff account while trying the site out. Real customers' orders are left alone.",
+      count: counts.staffOrders,
+    },
     {
       key: "orders",
       label: "Orders and reviews",
@@ -56,7 +67,7 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
     },
   ];
 
-  const chose = scope.orders || scope.menu || scope.chat;
+  const chose = scope.orders || scope.menu || scope.chat || scope.staffOrders;
   const ready = chose && password.length > 0 && confirmation.trim().toUpperCase() === "RESET";
 
   async function run() {

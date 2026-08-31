@@ -36,6 +36,8 @@ export type ResetScope = {
   menu: boolean;
   /** Ask Pepper Pan threads and the answers taught to it. */
   chat: boolean;
+  /** Orders placed from an owner or staff account while testing. */
+  staffOrders: boolean;
 };
 
 export type ResetCounts = {
@@ -43,13 +45,32 @@ export type ResetCounts = {
   meals: number;
   reviews: number;
   chats: number;
+  staffOrders: number;
 };
+
+/**
+ * Who counts as the shop rather than a customer.
+ *
+ * Read fresh each time rather than stored on the order, because a role can
+ * change — a staff account that becomes a customer, or the reverse — and the
+ * question being asked is "is this the shop's own test order", which is about
+ * who they are now.
+ */
+async function staffAccountIds(
+  db: ReturnType<typeof createAdminClient>
+): Promise<string[]> {
+  const { data } = await db
+    .from("profiles")
+    .select("id")
+    .in("role", ["owner", "staff"]);
+  return (data ?? []).map((r) => r.id as string);
+}
 
 /** What's actually in there, so nobody deletes on a guess. */
 export async function countResettable(): Promise<ResetCounts> {
   const viewer = await getViewer();
   if (viewer?.profile?.role !== "owner") {
-    return { orders: 0, meals: 0, reviews: 0, chats: 0 };
+    return { orders: 0, meals: 0, reviews: 0, chats: 0, staffOrders: 0 };
   }
 
   const db = createAdminClient();
@@ -60,14 +81,22 @@ export async function countResettable(): Promise<ResetCounts> {
     return n ?? 0;
   };
 
-  const [orders, meals, reviews, chats] = await Promise.all([
+  const [orders, meals, reviews, chats, staffIds] = await Promise.all([
     count("orders"),
     count("meals"),
     count("reviews"),
     count("chat_threads"),
+    staffAccountIds(db),
   ]);
 
-  return { orders, meals, reviews, chats };
+  const { count: staffOrders } = staffIds.length
+    ? await db
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .in("customer_id", staffIds)
+    : { count: 0 };
+
+  return { orders, meals, reviews, chats, staffOrders: staffOrders ?? 0 };
 }
 
 export type ResetResult =
@@ -91,7 +120,12 @@ export async function resetShopData(input: {
   if (!input.password) {
     return { ok: false, error: "Enter your password." };
   }
-  if (!input.scope.orders && !input.scope.menu && !input.scope.chat) {
+  if (
+    !input.scope.orders &&
+    !input.scope.menu &&
+    !input.scope.chat &&
+    !input.scope.staffOrders
+  ) {
     return { ok: false, error: "Choose at least one thing to clear." };
   }
 
@@ -137,6 +171,47 @@ export async function resetShopData(input: {
       const o = await db.from("orders").delete().neq("id", all).select("id");
       if (o.error) throw new Error(`orders: ${o.error.message}`);
       deleted.push(`${o.data?.length ?? 0} orders`);
+    }
+
+    // Before the blanket order wipe, so ticking both doesn't run this against
+    // rows that have already gone.
+    if (input.scope.staffOrders && !input.scope.orders) {
+      const staffIds = await staffAccountIds(db);
+      if (staffIds.length) {
+        // Reviews first, same as the full wipe: a review pointing at a deleted
+        // order is a row nobody can explain later.
+        const r = await db
+          .from("reviews")
+          .delete()
+          .in("customer_id", staffIds)
+          .select("id");
+        if (r.error) throw new Error(`staff reviews: ${r.error.message}`);
+
+        const { data: ids } = await db
+          .from("orders")
+          .select("id")
+          .in("customer_id", staffIds);
+        const orderIds = (ids ?? []).map((o) => o.id as string);
+
+        if (orderIds.length) {
+          const l = await db
+            .from("order_lines")
+            .delete()
+            .in("order_id", orderIds)
+            .select("id");
+          if (l.error) throw new Error(`staff order lines: ${l.error.message}`);
+        }
+
+        const o = await db
+          .from("orders")
+          .delete()
+          .in("customer_id", staffIds)
+          .select("id");
+        if (o.error) throw new Error(`staff orders: ${o.error.message}`);
+        deleted.push(`${o.data?.length ?? 0} staff test orders`);
+      } else {
+        deleted.push("0 staff test orders");
+      }
     }
 
     if (input.scope.chat) {

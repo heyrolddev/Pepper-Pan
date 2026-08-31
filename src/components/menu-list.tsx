@@ -21,7 +21,15 @@ function initialOf(name: string) {
   return (name.match(/[a-zA-Z0-9]/)?.[0] ?? name.charAt(0)).toUpperCase();
 }
 
-function MealCard({ meal, index }: { meal: Meal; index: number }) {
+function MealCard({
+  meal,
+  index,
+  staff,
+}: {
+  meal: Meal;
+  index: number;
+  staff: boolean;
+}) {
   const { addItem } = useCart();
   const [added, setAdded] = useState(false);
 
@@ -60,45 +68,52 @@ function MealCard({ meal, index }: { meal: Meal; index: number }) {
         )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-2 p-5">
-        <p className="font-display text-lg font-bold leading-tight text-ink-950">
+      {/* Tighter on a phone. Two columns leaves about 160px of card, and at the
+          old size one dish ran most of the screen — you scrolled a menu of 73
+          items four at a time. The desktop sizes are unchanged. */}
+      <div className="flex flex-1 flex-col gap-1.5 p-3 sm:gap-2 sm:p-5">
+        <p className="line-clamp-2 font-display text-sm font-bold leading-tight text-ink-950 sm:text-lg">
           {meal.name}
         </p>
         {meal.avg_rating != null && (meal.review_count ?? 0) > 0 && (
           <span className="flex items-center gap-1.5">
             <Stars rating={meal.avg_rating} />
-            <span className="text-xs font-semibold text-ink-800/55">
+            <span className="text-[11px] font-semibold text-ink-800/55 sm:text-xs">
               {meal.avg_rating.toFixed(1)} ({meal.review_count})
             </span>
           </span>
         )}
         {meal.description && (
-          <p className="line-clamp-2 text-sm text-ink-800/70">{meal.description}</p>
+          <p className="line-clamp-2 hidden text-sm text-ink-800/70 sm:block">{meal.description}</p>
         )}
         {/* Wraps rather than squeezing. Two columns on a phone leaves about
             120px of card, and a peso price beside a button doesn't fit that —
             they were overlapping, with the button sitting on the price. */}
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3">
-          <span className="font-display text-lg font-black text-brand-600 sm:text-xl">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-1.5 pt-2 sm:gap-2 sm:pt-3">
+          <span className="font-display text-base font-black text-brand-600 sm:text-xl">
             ₱{Number(meal.price).toFixed(2)}
           </span>
-          <button
-            onClick={handleAdd}
-            className={`whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-bold transition-all sm:px-4 ${
-              added
-                ? "bg-jade-600 text-cream-50"
-                : "bg-ink-950 text-cream-50 hover:bg-brand-600"
-            }`}
-          >
-            {added ? "Added ✓" : "Add +"}
-          </button>
+          {/* Nothing to add to: staff can't check out, so the button would
+              only fill a cart that leads to a refusal. */}
+          {!staff && (
+            <button
+              onClick={handleAdd}
+              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold transition-all sm:px-4 sm:py-2 sm:text-sm ${
+                added
+                  ? "bg-jade-600 text-cream-50"
+                  : "bg-ink-950 text-cream-50 hover:bg-brand-600"
+              }`}
+            >
+              {added ? "Added ✓" : "Add +"}
+            </button>
+          )}
         </div>
       </div>
     </motion.li>
   );
 }
 
-export function MenuList({ meals }: { meals: Meal[] }) {
+export function MenuList({ meals, staff = false }: { meals: Meal[]; staff?: boolean }) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
 
@@ -177,7 +192,7 @@ export function MenuList({ meals }: { meals: Meal[] }) {
         <ul className="grid grid-cols-2 gap-5 sm:grid-cols-3">
           <AnimatePresence mode="popLayout">
             {filtered.map((meal, i) => (
-              <MealCard key={meal.id} meal={meal} index={i} />
+              <MealCard key={meal.id} meal={meal} index={i} staff={staff} />
             ))}
           </AnimatePresence>
         </ul>

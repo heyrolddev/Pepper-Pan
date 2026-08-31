@@ -17,7 +17,14 @@ type CartContextValue = {
 const CartContext = createContext<CartContextValue | null>(null);
 const STORAGE_KEY = "pepperpan_cart";
 
-export function CartProvider({ children }: { children: ReactNode }) {
+export function CartProvider({
+  children,
+  staff = false,
+}: {
+  children: ReactNode;
+  /** Staff can't check out, so a cart of theirs is a cart nobody can empty. */
+  staff?: boolean;
+}) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -25,14 +32,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // One-time hydration from localStorage, which doesn't exist during SSR
     // and so can't be read during the initial render.
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (raw) setItems(JSON.parse(raw));
+      // Staff can no longer add to a cart, but one added *before* that was
+      // true is still sitting in their browser — a count in a header they
+      // have no way to clear, because the page that would clear it now
+      // redirects them to HQ. Emptying it on the way in is the only place
+      // left that can.
+      if (staff) {
+        localStorage.removeItem(STORAGE_KEY);
+      } else {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (raw) setItems(JSON.parse(raw));
+      }
     } catch {
       // ignore malformed/unavailable storage
     }
     setHydrated(true);
-  }, []);
+  }, [staff]);
 
   useEffect(() => {
     if (!hydrated) return;
