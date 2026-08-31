@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
+import { syncStockForStatus } from "@/lib/stock-server";
 
 const NOT_EDITABLE =
   "This order can no longer be changed — the kitchen has already started it. Please call us at +63 947 353 3060.";
@@ -40,6 +41,12 @@ export async function cancelMyOrder(
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: NOT_EDITABLE };
+
+  // A customer can only reach this while the order is still `pending`, and a
+  // pending order has never had stock deducted — so this is a no-op today.
+  // It is here anyway: the day that rule is relaxed, the alternative is
+  // ingredients quietly staying deducted for an order nobody is making.
+  await syncStockForStatus(orderId, "cancelled");
 
   revalidateOrders();
   return { error: null };

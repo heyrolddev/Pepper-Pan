@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getViewer, isStaff } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordOrderCost } from "@/lib/costing-server";
+import { syncStockForStatus } from "@/lib/stock-server";
+import { openShiftFor } from "@/lib/shifts-server";
 import type { PaymentMethod } from "@/lib/payments";
 
 export type CounterLine = { mealId: string; qty: number };
@@ -81,10 +83,17 @@ export async function recordWalkInSale(input: {
     return { error: "Add the GCash reference number." };
   }
 
+  // Which shift rang it up. Null when nobody is clocked in — the sale still
+  // records, because refusing to take money because of a missed button is
+  // never the right trade. It just won't appear in anyone's shift report.
+  const staffId = viewer!.profile?.id ?? null;
+  const shift = staffId ? await openShiftFor(staffId) : null;
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
       customer_id: null,
+      shift_id: shift?.id ?? null,
       // Who was on the counter. The column has existed since the first
       // migration and nothing has ever written to it.
       logged_by: viewer!.profile?.full_name?.trim() || viewer!.email,
@@ -131,7 +140,12 @@ export async function recordWalkInSale(input: {
     return { error: linesError.message };
   }
 
+  // The estimate first, from current recipe prices, so an order always has a
+  // cost even if stock movement can't run. Then the real thing: the movement
+  // engine overwrites `cogs` with what actually came off the shelf, lot
+  // prices and all. Same column, refined — not two sources of truth.
   await recordOrderCost(order.id);
+  await syncStockForStatus(order.id, input.toKitchen ? "confirmed" : "completed");
 
   // The board, the day's takings and the sidebar counts all move.
   revalidatePath("/admin");

@@ -13,7 +13,16 @@ export default async function AdminInventoryPage() {
   // rather than the whole page.
   const canSeeCosts = viewer?.profile?.role === "owner";
 
-  const { ingredients, batchCosts, failed } = await loadCostBook();
+  const { ingredients, batchCosts, batchIngredients, failed } = await loadCostBook();
+
+  // Grouped once here rather than looked up per card: the produce dialog
+  // needs a batch's own lines to check them against the shelf.
+  const recipeByBatch = new Map<string, typeof batchIngredients>();
+  for (const bi of batchIngredients) {
+    const list = recipeByBatch.get(bi.batch_id) ?? [];
+    list.push(bi);
+    recipeByBatch.set(bi.batch_id, list);
+  }
 
   const stock: StockRow[] = ingredients.map((i) => ({
     id: i.id,
@@ -33,6 +42,8 @@ export default async function AdminInventoryPage() {
           ).toLocaleString("en-PH")}${i.unit}`
         : null,
     categories: i.categories ?? [],
+    purchasePrice: Number(i.purchase_price) || 0,
+    purchaseQty: Number(i.purchase_qty) || 0,
   }));
 
   const batchRows: BatchRow[] = [...batchCosts.values()].map((b) => ({
@@ -47,6 +58,10 @@ export default async function AdminInventoryPage() {
     unknown: b.unknown,
     problems: b.problems,
     lineCount: b.lines.length,
+    recipe: (recipeByBatch.get(b.batch.id) ?? []).map((r) => ({
+      ingredientId: r.ingredient_id,
+      qty: Number(r.qty) || 0,
+    })),
   }));
 
   return (
