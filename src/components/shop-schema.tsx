@@ -1,4 +1,4 @@
-import { SHOP, siteUrl } from "@/lib/site";
+import { SHOP, SOCIALS, siteUrl } from "@/lib/site";
 import { getSchedule } from "@/lib/hours-server";
 import { getPublicReviews } from "@/lib/reviews-server";
 import { isConfigured } from "@/lib/auth";
@@ -55,7 +55,10 @@ export async function ShopSchema() {
       addressRegion: SHOP.region,
       addressCountry: SHOP.country,
     },
-    sameAs: [SHOP.tiktok],
+    // Every profile the shop actually posts from. `sameAs` is how Google
+    // ties this page to those accounts; listing one of three threw away the
+    // other two.
+    sameAs: SOCIALS.map((s) => s.href),
     hasMenu: `${url}/menu`,
     acceptsReservations: false,
     ...(openingHours?.length ? { openingHoursSpecification: openingHours } : {}),
