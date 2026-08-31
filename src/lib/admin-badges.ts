@@ -10,11 +10,15 @@ import { ACTIVE_ORDER_STATUSES } from "@/lib/orders";
  * A shop runs from a phone on a counter between orders, and "is there anything
  * for me?" should be answerable from whatever page happens to be up.
  *
- * So every count here is a thing the owner has to *do*, never a total. Orders
- * counts the ones still in flight, not the day's orders; reviews counts the
- * ones nobody has answered, not the reviews. A badge that never reaches zero
- * is decoration, and after a week it gets ignored — including on the day it
- * finally means something.
+ * So every count here is a thing the owner has to *do*, never a total — Orders
+ * counts the ones still in flight, not the day's orders. A badge that never
+ * reaches zero is decoration, and after a week it gets ignored, including on
+ * the day it finally means something.
+ *
+ * Reviews is deliberately not here. An unanswered review costs the shop
+ * nothing — nobody is waiting on their food because of it — so badging it
+ * would put a number on the rail that the owner is right to ignore, and
+ * numbers you're right to ignore teach you to ignore the rest.
  */
 export type AdminBadges = {
   /** Orders still in flight — the shop owes food on every one of these. */
@@ -23,11 +27,9 @@ export type AdminBadges = {
   inbox: number;
   /** GCash receipts sent in and not yet checked against the account. */
   payments: number;
-  /** Reviews with no reply from the shop. */
-  reviews: number;
 };
 
-const NONE: AdminBadges = { orders: 0, inbox: 0, payments: 0, reviews: 0 };
+const NONE: AdminBadges = { orders: 0, inbox: 0, payments: 0 };
 
 export async function getAdminBadges(): Promise<AdminBadges> {
   try {
@@ -40,7 +42,7 @@ export async function getAdminBadges(): Promise<AdminBadges> {
       return n ?? 0;
     };
 
-    const [orders, inbox, payments, reviews] = await Promise.all([
+    const [orders, inbox, payments] = await Promise.all([
       count(() =>
         db
           .from("orders")
@@ -60,16 +62,9 @@ export async function getAdminBadges(): Promise<AdminBadges> {
           .select("id", { count: "exact", head: true })
           .eq("payment_status", "submitted")
       ),
-      count(() =>
-        db
-          .from("reviews")
-          .select("id", { count: "exact", head: true })
-          .is("shop_reply", null)
-          .eq("is_hidden", false)
-      ),
     ]);
 
-    return { orders, inbox, payments, reviews };
+    return { orders, inbox, payments };
   } catch {
     // A missing migration must not take HQ down. No badges is a fair reading
     // of "we couldn't tell" — a wrong number would be worse than none.

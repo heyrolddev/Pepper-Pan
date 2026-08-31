@@ -44,7 +44,7 @@ const GROUPS: Group[] = [
     title: "Understand",
     items: [
       { href: "/admin/analytics", label: "Analytics", icon: "◈" },
-      { href: "/admin/reviews", label: "Reviews", icon: "★", badge: "reviews" },
+      { href: "/admin/reviews", label: "Reviews", icon: "★" },
       { href: "/admin/customers", label: "Customers", icon: "◑" },
       { href: "/admin/faq", label: "Answers", icon: "?" },
     ],
@@ -190,7 +190,7 @@ export function AdminShell({
   badges: AdminBadges;
 }) {
   const pathname = usePathname();
-  const waiting = badges.orders + badges.inbox + badges.payments + badges.reviews;
+  const waiting = badges.orders + badges.inbox + badges.payments;
   // The drawer remembers which page it was opened on, and is only open while
   // that's still the page. Derived rather than synchronised: every link
   // already closes it on click, but the back button changes the path without
