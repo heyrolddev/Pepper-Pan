@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/logo";
+import { PanLoader } from "@/components/pan-loader";
 
 /**
  * Intro overlay, shown on every page load.
@@ -62,16 +63,11 @@ export function Preloader() {
             <Logo width={320} priority className="h-auto w-[220px] sm:w-[300px]" />
           </div>
 
-          {/* Peppercorns hopping into the pan */}
-          <div className="relative mt-8 flex items-center gap-2.5">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <span
-                key={i}
-                className="intro-dot block h-2.5 w-2.5 rounded-full bg-gold-400"
-                style={{ animationDelay: `${i * 0.11}s` }}
-              />
-            ))}
-          </div>
+          {/* The shop's one job, drawn: fire leaping out of the pan with the
+              peppercorns tossing in it. The five hopping dots it replaced were
+              a loading spinner in the shop's colours — they could have
+              belonged to anyone. */}
+          <PanLoader className="mt-6 h-auto w-[200px] sm:w-[240px]" />
 
           <p className="mt-6 text-xs font-bold uppercase tracking-[0.3em] text-cream-100/50">
             Firing up the pan…
