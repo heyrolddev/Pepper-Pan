@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { ACTIVE_ORDER_STATUSES } from "@/lib/orders";
 
 export type Profile = {
   id: string;
@@ -50,10 +51,16 @@ export function isStaff(viewer: Viewer) {
 }
 
 /** Statuses that mean "this order is still happening" for the customer. */
-const ACTIVE_STATUSES = ["pending", "confirmed", "preparing", "ready", "out_for_delivery"];
+
 
 /**
  * How many orders this customer has in flight.
+ *
+ * Shares one list with the owner's badge rather than keeping a second copy.
+ * The two were identical strings in two files, which is fine right up until
+ * someone adds a status to one of them — and then the customer's header and
+ * HQ disagree about what "in flight" means, silently and in opposite
+ * directions.
  *
  * Drives the badge on "My orders" — a stall's customers order and then close
  * the tab, and a number in the header is what brings them back to the
@@ -72,7 +79,7 @@ export async function countActiveOrders(): Promise<number> {
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("customer_id", user.id)
-      .in("status", ACTIVE_STATUSES);
+      .in("status", ACTIVE_ORDER_STATUSES);
 
     return error ? 0 : (count ?? 0);
   } catch {

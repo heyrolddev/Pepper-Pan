@@ -37,30 +37,46 @@ export async function getAdminBadges(): Promise<AdminBadges> {
 
     // `head: true` fetches no rows at all — the count comes back in a header.
     // This runs on every HQ page load, so it must cost about nothing.
-    const count = async (build: () => PromiseLike<{ count: number | null }>) => {
-      const { count: n } = await build();
+    const count = async (
+      label: string,
+      build: () => PromiseLike<{ count: number | null; error: { message: string } | null }>
+    ) => {
+      const { count: n, error } = await build();
+      // No badge is the right thing to show when we can't count — a wrong
+      // number is worse than none. But swallowing the reason means a badge
+      // that has quietly stopped working looks exactly like a clear queue,
+      // so the reason goes to the server log.
+      if (error) {
+        console.error(`Badge count failed (${label}):`, error.message);
+        return 0;
+      }
       return n ?? 0;
     };
 
     const [orders, inbox, payments] = await Promise.all([
-      count(() =>
+      count("orders", () =>
         db
           .from("orders")
           .select("id", { count: "exact", head: true })
           .in("status", ACTIVE_ORDER_STATUSES)
       ),
-      count(() =>
+      count("inbox", () =>
         db
           .from("chat_threads")
           .select("id", { count: "exact", head: true })
           .eq("needs_human", true)
           .eq("handled", false)
       ),
-      count(() =>
+      count("payments", () =>
         db
           .from("orders")
           .select("id", { count: "exact", head: true })
           .eq("payment_status", "submitted")
+          // A cancelled order's receipt is nobody's job any more, and it can
+          // never be verified — left in, it would sit on this badge forever.
+          // The dashboard's own "awaiting payment" tile already excludes
+          // these; the two are meant to agree.
+          .neq("status", "cancelled")
       ),
     ]);
 
