@@ -2,6 +2,7 @@ import { getViewer } from "@/lib/auth";
 import { loadCostBook } from "@/lib/costing-server";
 import { isLow, stockValue } from "@/lib/costing";
 import { InventoryView, type BatchRow, type StockRow } from "@/components/inventory-view";
+import { loadInsight } from "@/lib/inventory-insight";
 
 // Stock moves every service. A cached shopping list is the wrong shopping list.
 export const dynamic = "force-dynamic";
@@ -13,7 +14,12 @@ export default async function AdminInventoryPage() {
   // rather than the whole page.
   const canSeeCosts = viewer?.profile?.role === "owner";
 
-  const { ingredients, batchCosts, batchIngredients, failed } = await loadCostBook();
+  const { ingredients, batches, batchCosts, batchIngredients, failed } =
+    await loadCostBook();
+
+  // What to buy and what is about to go off. Needs the cost book first, since
+  // both are worked out against the same ingredient and batch rows.
+  const insight = await loadInsight(ingredients, batches, batchIngredients);
 
   // Grouped once here rather than looked up per card: the produce dialog
   // needs a batch's own lines to check them against the shelf.
@@ -68,6 +74,10 @@ export default async function AdminInventoryPage() {
     <InventoryView
       stock={stock}
       batches={batchRows}
+      suggestions={insight.suggestions}
+      expiring={insight.expiring}
+      usageDays={insight.lookbackDays}
+      thinHistory={insight.thin}
       canSeeCosts={canSeeCosts}
       failed={failed}
     />

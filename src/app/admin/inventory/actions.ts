@@ -530,3 +530,128 @@ export async function saveMealRecipe(input: {
   revalidatePath("/menu");
   return { error: null };
 }
+
+/* ------------------------------------------------------------------ */
+/* Waste and internal use                                              */
+/* ------------------------------------------------------------------ */
+
+export type WasteCategory = "waste" | "internal";
+
+/**
+ * Something didn't get sold.
+ *
+ * Two categories, kept apart on purpose. "Waste" is stock that spoiled, spilt
+ * or burnt — money gone, and a number worth driving down. "Internal" is staff
+ * meals and tasting portions — also money, but money spent deliberately.
+ * Adding them together produces a figure that is either an unfair
+ * indictment of the kitchen or a hiding place for real spoilage, depending on
+ * which way the mix runs.
+ *
+ * It goes through the same movement engine as a sale, so the shelf ends up
+ * right either way. It is logged to `consumption_log` under its own type
+ * rather than as a sale: reorder suggestions are built on what the shop
+ * actually sells, and quietly buying more to cover what keeps getting thrown
+ * away is how a waste problem becomes permanent.
+ */
+export async function recordWaste(input: {
+  sourceType: "inv" | "batch";
+  sourceId: string;
+  qty: number;
+  reason: string;
+  category: WasteCategory;
+  note?: string;
+}): Promise<Result & { cost?: number }> {
+  const viewer = await requireStaff();
+  if (!viewer) return { error: "Only shop staff can log waste." };
+  if (!(input.qty > 0)) return { error: "How much was it?" };
+  if (!input.reason.trim()) return { error: "What happened to it?" };
+
+  const supabase = createAdminClient();
+  const today = shopToday();
+  const logType = input.category === "internal" ? "internal" : "waste";
+
+  if (input.sourceType === "inv") {
+    const { data: ing } = await supabase
+      .from("ingredients")
+      .select("id, name, unit, cost")
+      .eq("id", input.sourceId)
+      .maybeSingle();
+    if (!ing) return { error: "That ingredient no longer exists." };
+
+    const { data: cost, error } = await supabase.rpc("consume_ingredient", {
+      p_ingredient_id: ing.id,
+      p_qty: input.qty,
+      p_date: today,
+      p_type: logType,
+    });
+    if (error) return { error: error.message };
+
+    const total = Number(cost ?? 0);
+    await supabase.from("waste_log").insert({
+      date: today,
+      ingredient_id: ing.id,
+      qty: input.qty,
+      unit: ing.unit,
+      reason: input.reason.trim(),
+      cost_at_time: Number(ing.cost) || 0,
+      total_cost: total,
+      category: input.category,
+      source_type: "inv",
+      source_id: ing.id,
+      source_name: ing.name,
+      note: input.note?.trim() || null,
+      logged_by: viewer.profile?.full_name?.trim() || viewer.email,
+    });
+
+    await log(
+      "waste",
+      `${input.category === "internal" ? "Internal use" : "Waste"}: ${input.qty} ${ing.unit} of "${ing.name}" — ₱${total.toFixed(2)} (${input.reason.trim()})`,
+      viewer.profile?.id ?? null
+    );
+    revalidate();
+    return { error: null, cost: total };
+  }
+
+  const { data: batch } = await supabase
+    .from("batches")
+    .select("id, name, yield_unit, batch_stock")
+    .eq("id", input.sourceId)
+    .maybeSingle();
+  if (!batch) return { error: "That batch no longer exists." };
+
+  const { data: perUnit } = await supabase.rpc("batch_cost_per_unit", {
+    p_batch_id: batch.id,
+  });
+  const unitCost = Number(perUnit ?? 0);
+  const total = unitCost * input.qty;
+
+  const { error: stockError } = await supabase
+    .from("batches")
+    .update({ batch_stock: Number(batch.batch_stock) - input.qty })
+    .eq("id", batch.id);
+  if (stockError) return { error: stockError.message };
+
+  await supabase.from("waste_log").insert({
+    date: today,
+    ingredient_id: null,
+    qty: input.qty,
+    unit: batch.yield_unit,
+    reason: input.reason.trim(),
+    cost_at_time: unitCost,
+    total_cost: total,
+    category: input.category,
+    source_type: "batch",
+    source_id: batch.id,
+    source_name: batch.name,
+    note: input.note?.trim() || null,
+    logged_by: viewer.profile?.full_name?.trim() || viewer.email,
+  });
+
+  await log(
+    "waste",
+    `${input.category === "internal" ? "Internal use" : "Waste"}: ${input.qty} ${batch.yield_unit} of "${batch.name}" — ₱${total.toFixed(2)} (${input.reason.trim()})`,
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null, cost: total };
+}
