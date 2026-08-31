@@ -101,12 +101,12 @@ export const STATUS_TONES: Record<OrderStatus, StatusTone> = {
     chip: "bg-ink-950/10 text-ink-800",
     dot: "bg-ink-950/25",
     live: false,
-    hint: "Done and paid for. Kept for your records.",
+    hint: "Finished. Anything still owed is flagged in red.",
   },
   cancelled: {
     chip: "bg-brand-600/15 text-brand-700",
     dot: "bg-brand-600/50",
     live: false,
-    hint: "Called off. The reason is on each card.",
+    hint: "Called off. Open a row for the reason.",
   },
 };

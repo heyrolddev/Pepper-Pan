@@ -66,6 +66,12 @@ export function OrderBoard({
             const n = counts[tab] ?? 0;
             const tone = tab === "open" ? OPEN_TONE : STATUS_TONES[tab];
             const label = tab === "open" ? "Open" : STATUS_LABELS[tab];
+            // Completed and Cancelled are quiet colours by design — right for
+            // a chip sitting among live orders, too faint for the tab you are
+            // standing on. Selected always reads as selected; those two borrow
+            // the dark fill rather than their own.
+            const quiet = tab !== "open" && !STATUS_TONES[tab].live;
+            const selectedChip = quiet ? "bg-ink-950 text-gold-400" : tone.chip;
 
             return (
               <button
@@ -75,11 +81,7 @@ export function OrderBoard({
                 onClick={() => onView(tab)}
                 className={`relative flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-sm font-bold transition-colors ${
                   active
-                    // The ring, not the fill, is what makes "selected"
-                    // unambiguous. Completed and Cancelled are deliberately
-                    // quiet colours, and a quiet fill alone reads as just
-                    // another tab even when it's the one you're looking at.
-                    ? `${tone.chip} ring-2 ring-ink-950/20`
+                    ? `${selectedChip} ring-2 ring-ink-950/20`
                     : n === 0
                       ? "text-ink-800/40 hover:bg-ink-950/5"
                       : "text-ink-800 hover:bg-ink-950/5"

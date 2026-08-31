@@ -8,7 +8,7 @@ import { AdminSearch } from "@/components/admin-search";
 import { PaymentVerifier } from "@/components/payment-verifier";
 import { ACTIVE_ORDER_STATUSES, STATUS_LABELS, STATUS_TONES, ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 import { OrderBoard, type View } from "@/components/order-board";
-import type { PaymentMethod, PaymentPlan, PaymentStatus } from "@/lib/payments";
+import { moneyLine, moneyState, type PaymentMethod, type PaymentPlan, type PaymentStatus } from "@/lib/payments";
 import { formatDateTimeFull } from "@/lib/format-date";
 import { EtaCountdown } from "@/components/eta-countdown";
 
@@ -53,6 +53,7 @@ const peso = (n: number) =>
 
 function OrderCard({ order: o }: { order: AdminOrder }) {
   const p = o.customer;
+  const money = moneyState(o);
   return (
     <li className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -72,6 +73,14 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
             <span className="font-display text-lg font-bold text-ink-950">
               {o.contact_name || p?.full_name || "Walk-in"}
             </span>
+            {/* The confirmation when completing is a moment and it can be
+                clicked through. This stays until the money is settled, which
+                is what actually gets it chased. */}
+            {o.status === "completed" && money.balance > 0 && (
+              <span className="rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide text-cream-50">
+                ⚠ {peso(money.balance)} unpaid
+              </span>
+            )}
             {!o.customer_id && (
               <span className="rounded-full bg-ink-800 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-cream-100">
                 Walk-in
@@ -116,7 +125,23 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
         <div className="flex flex-wrap items-center justify-end gap-3">
           <span className="text-right">
             <span className="block font-display text-xl font-black text-brand-600">
-              {peso(Number(o.revenue) + Number(o.delivery_fee))}
+              {peso(money.total)}
+            </span>
+            {/* The total alone doesn't say whether any of it arrived. Unpaid,
+                half-paid and paid in full looked identical here, which is the
+                one distinction the shop is actually keeping track of. */}
+            <span
+              className={`block text-[11px] font-bold ${
+                money.settled
+                  ? "text-jade-700"
+                  : money.partPaid
+                    ? "text-chili-700"
+                    : money.awaitingCheck
+                      ? "text-gold-700"
+                      : "text-ink-800/55"
+              }`}
+            >
+              {moneyLine(money)}
             </span>
             {Number(o.delivery_fee) > 0 && (
               <span className="block text-[11px] text-ink-800/55">
@@ -142,6 +167,7 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
             orderId={o.id}
             status={o.status}
             fulfillment={o.fulfillment}
+            money={money}
           />
         </div>
       </div>
@@ -204,6 +230,75 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
           <span className="font-bold">Cancelled:</span> {o.cancelled_reason}
         </p>
       )}
+    </li>
+  );
+}
+
+/**
+ * A finished order, folded down to one line.
+ *
+ * Completed is the queue that grows forever — a month of trading is hundreds
+ * of cards, and every one of them is the same six controls for an order
+ * nobody is going to touch again. Folded, the whole month scans in a screen,
+ * and the full card is one tap away for the times it matters (a customer
+ * ringing about last Tuesday, or chasing a balance).
+ *
+ * Open, unfolded, and closed, folded — the shape of the row says which kind
+ * of order it is before you read anything.
+ */
+function ClosedRow({ order: o }: { order: AdminOrder }) {
+  const [open, setOpen] = useState(false);
+  const money = moneyState(o);
+  const owed = money.balance > 0;
+
+  if (open) {
+    return (
+      <li className="flex flex-col gap-2">
+        <button
+          onClick={() => setOpen(false)}
+          className="self-start text-xs font-bold text-ink-800/60 hover:text-brand-600"
+        >
+          ▾ Fold this one back up
+        </button>
+        <OrderCard order={o} />
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <button
+        onClick={() => setOpen(true)}
+        aria-expanded={false}
+        className="flex w-full items-center gap-3 rounded-xl bg-cream-100 px-4 py-3 text-left ring-1 ring-ink-950/10 transition-colors hover:bg-cream-200/60"
+      >
+        <span aria-hidden className="shrink-0 text-xs text-ink-800/40">
+          ▸
+        </span>
+        <span
+          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
+            STATUS_TONES[o.status].chip
+          }`}
+        >
+          {STATUS_LABELS[o.status]}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-950">
+          {o.contact_name || o.customer?.full_name || "Walk-in"}
+        </span>
+        {/* An unpaid balance is the one reason to look twice at a closed
+            order, so it survives the fold. */}
+        {owed && (
+          <span className="shrink-0 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cream-50">
+            ⚠ {peso(money.balance)}
+          </span>
+        )}
+        <span className="hidden shrink-0 text-xs text-ink-800/50 sm:block">
+          {formatDateTimeFull(o.created_at)}
+        </span>
+        <span className="shrink-0 font-display text-sm font-black tabular-nums text-ink-950">
+          {peso(money.total)}
+        </span>
+      </button>
     </li>
   );
 }
@@ -285,7 +380,7 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
                     : `No orders are ${STATUS_LABELS[view].toLowerCase()} right now.`}
               </p>
             ) : (
-              <ul className="flex flex-col gap-4">
+              <ul className={`flex flex-col ${view === "open" || STATUS_TONES[view].live ? "gap-4" : "gap-1.5"}`}>
                 {/* Only the live queues animate. Watching forty completed
                     orders spring into place every time you open History is
                     motion for its own sake, and it costs a frame each. */}
@@ -305,7 +400,7 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
                     ))}
                   </AnimatePresence>
                 ) : (
-                  shown.map((o) => <OrderCard key={o.id} order={o} />)
+                  shown.map((o) => <ClosedRow key={o.id} order={o} />)
                 )}
               </ul>
             )}

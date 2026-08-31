@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/logo";
 import type { AdminBadges } from "@/lib/admin-badges";
+import { SignOutButton } from "@/components/sign-out-button";
 
 /**
  * HQ as a workspace rather than a web page.
@@ -172,7 +173,13 @@ function Rail({
           </span>
           View shop
         </Link>
-        <p className="truncate px-3 pt-3 text-[11px] text-cream-100/35">{email}</p>
+        <p className="truncate px-3 pb-1 pt-3 text-[11px] text-cream-100/35">
+          {email}
+        </p>
+        {/* Last thing in the rail, under the account it signs out of. HQ had
+            no way out at all — the only sign-out lived in the shop header,
+            which the rail replaces, so leaving HQ meant leaving HQ first. */}
+        <SignOutButton variant="rail" />
       </div>
     </div>
   );
