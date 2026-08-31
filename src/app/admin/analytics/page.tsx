@@ -1,9 +1,10 @@
 import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { AnalysisPanel } from "@/components/analysis-panel";
 import { buildSnapshot } from "./snapshot";
+import { StatTile as Tile, pesoRound } from "@/components/stat-tile";
 
-const peso = (n: number) =>
-  "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Whole pesos on the headline figures, for the same reason as the dashboard.
+const peso = pesoRound;
 
 function hourCaption(h: number) {
   const label = h % 12 === 0 ? 12 : h % 12;
@@ -134,31 +135,6 @@ export default async function AdminAnalyticsPage() {
   );
 }
 
-function Tile({
-  label,
-  value,
-  detail,
-  tone = "plain",
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: "plain" | "alert" | "good";
-}) {
-  const ring =
-    tone === "alert"
-      ? "ring-2 ring-brand-600"
-      : tone === "good"
-        ? "ring-2 ring-jade-600"
-        : "ring-1 ring-ink-950/10";
-  return (
-    <div className={`rounded-2xl bg-cream-100 p-5 ${ring}`}>
-      <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">{label}</p>
-      <p className="mt-2 font-display text-3xl font-black text-ink-950">{value}</p>
-      {detail && <p className="mt-1 text-sm text-ink-800/60">{detail}</p>}
-    </div>
-  );
-}
 
 function Panel({
   title,
