@@ -21,6 +21,8 @@ import {
   ChatSteam,
 } from "@/components/spot-art";
 import { getPublicReviews } from "@/lib/reviews-server";
+import { getSchedule } from "@/lib/hours-server";
+import { DAY_NAMES, formatClock } from "@/lib/hours";
 import { isConfigured } from "@/lib/auth";
 import { ShopSchema } from "@/components/shop-schema";
 
@@ -90,7 +92,10 @@ const faqs = [
 ];
 
 export default async function Home() {
-  const menuCount = await getMenuCount();
+  const [menuCount, schedule] = await Promise.all([
+    getMenuCount(),
+    getSchedule(),
+  ]);
   // Real reviews when there are any; the original invitation copy otherwise,
   // so a new shop never shows an empty or invented testimonial.
   const { reviews, average, count: reviewCount } = isConfigured()
@@ -424,27 +429,44 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       <section className="mx-auto max-w-6xl px-6 py-24">
         <div className="grid gap-6 md:grid-cols-2">
+          {/* Two flat colour blocks with a line of text each, and a lot of
+              nothing under it. Both now carry the dish they're about as a
+              watermark, and the text sits against it rather than floating in
+              an empty field — the same trick the section marks use elsewhere,
+              so the page reads as one thing. */}
           <Reveal direction="right">
-            <div className="grain relative h-full overflow-hidden rounded-3xl bg-jade-700 p-10 text-cream-50">
-              <span className="text-xs font-bold uppercase tracking-widest text-jade-200">
+            <article className="grain relative flex h-full flex-col overflow-hidden rounded-3xl bg-jade-700 p-10 text-cream-50">
+              {/* Decorative: `spot-art` marks already carry aria-hidden when
+                  given no title, so there's nothing to add here. */}
+              <NoodleBowl className="pointer-events-none absolute -bottom-8 -right-8 h-48 w-48 text-cream-50/10" />
+              <span className="relative inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-jade-200">
+                <span className="h-px w-6 bg-jade-200/60" />
                 Our mission
               </span>
-              <p className="mt-4 font-display text-2xl font-bold leading-snug">
+              <p className="relative mt-5 font-display text-2xl font-bold leading-snug sm:text-[1.75rem]">
                 Bring the bold flavors of Taiwan-style food to our community in
                 Apalit — made fresh every single day.
               </p>
-            </div>
+              <p className="relative mt-auto pt-8 text-sm text-cream-100/70">
+                Cooked to order, never held under a lamp.
+              </p>
+            </article>
           </Reveal>
           <Reveal direction="left" delay={0.1}>
-            <div className="grain relative h-full overflow-hidden rounded-3xl bg-ink-950 p-10 text-cream-50">
-              <span className="text-xs font-bold uppercase tracking-widest text-gold-400">
+            <article className="grain relative flex h-full flex-col overflow-hidden rounded-3xl bg-ink-950 p-10 text-cream-50">
+              <Chili className="pointer-events-none absolute -bottom-6 -right-6 h-44 w-44 text-gold-400/25" />
+              <span className="relative inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gold-400">
+                <span className="h-px w-6 bg-gold-400/60" />
                 Our vision
               </span>
-              <p className="mt-4 font-display text-2xl font-bold leading-snug">
+              <p className="relative mt-5 font-display text-2xl font-bold leading-snug sm:text-[1.75rem]">
                 To be the neighborhood&apos;s go-to spot for Taiwan-style
                 cravings — no flight required.
               </p>
-            </div>
+              <p className="relative mt-auto pt-8 text-sm text-cream-100/70">
+                One stall in Apalit, and a queue that keeps coming back.
+              </p>
+            </article>
           </Reveal>
         </div>
       </section>
@@ -453,7 +475,7 @@ export default async function Home() {
       {/* Visit                                                       */}
       {/* ---------------------------------------------------------- */}
       <section id="visit" className="scroll-mt-24 bg-cream-100 py-24">
-        <div className="mx-auto max-w-6xl px-6">
+        <div className="mx-auto grid max-w-6xl gap-10 px-6 lg:grid-cols-[1.1fr_1fr] lg:items-start lg:gap-16">
           <Reveal>
             <SectionMark
               art={<OrderBag className="h-full w-full" />}
@@ -465,7 +487,7 @@ export default async function Home() {
               Visit Pepper Pan
             </h2>
             <p className="mt-5 max-w-xl text-lg text-ink-800/80">{ADDRESS}</p>
-            <div className="mt-8 flex flex-wrap gap-4">
+            <div className="mt-8 flex flex-wrap gap-3">
               <a
                 href={MAPS_URL}
                 target="_blank"
@@ -482,10 +504,6 @@ export default async function Home() {
               </a>
             </div>
 
-            {/* The three accounts, as marks. This was one TikTok pill in a row
-                of buttons, which read as a third call to action competing with
-                Directions and the phone number — and left out the two accounts
-                the shop also posts from. */}
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <span className="text-xs font-bold uppercase tracking-widest text-ink-800/50">
                 Follow us
@@ -493,6 +511,78 @@ export default async function Home() {
               <SocialLinks tone="light" />
             </div>
           </Reveal>
+
+          {/* The right half of this section was empty, and the one question a
+              "come see us" block has to answer — are they open, and when —
+              wasn't on the page at all. The shop already keeps these hours for
+              its own scheduling, so this is the same data the checkout uses,
+              not a second copy to keep in step. */}
+          {schedule.configured && schedule.hours.length > 0 && (
+            <Reveal delay={0.1}>
+              <div className="rounded-3xl bg-cream-50 p-6 shadow-xl shadow-ink-950/5 ring-1 ring-ink-950/10 sm:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="font-display text-xl font-black text-ink-950">
+                    Opening hours
+                  </h3>
+                  <span
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ${
+                      schedule.state.isOpen
+                        ? "bg-jade-600 text-cream-50"
+                        : "bg-ink-950/10 text-ink-800"
+                    }`}
+                  >
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        schedule.state.isOpen
+                          ? "animate-pulse bg-cream-50"
+                          : "bg-ink-800/40"
+                      }`}
+                    />
+                    {schedule.state.isOpen ? "Open now" : "Closed"}
+                  </span>
+                </div>
+
+                {!schedule.state.isOpen &&
+                  (schedule.state.opensNext || schedule.state.reason) && (
+                    <p className="mt-3 rounded-2xl bg-gold-400/20 px-4 py-2.5 text-sm font-semibold text-ink-800">
+                      {schedule.state.opensNext ?? schedule.state.reason}
+                    </p>
+                  )}
+
+                <ul className="mt-5 flex flex-col">
+                  {schedule.hours.map((day) => {
+                    const isToday =
+                      schedule.state.today?.weekday === day.weekday;
+                    return (
+                      <li
+                        key={day.weekday}
+                        className={`flex items-center justify-between gap-4 rounded-xl px-3 py-2 text-sm ${
+                          isToday
+                            ? "bg-ink-950 font-bold text-cream-50"
+                            : "text-ink-800/80"
+                        }`}
+                      >
+                        <span>{DAY_NAMES[day.weekday]}</span>
+                        <span
+                          className={
+                            day.is_open
+                              ? "tabular-nums"
+                              : isToday
+                                ? "text-cream-100/60"
+                                : "text-ink-800/40"
+                          }
+                        >
+                          {day.is_open
+                            ? `${formatClock(day.opens)} – ${formatClock(day.closes)}`
+                            : "Closed"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </Reveal>
+          )}
         </div>
       </section>
 
