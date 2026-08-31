@@ -275,9 +275,14 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
 
             {shown.length === 0 ? (
               <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-                {view === "open"
-                  ? "Nothing waiting — you're all caught up. 🎉"
-                  : `No orders are ${STATUS_LABELS[view].toLowerCase()} right now.`}
+                {/* With a search box above, "nothing is preparing right now"
+                    is a lie — plenty might be, just nothing matching what was
+                    typed. Say which of the two it is. */}
+                {query.trim()
+                  ? `Nothing in this queue matches \u201C${query.trim()}\u201D.`
+                  : view === "open"
+                    ? "Nothing waiting — you're all caught up. \u{1F389}"
+                    : `No orders are ${STATUS_LABELS[view].toLowerCase()} right now.`}
               </p>
             ) : (
               <ul className="flex flex-col gap-4">
