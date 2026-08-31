@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Logo } from "@/components/logo";
 import type { AdminBadges } from "@/lib/admin-badges";
 import { SignOutButton } from "@/components/sign-out-button";
+import { ShiftClock } from "@/components/shift-clock";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 
 /**
@@ -66,6 +67,7 @@ const GROUPS: Group[] = [
       { href: "/admin/analytics", label: "Analytics", icon: "◈" },
       { href: "/admin/reviews", label: "Reviews", icon: "★" },
       { href: "/admin/customers", label: "Customers", icon: "◑" },
+      { href: "/admin/staff", label: "Staff", icon: "◔", ownerOnly: true },
       { href: "/admin/faq", label: "Answers", icon: "?" },
     ],
   },
@@ -131,6 +133,7 @@ function Rail({
   role,
   badges,
   connected,
+  shiftStartedAt,
 }: {
   pathname: string;
   onNavigate?: () => void;
@@ -138,6 +141,7 @@ function Rail({
   role: string;
   badges: AdminBadges;
   connected: boolean;
+  shiftStartedAt: string | null;
 }) {
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto bg-ink-950 px-4 py-6">
@@ -197,6 +201,12 @@ function Rail({
       </nav>
 
       <div className="border-t border-cream-50/10 pt-4">
+        {/* Above the account it belongs to, and above the way out — clocking
+            out and signing out are different things and sit next to each
+            other so nobody does one meaning the other. */}
+        <div className="mb-2">
+          <ShiftClock open={shiftStartedAt !== null} startedAt={shiftStartedAt} />
+        </div>
         <Link
           href="/"
           onClick={onNavigate}
@@ -235,11 +245,14 @@ export function AdminShell({
   email,
   role,
   badges,
+  shiftStartedAt,
 }: {
   children: React.ReactNode;
   email: string;
   role: string;
   badges: AdminBadges;
+  /** When the running shift began, or null when nobody is clocked in. */
+  shiftStartedAt: string | null;
 }) {
   const pathname = usePathname();
   const waiting = badges.orders + badges.inbox + badges.payments;
@@ -282,6 +295,7 @@ export function AdminShell({
           role={role}
           badges={badges}
           connected={connected}
+          shiftStartedAt={shiftStartedAt}
         />
       </aside>
 
@@ -300,6 +314,7 @@ export function AdminShell({
               role={role}
               badges={badges}
               connected={connected}
+              shiftStartedAt={shiftStartedAt}
               onNavigate={() => setOpen(false)}
             />
           </div>
