@@ -21,9 +21,18 @@ export function emailConfigured() {
   return Boolean(process.env.RESEND_API_KEY && process.env.SHOP_FROM_EMAIL);
 }
 
-/** Steps a customer actually wants to hear about, away from the site. */
+/**
+ * Steps a customer actually wants to hear about, away from the site.
+ *
+ * `preparing` is here because the gap between "confirmed" and "ready" is the
+ * longest silence in the whole order, and it's the stretch where someone
+ * starts wondering whether anything is happening at all. `completed` is not:
+ * by the time an order is completed the customer is holding the food, and a
+ * phone buzzing to say so is noise.
+ */
 const WORTH_SENDING: OrderStatus[] = [
   "confirmed",
+  "preparing",
   "ready",
   "out_for_delivery",
   "cancelled",
@@ -33,6 +42,8 @@ function subjectFor(status: OrderStatus, ref: string): string {
   switch (status) {
     case "confirmed":
       return `Your Pepper Pan order is confirmed (#${ref})`;
+    case "preparing":
+      return `We're cooking your Pepper Pan order (#${ref})`;
     case "ready":
       return `Your Pepper Pan order is ready (#${ref})`;
     case "out_for_delivery":
@@ -52,6 +63,8 @@ function bodyFor(
   switch (status) {
     case "confirmed":
       return "Salamat! We've got your order and the kitchen has it. We'll let you know the moment it's ready.";
+    case "preparing":
+      return "Your food is on the wok now. We'll message you again the moment it's ready.";
     case "ready":
       return fulfillment === "delivery"
         ? "Your food is ready and waiting for a rider. They'll call or text you when they're close, so keep your phone nearby."
@@ -77,6 +90,8 @@ function pushBodyFor(status: OrderStatus, fulfillment: string): string {
   switch (status) {
     case "confirmed":
       return "The kitchen has it. We'll tell you when it's ready.";
+    case "preparing":
+      return "On the wok now. Not long. 🔥";
     case "ready":
       return fulfillment === "delivery"
         ? "Waiting for a rider — they'll ring you. Keep your phone nearby. 📱"
@@ -94,6 +109,8 @@ function pushTitleFor(status: OrderStatus, ref: string): string {
   switch (status) {
     case "confirmed":
       return `Order confirmed · #${ref}`;
+    case "preparing":
+      return `Cooking now 🍳 · #${ref}`;
     case "ready":
       return `Your order is ready 🍜 · #${ref}`;
     case "out_for_delivery":

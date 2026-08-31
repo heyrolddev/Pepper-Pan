@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/logo";
+import type { AdminBadges } from "@/lib/admin-badges";
 
 /**
  * HQ as a workspace rather than a web page.
@@ -20,7 +21,13 @@ import { Logo } from "@/components/logo";
  * tablet and in their hand.
  */
 
-type Item = { href: string; label: string; icon: string };
+type Item = {
+  href: string;
+  label: string;
+  icon: string;
+  /** Which count in `badges` belongs on this row, if any. */
+  badge?: keyof AdminBadges;
+};
 type Group = { title: string; items: Item[] };
 
 const GROUPS: Group[] = [
@@ -28,16 +35,16 @@ const GROUPS: Group[] = [
     title: "Every day",
     items: [
       { href: "/admin", label: "Today", icon: "◉" },
-      { href: "/admin/orders", label: "Orders", icon: "▤" },
+      { href: "/admin/orders", label: "Orders", icon: "▤", badge: "orders" },
       { href: "/admin/menu", label: "Menu", icon: "☰" },
-      { href: "/admin/inbox", label: "Inbox", icon: "✉" },
+      { href: "/admin/inbox", label: "Inbox", icon: "✉", badge: "inbox" },
     ],
   },
   {
     title: "Understand",
     items: [
       { href: "/admin/analytics", label: "Analytics", icon: "◈" },
-      { href: "/admin/reviews", label: "Reviews", icon: "★" },
+      { href: "/admin/reviews", label: "Reviews", icon: "★", badge: "reviews" },
       { href: "/admin/customers", label: "Customers", icon: "◑" },
       { href: "/admin/faq", label: "Answers", icon: "?" },
     ],
@@ -47,7 +54,7 @@ const GROUPS: Group[] = [
     items: [
       { href: "/admin/hours", label: "Hours", icon: "◷" },
       { href: "/admin/delivery", label: "Delivery", icon: "→" },
-      { href: "/admin/payments", label: "Payments", icon: "₱" },
+      { href: "/admin/payments", label: "Payments", icon: "₱", badge: "payments" },
       { href: "/admin/alerts", label: "Alerts", icon: "🔔" },
       { href: "/admin/reset", label: "Start fresh", icon: "⟲" },
     ],
@@ -69,16 +76,38 @@ export function currentTitle(pathname: string): string {
   return hit?.label ?? "HQ";
 }
 
+/**
+ * The count on a row, in the one place it's defined.
+ *
+ * Gold on the active row and brand red elsewhere, because the active row's
+ * own background is already gold — a gold pill on gold is invisible, which is
+ * the one thing a badge may never be.
+ */
+function Badge({ n, active }: { n: number; active: boolean }) {
+  if (n <= 0) return null;
+  return (
+    <span
+      className={`ml-auto grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[11px] font-black tabular-nums ${
+        active ? "bg-ink-950 text-gold-400" : "bg-brand-600 text-cream-50"
+      }`}
+    >
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
+
 function Rail({
   pathname,
   onNavigate,
   email,
   role,
+  badges,
 }: {
   pathname: string;
   onNavigate?: () => void;
   email: string;
   role: string;
+  badges: AdminBadges;
 }) {
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto bg-ink-950 px-4 py-6">
@@ -118,7 +147,11 @@ function Rail({
                       >
                         {item.icon}
                       </span>
-                      {item.label}
+                      <span className="min-w-0 truncate">{item.label}</span>
+                      <Badge
+                        n={item.badge ? badges[item.badge] : 0}
+                        active={active}
+                      />
                     </Link>
                   </li>
                 );
@@ -149,12 +182,15 @@ export function AdminShell({
   children,
   email,
   role,
+  badges,
 }: {
   children: React.ReactNode;
   email: string;
   role: string;
+  badges: AdminBadges;
 }) {
   const pathname = usePathname();
+  const waiting = badges.orders + badges.inbox + badges.payments + badges.reviews;
   // The drawer remembers which page it was opened on, and is only open while
   // that's still the page. Derived rather than synchronised: every link
   // already closes it on click, but the back button changes the path without
@@ -181,7 +217,7 @@ export function AdminShell({
     <div className="flex min-h-screen bg-cream-50">
       {/* Desktop rail — always there, never in the way. */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 lg:block">
-        <Rail pathname={pathname} email={email} role={role} />
+        <Rail pathname={pathname} email={email} role={role} badges={badges} />
       </aside>
 
       {/* Phone drawer — the same rail, over the page. */}
@@ -197,6 +233,7 @@ export function AdminShell({
               pathname={pathname}
               email={email}
               role={role}
+              badges={badges}
               onNavigate={() => setOpen(false)}
             />
           </div>
@@ -207,15 +244,28 @@ export function AdminShell({
         {/* Phone bar. It says where you are, because without the rail in view
             a page of numbers doesn't tell you which page it is. */}
         <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-ink-950/10 bg-cream-50/95 px-4 py-3 backdrop-blur lg:hidden">
+          {/* On a phone the rail is behind this button, so every badge inside
+              it is invisible until someone thinks to look. The count comes out
+              onto the button itself: the whole point was answering "is there
+              anything for me?" without opening anything. */}
           <button
             onClick={() => setOpen(true)}
-            aria-label="Open menu"
+            aria-label={
+              waiting > 0
+                ? `Open menu — ${waiting} thing${waiting === 1 ? "" : "s"} need you`
+                : "Open menu"
+            }
             aria-expanded={open}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-cream-50"
+            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-ink-950 text-cream-50"
           >
             <span aria-hidden className="text-lg leading-none">
               ☰
             </span>
+            {waiting > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-brand-600 px-1 text-[10px] font-black tabular-nums text-cream-50 ring-2 ring-cream-50">
+                {waiting > 99 ? "99+" : waiting}
+              </span>
+            )}
           </button>
           <p className="min-w-0 flex-1 truncate font-display text-lg font-black text-ink-950">
             {currentTitle(pathname)}
