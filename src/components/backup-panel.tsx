@@ -14,6 +14,7 @@ export type BackupFile = {
 };
 
 type Count = { table: string; count: number; error: string | null };
+type HealthIssue = { kind: string; detail: string };
 
 /** Manila, and in words, because "3 days ago" is the number that matters. */
 function ageOf(iso: string | null) {
@@ -89,6 +90,7 @@ export function BackupPanel({
   totalRows,
   brokenTables,
   lastBackup,
+  health,
 }: {
   files: BackupFile[];
   counts: Count[];
@@ -96,6 +98,8 @@ export function BackupPanel({
   totalRows: number;
   brokenTables: string[];
   lastBackup: string | null;
+  /** Recipes pointing at things that no longer exist, and duplicate names. */
+  health: HealthIssue[];
 }) {
   const { download, busy, error } = useDownloader();
   const age = ageOf(lastBackup);
@@ -295,6 +299,40 @@ export function BackupPanel({
           ))}
         </ul>
       </details>
+
+      {/* Silence here is the good outcome, so it says so rather than showing
+          nothing — an absent panel and a clean bill of health look identical
+          otherwise. */}
+      <section
+        className={`rounded-3xl p-6 ring-1 ${
+          health.length === 0
+            ? "bg-jade-600/10 ring-jade-600/25"
+            : "bg-gold-400/25 ring-gold-600/30"
+        }`}
+      >
+        <h3 className="font-display text-lg font-black text-ink-950">
+          {health.length === 0
+            ? "Your data checks out"
+            : `${health.length} thing${health.length === 1 ? "" : "s"} worth a look`}
+        </h3>
+        <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
+          {health.length === 0
+            ? "Every recipe points at something that exists, and no two dishes share a name."
+            : "None of this stops the shop working — but each one makes a number somewhere quietly wrong."}
+        </p>
+        {health.length > 0 && (
+          <ul className="mt-4 flex flex-col gap-1.5">
+            {health.map((h, i) => (
+              <li key={i} className="text-sm text-ink-800/80">
+                <span className="mr-2 rounded-full bg-ink-950/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-ink-800/70">
+                  {h.kind}
+                </span>
+                {h.detail}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="rounded-3xl border-2 border-dashed border-ink-950/15 p-6">
         <h3 className="font-display text-lg font-black text-ink-950">

@@ -28,6 +28,8 @@ export type StockRow = {
   categories: string[];
   purchasePrice: number;
   purchaseQty: number;
+  /** How much the last delivery's price moved against the one before it. */
+  priceMovePct: number | null;
 };
 
 /** The shape the forms want, from the shape the list already has. */
@@ -539,6 +541,20 @@ export function InventoryView({
                       <span>{peso(s.unitCost, 4)} / {s.unit}</span>
                       <span>{peso(s.value, 0)} on hand</span>
                     </>
+                  )}
+                  {/* Against the previous delivery, not an average — an
+                      average smooths away exactly the jump worth knowing
+                      about. */}
+                  {canSeeCosts && s.priceMovePct !== null && (
+                    <span
+                      className={`font-bold ${
+                        s.priceMovePct > 0 ? "text-brand-600" : "text-jade-700"
+                      }`}
+                      title="Compared with the delivery before it"
+                    >
+                      {s.priceMovePct > 0 ? "↑" : "↓"}{" "}
+                      {Math.abs(s.priceMovePct).toFixed(0)}% since last buy
+                    </span>
                   )}
                   {canSeeCosts && s.unitCost <= 0 && (
                     <span className="font-bold text-chili-700">No price set</span>

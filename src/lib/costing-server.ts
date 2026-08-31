@@ -144,3 +144,32 @@ export async function recordOrderCost(orderId: string): Promise<void> {
     .eq("id", orderId);
   if (error) console.error(`[costing] update ${orderId}: ${error.message}`);
 }
+
+/**
+ * How much of each dish has actually sold.
+ *
+ * Menu engineering without sales volume is just a cost list — half the
+ * quadrants are about popularity. Kept here rather than in the page because
+ * the page is a component, and reading the clock during render is exactly
+ * the impurity the React compiler warns about.
+ */
+export async function loadSalesVolume(
+  days = 90
+): Promise<Map<string, number>> {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("order_lines")
+    .select("meal_id, qty, orders!inner(date, status)")
+    .gte("orders.date", since)
+    .neq("orders.status", "cancelled");
+  if (error) {
+    console.error(`[costing] sales volume: ${error.message}`);
+    return new Map();
+  }
+  const out = new Map<string, number>();
+  for (const r of (data ?? []) as { meal_id: string; qty: number }[]) {
+    out.set(r.meal_id, (out.get(r.meal_id) ?? 0) + (Number(r.qty) || 0));
+  }
+  return out;
+}

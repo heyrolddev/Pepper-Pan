@@ -1,6 +1,6 @@
 import { getViewer } from "@/lib/auth";
-import { loadCostBook } from "@/lib/costing-server";
-import { marginFor } from "@/lib/costing";
+import { loadCostBook, loadSalesVolume } from "@/lib/costing-server";
+import { classifyMenu, marginFor, menuClassFor } from "@/lib/costing";
 import { DishCosts, type DishRow } from "@/components/dish-costs";
 import type { RecipeOption } from "@/components/recipe-editor";
 
@@ -27,6 +27,9 @@ export default async function AdminCostingPage() {
 
   const { mealCosts, batchCosts, ingredients, mealIngredients, failed } =
     await loadCostBook();
+
+  // Menu engineering needs popularity as well as margin.
+  const soldByMeal = await loadSalesVolume();
 
   // What a recipe line may point at: every ingredient, and every batch at its
   // cost per unit of yield — the same number the costing engine multiplies by.
@@ -56,11 +59,29 @@ export default async function AdminCostingPage() {
     recipeByMeal.set(mi.meal_id, list);
   }
 
-  // Maps don't survive the trip to a client component, and the client has no
-  // business re-deriving arithmetic the server already did.
+  // Averages first, from every costed dish, so each dish can be placed
+  // against the menu it's actually on.
+  const forSplit = [...mealCosts.values()]
+    .filter((mc) => mc.costed && mc.meal.price > 0)
+    .map((mc) => ({
+      qty: soldByMeal.get(mc.meal.id) ?? 0,
+      gross: marginFor(mc.meal.price, mc.cost, mc.costed).gross,
+    }));
+  const { avgQty, avgGross } = classifyMenu(forSplit);
+  const anySales = forSplit.some((r) => r.qty > 0);
+
   const dishes: DishRow[] = [...mealCosts.values()].map((mc) => {
     const m = marginFor(mc.meal.price, mc.cost, mc.costed);
+    const sold = soldByMeal.get(mc.meal.id) ?? 0;
     return {
+      sold,
+      // Withheld entirely until something has sold. Classifying a menu where
+      // every dish has sold nothing puts them all in the same box and calls
+      // it insight.
+      menuClass:
+        anySales && mc.costed && mc.meal.price > 0
+          ? menuClassFor(sold, m.gross, avgQty, avgGross)
+          : null,
       id: mc.meal.id,
       name: mc.meal.name,
       price: Number(mc.meal.price) || 0,
@@ -90,5 +111,12 @@ export default async function AdminCostingPage() {
     };
   });
 
-  return <DishCosts dishes={dishes} options={options} failed={failed} />;
+  return (
+    <DishCosts
+      dishes={dishes}
+      options={options}
+      classified={anySales}
+      failed={failed}
+    />
+  );
 }

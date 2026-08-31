@@ -65,6 +65,10 @@ const GROUPS: Group[] = [
     title: "Understand",
     items: [
       { href: "/admin/analytics", label: "Analytics", icon: "◈" },
+      // Named apart from "Payments" on purpose: that one is how customers pay
+      // the shop, this one is what the shop pays out. Sharing the ₱ icon as
+      // well would have made two very different screens look like a pair.
+      { href: "/admin/money", label: "Costs & cash", icon: "◆", ownerOnly: true },
       { href: "/admin/reviews", label: "Reviews", icon: "★" },
       { href: "/admin/customers", label: "Customers", icon: "◑" },
       { href: "/admin/staff", label: "Staff", icon: "◔", ownerOnly: true },
