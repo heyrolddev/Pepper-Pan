@@ -33,6 +33,8 @@ export default async function AdminInventoryPage() {
           ).toLocaleString("en-PH")}${i.unit}`
         : null,
     categories: i.categories ?? [],
+    purchasePrice: Number(i.purchase_price) || 0,
+    purchaseQty: Number(i.purchase_qty) || 0,
   }));
 
   const batchRows: BatchRow[] = [...batchCosts.values()].map((b) => ({

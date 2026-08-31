@@ -2,6 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { peso } from "@/lib/costing";
+import {
+  CountForm,
+  IngredientForm,
+  RestockForm,
+  type EditableIngredient,
+} from "@/components/ingredient-forms";
 
 export type StockRow = {
   id: string;
@@ -14,7 +20,30 @@ export type StockRow = {
   low: boolean;
   buysAs: string | null;
   categories: string[];
+  purchasePrice: number;
+  purchaseQty: number;
 };
+
+/** The shape the forms want, from the shape the list already has. */
+function editable(s: StockRow): EditableIngredient {
+  return {
+    id: s.id,
+    name: s.name,
+    unit: s.unit,
+    purchasePrice: s.purchasePrice,
+    purchaseQty: s.purchaseQty,
+    reorder: s.reorder,
+    categories: s.categories,
+    stock: s.stock,
+    unitCost: s.unitCost,
+  };
+}
+
+/** Which dialog is open, and over which row. */
+type Editing =
+  | { kind: "new" }
+  | { kind: "edit" | "restock" | "count"; row: StockRow }
+  | null;
 
 export type BatchRow = {
   id: string;
@@ -111,6 +140,19 @@ export function InventoryView({
   const [tab, setTab] = useState<"stock" | "batches">("stock");
   const [query, setQuery] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
+  const [editing, setEditing] = useState<Editing>(null);
+
+  // Offered as suggestions rather than a fixed list: the shop's own units and
+  // tags are the right vocabulary, and a dropdown of ours would just be one
+  // more thing that doesn't fit.
+  const units = useMemo(
+    () => [...new Set(stock.map((s) => s.unit).filter(Boolean))].sort(),
+    [stock]
+  );
+  const allCategories = useMemo(
+    () => [...new Set(stock.flatMap((s) => s.categories))].sort(),
+    [stock]
+  );
 
   const low = useMemo(() => stock.filter((s) => s.low), [stock]);
   const totalValue = useMemo(
@@ -151,12 +193,20 @@ export function InventoryView({
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Inventory</h2>
-        <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
-          What&apos;s on the shelf, what&apos;s running out, and the sauces and
-          marinades you make in bulk.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="font-display text-2xl font-black text-ink-950">Inventory</h2>
+          <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
+            What&apos;s on the shelf, what&apos;s running out, and the sauces and
+            marinades you make in bulk. Selling now takes stock off the shelf.
+          </p>
+        </div>
+        <button
+          onClick={() => setEditing({ kind: "new" })}
+          className="shrink-0 rounded-2xl bg-ink-950 px-5 py-3 text-sm font-black text-cream-50 transition-colors hover:bg-ink-800"
+        >
+          + Add an ingredient
+        </button>
       </div>
 
       {failed.length > 0 && (
@@ -331,6 +381,39 @@ export function InventoryView({
                     </span>
                   )}
                 </div>
+
+                {/* Restock first and widest: it is the thing done most, and
+                    usually while holding a delivery in the other hand.
+
+                    Solid green only where restocking is actually the next
+                    action. Ninety-one saturated bars down the page would be
+                    decoration, and decoration that looks like a priority is
+                    worse than none — this way the colour is the shopping
+                    list, same as the red badge. */}
+                <div className="mt-3 flex gap-1.5">
+                  <button
+                    onClick={() => setEditing({ kind: "restock", row: s })}
+                    className={`flex-1 rounded-xl py-2 text-xs font-black uppercase tracking-wide transition-colors ${
+                      s.low
+                        ? "bg-jade-600 text-cream-50 hover:bg-jade-700"
+                        : "bg-jade-600/10 text-jade-800 hover:bg-jade-600 hover:text-cream-50"
+                    }`}
+                  >
+                    Restock
+                  </button>
+                  <button
+                    onClick={() => setEditing({ kind: "count", row: s })}
+                    className="rounded-xl bg-ink-950/5 px-3 py-2 text-xs font-bold text-ink-800/70 transition-colors hover:bg-ink-950/10"
+                  >
+                    Count
+                  </button>
+                  <button
+                    onClick={() => setEditing({ kind: "edit", row: s })}
+                    className="rounded-xl bg-ink-950/5 px-3 py-2 text-xs font-bold text-ink-800/70 transition-colors hover:bg-ink-950/10"
+                  >
+                    Edit
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -402,6 +485,40 @@ export function InventoryView({
             );
           })}
         </ul>
+      )}
+
+      {/* Keyed on the row so opening a second ingredient's form resets every
+          field — a restock dialog carrying the last one's quantity is how a
+          delivery gets recorded against the wrong shelf. */}
+      {editing?.kind === "new" && (
+        <IngredientForm
+          units={units}
+          categories={allCategories}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "edit" && (
+        <IngredientForm
+          key={editing.row.id}
+          ingredient={editable(editing.row)}
+          units={units}
+          categories={allCategories}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "restock" && (
+        <RestockForm
+          key={editing.row.id}
+          ingredient={editable(editing.row)}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "count" && (
+        <CountForm
+          key={editing.row.id}
+          ingredient={editable(editing.row)}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );
