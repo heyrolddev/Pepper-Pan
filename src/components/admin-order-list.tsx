@@ -8,6 +8,7 @@ import { AdminSearch } from "@/components/admin-search";
 import { PaymentVerifier } from "@/components/payment-verifier";
 import { ACTIVE_ORDER_STATUSES, STATUS_LABELS, STATUS_TONES, ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 import { OrderBoard, type View } from "@/components/order-board";
+import { Foldable } from "@/components/foldable";
 import { moneyLine, moneyState, type PaymentMethod, type PaymentPlan, type PaymentStatus } from "@/lib/payments";
 import { formatDateTimeFull } from "@/lib/format-date";
 import { EtaCountdown } from "@/components/eta-countdown";
@@ -55,7 +56,7 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
   const p = o.customer;
   const money = moneyState(o);
   return (
-    <li className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
+    <div className="bg-cream-100 p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -237,7 +238,7 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
           <span className="font-bold">Cancelled:</span> {o.cancelled_reason}
         </p>
       )}
-    </li>
+    </div>
   );
 }
 
@@ -253,83 +254,56 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
  *
  * Live queues start open, because during service the controls *are* the point
  * and folding them would cost a tap on every order. Closed queues start folded,
- * because nobody is going to touch them again. Either way the same control
- * flips it, and it's a real button rather than a hairline of text — this gets
- * used with one thumb, in a hurry, by someone holding a ladle.
+ * because nobody is going to touch them again.
  */
 function OrderRow({ order: o, startOpen }: { order: AdminOrder; startOpen: boolean }) {
-  const [open, setOpen] = useState(startOpen);
   const money = moneyState(o);
   const owed = money.balance > 0;
-
-  const Chevron = (
-    <span
-      aria-hidden
-      className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink-950 text-base leading-none text-cream-50 transition-transform ${
-        open ? "rotate-180" : ""
-      }`}
-    >
-      ⌄
-    </span>
-  );
-
-  if (open) {
-    return (
-      <li className="flex flex-col">
-        <OrderCard order={o} />
-        <button
-          onClick={() => setOpen(false)}
-          aria-expanded
-          className="mx-auto -mt-3 flex items-center gap-2 rounded-full bg-ink-950 px-5 py-2 text-sm font-bold text-cream-50 shadow-lg transition-transform hover:scale-105"
-        >
-          {Chevron}
-          Fold up
-        </button>
-      </li>
-    );
-  }
+  const tone = STATUS_TONES[o.status];
+  const who = o.contact_name || o.customer?.full_name || "Walk-in";
 
   return (
-    <li>
-      <button
-        onClick={() => setOpen(true)}
-        aria-expanded={false}
-        className="flex w-full items-center gap-3 rounded-2xl bg-cream-100 px-3 py-2.5 text-left ring-1 ring-ink-950/10 transition-colors hover:bg-cream-200/60"
-      >
-        {Chevron}
-        <span
-          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
-            STATUS_TONES[o.status].chip
-          }`}
-        >
-          {STATUS_LABELS[o.status]}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-950">
-          {o.contact_name || o.customer?.full_name || "Walk-in"}
-        </span>
-        {/* Two things survive the fold, because they're the two reasons to
-            open a row: it's late, or it hasn't been paid for. */}
-        {o.eta_minutes != null && STATUS_TONES[o.status].live && (
-          <EtaCountdown
-            minutes={o.eta_minutes}
-            from={o.eta_set_at}
-            overdueLabel
-            className="hidden shrink-0 scale-90 sm:inline-flex"
-          />
-        )}
-        {owed && (
-          <span className="shrink-0 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cream-50">
-            ⚠ {peso(money.balance)}
+    <Foldable
+      startOpen={startOpen}
+      chip={tone.chip}
+      rail={tone.rail}
+      title={STATUS_LABELS[o.status]}
+      folded={
+        <>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${tone.chip}`}
+          >
+            {STATUS_LABELS[o.status]}
           </span>
-        )}
-        <span className="hidden shrink-0 text-xs text-ink-800/50 md:block">
-          {formatDateTimeFull(o.created_at)}
-        </span>
-        <span className="shrink-0 font-display text-sm font-black tabular-nums text-ink-950">
-          {peso(money.total)}
-        </span>
-      </button>
-    </li>
+          <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-950">
+            {who}
+          </span>
+          {/* Two things survive the fold, because they're the two reasons to
+              open a row: it's late, or it hasn't been paid for. */}
+          {o.eta_minutes != null && tone.live && (
+            <EtaCountdown
+              minutes={o.eta_minutes}
+              from={o.eta_set_at}
+              overdueLabel
+              className="hidden shrink-0 scale-90 sm:inline-flex"
+            />
+          )}
+          {owed && (
+            <span className="shrink-0 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cream-50">
+              ⚠ {peso(money.balance)}
+            </span>
+          )}
+          <span className="hidden shrink-0 text-xs text-ink-800/50 md:block">
+            {formatDateTimeFull(o.created_at)}
+          </span>
+          <span className="shrink-0 font-display text-sm font-black tabular-nums text-ink-950">
+            {peso(money.total)}
+          </span>
+        </>
+      }
+    >
+      <OrderCard order={o} />
+    </Foldable>
   );
 }
 
