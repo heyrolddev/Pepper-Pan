@@ -77,6 +77,7 @@ export function LiveOrdersBanner() {
   }, []);
 
   const { connected } = useOrderRealtime({
+    channelKey: "banner",
     onInsert: (row) => {
       const name = (row.contact_name as string) || "A customer";
       const total = Number(row.revenue ?? 0);

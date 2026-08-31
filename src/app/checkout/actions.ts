@@ -239,6 +239,27 @@ export async function placeOrder(
     );
     if (!verdict.ok) return { error: verdict.reason };
     scheduledAt = when.toISOString();
+
+    // Order-ahead has to be paid for. A same-day order the customer never
+    // collects costs the shop one meal it can still sell to the next person
+    // in the queue; a scheduled one costs ingredients bought and prep time
+    // set aside for a slot nobody turns up to. Paying — in full or as a down
+    // payment — is what makes the booking real.
+    //
+    // Checked on the server, where the money is: the form can hide the cash
+    // option, but the form is not what decides.
+    if (method !== "gcash") {
+      return {
+        error: paymentSettings.gcash_enabled
+          ? "Ordering ahead has to be paid for — choose GCash to pay in full or leave a down payment."
+          : "We can't take orders ahead just now. Please order when we're open.",
+      };
+    }
+    if (!reference) {
+      return {
+        error: "Add your GCash reference number so we can confirm the booking.",
+      };
+    }
   } else if (schedule.configured && !schedule.state.isOpen) {
     return {
       error: schedule.settings.accepting_orders

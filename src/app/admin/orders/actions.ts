@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getViewer, isStaff } from "@/lib/auth";
 import { notifyOrderStatus } from "@/lib/notify";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { pushToStaff } from "@/lib/push";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 import { PAYMENT_STATUSES, type PaymentStatus } from "@/lib/payments";
 
@@ -100,6 +102,10 @@ export async function setOrderEta(
       // Stamped so the customer's countdown runs from when the promise was
       // made, not from when they happened to open the page.
       eta_set_at: minutes === null ? null : new Date().toISOString(),
+      // A new ETA is a new promise, so it earns a new alert. Without this,
+      // extending a late order by ten minutes would buy silence instead of
+      // ten more minutes — the one case where the alert matters most.
+      eta_alerted_at: null,
     })
     .eq("id", orderId)
     .select("id");
@@ -179,4 +185,59 @@ export async function setPaymentStatus(
 
   revalidateOrders();
   return { error: null };
+}
+
+/**
+ * Tell the shop that a promised ETA has run out.
+ *
+ * The countdown lives in the browser, so the trigger has to as well — HQ open
+ * on the counter tablet is the timer, and this turns that into a push on the
+ * owner's phone in their pocket. That's the whole point: they're at the wok,
+ * not watching a screen, and the question "is that one ready or does the cook
+ * need chasing?" is the one thing the tablet can't answer for them.
+ *
+ * The honest limit: with no HQ tab open anywhere, nothing fires. Reaching a
+ * closed browser would need a scheduled job on the server, which this shop
+ * doesn't run.
+ *
+ * `eta_alerted_at` is claimed with a conditional update before anything is
+ * sent, so two open tabs hitting zero in the same second still produce one
+ * alert. A claim that loses the race simply returns.
+ */
+export async function alertEtaElapsed(
+  orderId: string
+): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!isStaff(viewer)) return { error: "Not allowed." };
+
+  try {
+    const db = createAdminClient();
+
+    // Claim first. `is("eta_alerted_at", null)` is what makes this safe: the
+    // second tab's update matches no rows and it stops here.
+    const { data: claimed } = await db
+      .from("orders")
+      .update({ eta_alerted_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .is("eta_alerted_at", null)
+      .in("status", ["pending", "confirmed", "preparing"])
+      .select("id, contact_name, eta_minutes");
+
+    const order = claimed?.[0];
+    if (!order) return { error: null };
+
+    const name = (order.contact_name as string | null)?.trim() || "A customer";
+    await pushToStaff({
+      title: `⏰ Time's up — ${name}`,
+      body: `The ${order.eta_minutes} min you promised is done. Ready to hand over, or does the cook need a nudge?`,
+      url: "/admin/orders",
+      // One order, one slot on the lock screen — same as the customer's.
+      tag: `eta-${orderId}`,
+    });
+
+    return { error: null };
+  } catch {
+    // An alert is a courtesy. It must never break the page it fired from.
+    return { error: null };
+  }
 }

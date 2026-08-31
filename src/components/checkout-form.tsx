@@ -92,6 +92,14 @@ export function CheckoutForm({
     payments.cod_enabled ? "cod" : "gcash"
   );
   const [plan, setPlan] = useState<PaymentPlan>("full");
+
+  // Picking a time after picking cash would leave "Cash" selected while the
+  // option itself disappears — the form would look fine and the server would
+  // reject it. Derived rather than corrected in an effect: an effect would let
+  // one render go out with the impossible pair still selected.
+  const scheduled = !!scheduledFor;
+  const effectiveMethod: PaymentMethod =
+    scheduled && method === "cod" ? "gcash" : method;
   const [reference, setReference] = useState("");
   const [receipt, setReceipt] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -129,7 +137,7 @@ export function CheckoutForm({
   // Either proof satisfies the shop; the server and database enforce the
   // same rule, so this only saves a round trip.
   const paymentBlocked =
-    method === "gcash" && reference.trim().length < 4 && !receipt
+    effectiveMethod === "gcash" && reference.trim().length < 4 && !receipt
       ? "Add your GCash reference number or a screenshot of the receipt."
       : null;
 
@@ -241,10 +249,10 @@ export function CheckoutForm({
         deliveryAddress: isDelivery ? address : undefined,
         deliveryLat: isDelivery ? (pin?.lat ?? null) : null,
         deliveryLng: isDelivery ? (pin?.lng ?? null) : null,
-        paymentMethod: method,
-        paymentPlan: method === "gcash" ? plan : "full",
-        paymentReference: method === "gcash" ? reference : undefined,
-        paymentReceipt: method === "gcash" ? receipt : null,
+        paymentMethod: effectiveMethod,
+        paymentPlan: effectiveMethod === "gcash" ? plan : "full",
+        paymentReference: effectiveMethod === "gcash" ? reference : undefined,
+        paymentReceipt: effectiveMethod === "gcash" ? receipt : null,
         scheduledFor,
       });
 
@@ -447,8 +455,9 @@ export function CheckoutForm({
       )}
 
       <PaymentPicker
+        scheduled={scheduled}
         settings={payments}
-        method={method}
+        method={effectiveMethod}
         onMethodChange={setMethod}
         plan={plan}
         onPlanChange={setPlan}
@@ -487,7 +496,7 @@ export function CheckoutForm({
             {peso(grandTotal)}
           </span>
         </div>
-        {method === "gcash" && plan === "downpayment" && payments.downpayment_enabled && (
+        {effectiveMethod === "gcash" && plan === "downpayment" && payments.downpayment_enabled && (
           <div className="mt-1 flex items-center justify-between border-t border-cream-50/15 pt-3 text-sm">
             <span className="text-cream-100/70">
               Send now ({payments.downpayment_percent}%)
@@ -620,7 +629,7 @@ export function CheckoutForm({
             : "Review my order →"}
       </button>
       <p className="text-center text-xs text-ink-800/50">
-        {method === "gcash"
+        {effectiveMethod === "gcash"
           ? "We'll check your GCash reference and confirm your order shortly."
           : "Cash on pickup or delivery. We'll confirm your order shortly."}
       </p>
