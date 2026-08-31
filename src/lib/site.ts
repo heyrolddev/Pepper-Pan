@@ -18,9 +18,38 @@ export const SHOP = {
   country: "PH",
   phone: "+63 947 353 3060",
   phoneHref: "+639473533060",
-  tiktok: "https://tiktok.com/@pepper.pan.taiwan",
   priceRange: "₱₱",
 } as const;
+
+/**
+ * Where the shop actually posts.
+ *
+ * The handles are stripped back to the plain profile URL — the ones copied
+ * out of the apps carry `igsi`, `utm_source=qr`, `sender_device=pc` and the
+ * like, which are that share's tracking, not the address of the page. They
+ * work, but they'd sit in the site's markup forever telling every visitor
+ * that the owner once scanned their own QR code.
+ *
+ * Order matters: the footer renders them in this order, and it's the order
+ * the shop is most active in.
+ */
+export const SOCIALS = [
+  {
+    name: "Facebook",
+    href: "https://www.facebook.com/profile.php?id=61591109867523",
+    handle: "Pepper Pan",
+  },
+  {
+    name: "Instagram",
+    href: "https://www.instagram.com/pepperpan.taiwanstylefood",
+    handle: "@pepperpan.taiwanstylefood",
+  },
+  {
+    name: "TikTok",
+    href: "https://www.tiktok.com/@pepper.pan.taiwan",
+    handle: "@pepper.pan.taiwan",
+  },
+] as const;
 
 /**
  * Absolute URLs are required for share cards — a relative image path is simply

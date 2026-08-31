@@ -105,9 +105,14 @@ export const STATUS_TONES: Record<OrderStatus, StatusTone> = {
     hint: "With a rider. Mark completed once it lands.",
   },
   completed: {
-    chip: "bg-ink-950/10 text-ink-800",
-    dot: "bg-ink-950/25",
-    rail: "border-ink-950/20",
+    // Green, because completed is the good ending and grey read as "filed
+    // away". A lighter green than Ready's saturated jade, deliberately: those
+    // two sit beside each other in the tab strip and their rails run down the
+    // same column of rows, and "cooked, waiting to be handed over" must never
+    // be mistaken for "done and gone".
+    chip: "bg-jade-100 text-jade-800",
+    dot: "bg-jade-400",
+    rail: "border-jade-400",
     live: false,
     hint: "Finished. Anything still owed is flagged in red.",
   },

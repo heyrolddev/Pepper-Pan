@@ -4,6 +4,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Marquee } from "@/components/marquee";
 import { Logo } from "@/components/logo";
+import { SOCIALS } from "@/lib/site";
+import {
+  FacebookIcon,
+  InstagramIcon,
+  TikTokIcon,
+} from "@/components/icons";
+
+/** Name -> mark. Keyed by name so `SOCIALS` stays plain data. */
+const MARKS = {
+  Facebook: FacebookIcon,
+  Instagram: InstagramIcon,
+  TikTok: TikTokIcon,
+} as const;
 
 /**
  * The shop's public footer.
@@ -35,6 +48,32 @@ export function SiteFooter({ year }: { year: number }) {
           <p className="mt-4 text-sm text-cream-100/60">
             Home of Taiwan-Style Black Pepper Noodles.
           </p>
+
+          {/* Marks rather than a list of handles: a stall's customers already
+              know these three shapes, and they read at a glance in a way
+              "Instagram @pepperpan.taiwanstylefood" never will. The name is
+              still there for anyone who can't see the icon. */}
+          <ul className="mt-5 flex items-center gap-2">
+            {SOCIALS.map((social) => {
+              const Mark = MARKS[social.name];
+              return (
+                <li key={social.name}>
+                  <a
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`${social.name} — ${social.handle}`}
+                    className="grid h-11 w-11 place-items-center rounded-full bg-cream-50/10 text-cream-100 ring-1 ring-cream-50/15 transition-colors hover:bg-gold-400 hover:text-ink-950"
+                  >
+                    <Mark className="h-5 w-5" />
+                    <span className="sr-only">
+                      {social.name} — {social.handle}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
         </div>
 
         <div>
@@ -75,16 +114,6 @@ export function SiteFooter({ year }: { year: number }) {
                 +63 947 353 3060
               </a>
             </li>
-            <li>
-              <a
-                href="https://tiktok.com/@pepper.pan.taiwan"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-gold-300"
-              >
-                TikTok @pepper.pan.taiwan
-              </a>
-            </li>
             <li className="text-cream-100/60">
               In front of Palengkeni, beside Osave! — Apalit
             </li>
@@ -92,8 +121,14 @@ export function SiteFooter({ year }: { year: number }) {
         </div>
       </div>
 
-      <div className="border-t border-white/10 py-5 text-center text-xs text-cream-100/40">
-        © {year} Pepper Pan
+      <div className="flex flex-col items-center gap-2 border-t border-white/10 py-5 text-xs text-cream-100/40 sm:flex-row sm:justify-center sm:gap-4">
+        <span>© {year} Pepper Pan</span>
+        <span aria-hidden className="hidden sm:inline">
+          ·
+        </span>
+        <Link href="/terms" className="hover:text-gold-300">
+          Terms &amp; conditions
+        </Link>
       </div>
     </footer>
   );
