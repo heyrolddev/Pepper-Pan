@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
@@ -14,6 +13,7 @@ import { countActiveOrders, getViewer, isStaff } from "@/lib/auth";
 import { AskWidget } from "@/components/ask-widget";
 import { getChatSettings } from "@/lib/chat-settings";
 import { SHOP, siteUrl } from "@/lib/site";
+import { ShopChrome } from "@/components/shop-chrome";
 
 // Warm display serif — reads artisanal and appetising rather than corporate.
 const fraunces = Fraunces({
@@ -106,17 +106,10 @@ if(hq||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
 }catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  // HQ brings its own sidebar shell. The shop's header, status banner, cart
-  // button, chat widget and footer are for customers, and following the owner
-  // into the back office they were only ever clutter — and, with a sidebar,
-  // a second navigation competing with the first.
-  const pathname = (await headers()).get("x-pathname") ?? "";
-  const inHQ = pathname.startsWith("/admin");
-
   const [viewer, chat, activeOrders] = await Promise.all([
     getViewer(),
-    inHQ ? Promise.resolve({ messengerUrl: null }) : getChatSettings(),
-    inHQ ? Promise.resolve(0) : countActiveOrders(),
+    getChatSettings(),
+    countActiveOrders(),
   ]);
 
   return (
@@ -132,21 +125,25 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex min-h-full flex-col bg-cream-50 font-sans text-ink-900">
         <CartProvider>
-          {!inHQ && <Preloader />}
+          {/* Mounted everywhere on purpose. It skips itself inside HQ via the
+              data-intro attribute the head script sets; unmounting it while
+              the intro is still running would strand the scroll lock. */}
+          <Preloader />
           <Cursor />
           <ScrollProgress />
-          {!inHQ && (
-            <>
-            {/* Above the nav, not below it — and that ordering is load-bearing.
-                Every page's masthead uses `.under-nav`, which pulls itself up by
-                exactly the nav's height so the dark hero runs behind a
-                transparent header. That only works while the masthead is the
-                nav's next sibling. With the banner in between, the hero rose by
-                the banner's height instead of the nav's: it stopped short of the
-                top, leaving a strip of cream page showing with the logo and the
-                account chip straddling the edge of it, and it covered the banner
-                itself — so the one message that says "we're closed today" was
-                painted over by the page it was warning about.
+
+          <ShopChrome>
+            {/* Above the nav, not below it — and that ordering is
+                load-bearing. Every page's masthead uses `.under-nav`, which
+                pulls itself up by exactly the nav's height so the dark hero
+                runs behind a transparent header. That only works while the
+                masthead is the nav's next sibling. With the banner in
+                between, the hero rose by the banner's height instead: it
+                stopped short of the top, leaving a strip of cream page
+                showing with the logo straddling the edge of it, and it
+                covered the banner itself — so the one message that says
+                "we're closed today" was painted over by the page it was
+                warning about.
 
                 Anything added here later belongs above this line, not between
                 the banner and the page. */}
@@ -157,17 +154,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               name={viewer?.profile?.full_name ?? null}
               activeOrders={activeOrders}
             />
-            </>
-          )}
+          </ShopChrome>
 
           {children}
-          {!inHQ && (
-            <>
-              <FloatingCart />
-              <AskWidget messengerUrl={chat.messengerUrl} />
-              <SiteFooter year={new Date().getFullYear()} />
-            </>
-          )}
+
+          <ShopChrome>
+            <FloatingCart />
+            <AskWidget messengerUrl={chat.messengerUrl} />
+            <SiteFooter year={new Date().getFullYear()} />
+          </ShopChrome>
         </CartProvider>
       </body>
     </html>
