@@ -116,7 +116,7 @@ export default async function AccountPage() {
             lines and pushed the row into the logo. It belongs here anyway:
             this is where the account chip beside it already leads. */}
         <div className="mt-10 border-t border-ink-950/10 pt-6">
-          <SignOutButton />
+          <SignOutButton variant="block" />
         </div>
       </section>
     </main>
