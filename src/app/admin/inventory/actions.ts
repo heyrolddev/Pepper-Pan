@@ -335,3 +335,198 @@ export async function adjustStock(input: {
   revalidate();
   return { error: null };
 }
+
+/* ------------------------------------------------------------------ */
+/* Batches                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Cook a batch.
+ *
+ * Consumes the recipe and adds the yield, in one Postgres call — thirteen
+ * ingredients for Black Pepper Sauce alone, and a failure part-way through
+ * would take the ingredients without producing the sauce.
+ *
+ * Deliberately does not refuse when stock is short. The form warns first,
+ * because that is where a human can judge it: the pepper may well have been
+ * bought this morning and not entered yet, and refusing to record work that
+ * has actually been done is how a system starts getting worked around.
+ */
+export async function produceBatch(input: {
+  batchId: string;
+  multiplier: number;
+}): Promise<Result & { cost?: number }> {
+  const viewer = await requireStaff();
+  if (!viewer) return { error: "Only shop staff can record a batch." };
+  if (!(input.multiplier > 0)) return { error: "How many batches?" };
+
+  const supabase = createAdminClient();
+  const { data: batch } = await supabase
+    .from("batches")
+    .select("name, yield_qty, yield_unit")
+    .eq("id", input.batchId)
+    .maybeSingle();
+  if (!batch) return { error: "That batch no longer exists." };
+
+  const { data, error } = await supabase.rpc("produce_batch", {
+    p_batch_id: input.batchId,
+    p_multiplier: input.multiplier,
+  });
+  // A raise inside the function arrives here as an error message written for
+  // the person reading it, so it is passed through rather than replaced.
+  if (error) return { error: error.message };
+
+  const made = Number(batch.yield_qty) * input.multiplier;
+  await log(
+    "movement",
+    `Made ${input.multiplier}× "${batch.name}" — ${made.toLocaleString("en-PH")} ${batch.yield_unit}, cost ₱${Number(data ?? 0).toFixed(2)}`,
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null, cost: Number(data ?? 0) };
+}
+
+export async function saveBatch(input: {
+  id?: string;
+  name: string;
+  yieldQty: number;
+  yieldUnit: string;
+  reorderLevel: number;
+  /** Set only for a repack — a bought item split into portions, no recipe. */
+  manualCostPerUnit: number | null;
+}): Promise<Result & { id?: string }> {
+  const viewer = await requireStaff();
+  if (!viewer) return { error: "Only shop staff can change batches." };
+
+  const name = input.name.trim();
+  if (!name) return { error: "Give the batch a name." };
+  if (input.yieldQty <= 0) return { error: "How much does one batch make?" };
+
+  const supabase = createAdminClient();
+  const row = {
+    name,
+    yield_qty: input.yieldQty,
+    yield_unit: input.yieldUnit.trim() || "g",
+    reorder_level: input.reorderLevel,
+    manual_cost_per_unit: input.manualCostPerUnit,
+  };
+
+  if (input.id) {
+    const { data, error } = await supabase
+      .from("batches")
+      .update(row)
+      .eq("id", input.id)
+      .select("id");
+    if (error) return { error: error.message };
+    if (!data?.length) return { error: "That batch no longer exists." };
+    await log("inventory", `Edited batch "${name}"`, viewer.profile?.id ?? null);
+    revalidate();
+    return { error: null, id: input.id };
+  }
+
+  const { data, error } = await supabase
+    .from("batches")
+    .insert({ ...row, batch_stock: 0 })
+    .select("id")
+    .single();
+  if (error || !data) return { error: error?.message ?? "Could not add it." };
+  await log("inventory", `Added batch "${name}"`, viewer.profile?.id ?? null);
+  revalidate();
+  return { error: null, id: data.id };
+}
+
+/**
+ * Replace what goes into a batch, in one go.
+ *
+ * Rewritten wholesale rather than diffed line by line: a recipe is edited as
+ * a whole thing on screen, and reconciling adds, edits and removes against
+ * what was there is a lot of moving parts for no visible gain.
+ */
+export async function saveBatchRecipe(input: {
+  batchId: string;
+  lines: { ingredientId: string; qty: number }[];
+}): Promise<Result> {
+  const viewer = await requireStaff();
+  if (!viewer) return { error: "Only shop staff can change recipes." };
+
+  const lines = input.lines.filter((l) => l.ingredientId && l.qty > 0);
+  const supabase = createAdminClient();
+
+  const { data: batch } = await supabase
+    .from("batches")
+    .select("name")
+    .eq("id", input.batchId)
+    .maybeSingle();
+  if (!batch) return { error: "That batch no longer exists." };
+
+  const { error: clearError } = await supabase
+    .from("batch_ingredients")
+    .delete()
+    .eq("batch_id", input.batchId);
+  if (clearError) return { error: clearError.message };
+
+  if (lines.length > 0) {
+    const { error } = await supabase.from("batch_ingredients").insert(
+      lines.map((l) => ({
+        batch_id: input.batchId,
+        ingredient_id: l.ingredientId,
+        qty: l.qty,
+      }))
+    );
+    if (error) return { error: error.message };
+  }
+
+  await log(
+    "inventory",
+    `Changed the recipe for "${batch.name}" — ${lines.length} ingredient${lines.length === 1 ? "" : "s"}`,
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null };
+}
+
+/** Same, for a dish. `refType` is "inv" for an ingredient, "batch" for a batch. */
+export async function saveMealRecipe(input: {
+  mealId: string;
+  lines: { refType: "inv" | "batch"; refId: string; qty: number }[];
+}): Promise<Result> {
+  const viewer = await requireStaff();
+  if (!viewer) return { error: "Only shop staff can change recipes." };
+
+  const lines = input.lines.filter((l) => l.refId && l.qty > 0);
+  const supabase = createAdminClient();
+
+  const { data: meal } = await supabase
+    .from("meals")
+    .select("name")
+    .eq("id", input.mealId)
+    .maybeSingle();
+  if (!meal) return { error: "That dish no longer exists." };
+
+  const { error: clearError } = await supabase
+    .from("meal_ingredients")
+    .delete()
+    .eq("meal_id", input.mealId);
+  if (clearError) return { error: clearError.message };
+
+  if (lines.length > 0) {
+    const { error } = await supabase.from("meal_ingredients").insert(
+      lines.map((l) => ({
+        meal_id: input.mealId,
+        ref_type: l.refType,
+        ref_id: l.refId,
+        qty: l.qty,
+      }))
+    );
+    if (error) return { error: error.message };
+  }
+
+  await log(
+    "inventory",
+    `Changed the recipe for "${meal.name}" — ${lines.length} line${lines.length === 1 ? "" : "s"}`,
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  revalidatePath("/menu");
+  return { error: null };
+}

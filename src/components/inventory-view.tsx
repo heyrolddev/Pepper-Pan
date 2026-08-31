@@ -8,6 +8,11 @@ import {
   RestockForm,
   type EditableIngredient,
 } from "@/components/ingredient-forms";
+import {
+  ProduceBatchForm,
+  RecipeEditor,
+  type RecipeOption,
+} from "@/components/recipe-editor";
 
 export type StockRow = {
   id: string;
@@ -43,11 +48,14 @@ function editable(s: StockRow): EditableIngredient {
 type Editing =
   | { kind: "new" }
   | { kind: "edit" | "restock" | "count"; row: StockRow }
+  | { kind: "produce" | "recipe"; batch: BatchRow }
   | null;
 
 export type BatchRow = {
   id: string;
   name: string;
+  /** What goes into one batch, so the produce dialog can check the shelf. */
+  recipe: { ingredientId: string; qty: number }[];
   yieldQty: number;
   yieldUnit: string;
   stock: number;
@@ -151,6 +159,21 @@ export function InventoryView({
   );
   const allCategories = useMemo(
     () => [...new Set(stock.flatMap((s) => s.categories))].sort(),
+    [stock]
+  );
+
+  // Everything a recipe line can point at, priced. Ingredients only — a batch
+  // made of batches is a recursion nobody at the stall asked for.
+  const ingredientOptions: RecipeOption[] = useMemo(
+    () =>
+      stock.map((s) => ({
+        id: s.id,
+        name: s.name,
+        unit: s.unit,
+        unitCost: s.unitCost,
+        kind: "inv" as const,
+        stock: s.stock,
+      })),
     [stock]
   );
 
@@ -481,6 +504,30 @@ export function InventoryView({
                     ))}
                   </ul>
                 )}
+
+                <div className="mt-3 flex gap-1.5">
+                  <button
+                    onClick={() => setEditing({ kind: "produce", batch: b })}
+                    className={`flex-1 rounded-xl py-2 text-xs font-black uppercase tracking-wide transition-colors ${
+                      low
+                        ? "bg-jade-600 text-cream-50 hover:bg-jade-700"
+                        : "bg-jade-600/10 text-jade-800 hover:bg-jade-600 hover:text-cream-50"
+                    }`}
+                  >
+                    Make a batch
+                  </button>
+                  {/* Recipes define what things cost, so they are the owner's.
+                      Making a batch is something that happened, so it is the
+                      shift's. */}
+                  {canSeeCosts && (
+                    <button
+                      onClick={() => setEditing({ kind: "recipe", batch: b })}
+                      className="rounded-xl bg-ink-950/5 px-3 py-2 text-xs font-bold text-ink-800/70 transition-colors hover:bg-ink-950/10"
+                    >
+                      Recipe
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}
@@ -517,6 +564,37 @@ export function InventoryView({
         <CountForm
           key={editing.row.id}
           ingredient={editable(editing.row)}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "produce" && (
+        <ProduceBatchForm
+          key={editing.batch.id}
+          batch={{
+            id: editing.batch.id,
+            name: editing.batch.name,
+            yieldQty: editing.batch.yieldQty,
+            yieldUnit: editing.batch.yieldUnit,
+            stock: editing.batch.stock,
+          }}
+          recipe={editing.batch.recipe}
+          options={ingredientOptions}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "recipe" && (
+        <RecipeEditor
+          key={editing.batch.id}
+          title={`Recipe for ${editing.batch.name}`}
+          subtitle={`Makes ${editing.batch.yieldQty.toLocaleString("en-PH")} ${editing.batch.yieldUnit} a batch.`}
+          price={null}
+          options={ingredientOptions}
+          initial={editing.batch.recipe.map((r) => ({
+            refType: "inv" as const,
+            refId: r.ingredientId,
+            qty: r.qty,
+          }))}
+          target={{ kind: "batch", batchId: editing.batch.id }}
           onClose={() => setEditing(null)}
         />
       )}

@@ -24,6 +24,9 @@ import {
 export type CostBook = {
   ingredients: Ingredient[];
   batches: Batch[];
+  /** The raw recipe rows, for the screens that edit them rather than cost them. */
+  batchIngredients: BatchIngredient[];
+  mealIngredients: MealIngredient[];
   batchCosts: Map<string, BatchCost>;
   mealCosts: Map<string, MealCost>;
   /** Human-readable names of any table that wouldn't load. */
@@ -78,7 +81,15 @@ export async function loadCostBook(): Promise<CostBook> {
     batchCosts
   );
 
-  return { ingredients, batches, batchCosts, mealCosts, failed };
+  return {
+    ingredients,
+    batches,
+    batchIngredients: (batIng.data ?? []) as BatchIngredient[],
+    mealIngredients: (meaIng.data ?? []) as MealIngredient[],
+    batchCosts,
+    mealCosts,
+    failed,
+  };
 }
 
 /**

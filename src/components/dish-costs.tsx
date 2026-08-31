@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { peso, FOOD_COST_TARGET, type Margin } from "@/lib/costing";
+import { RecipeEditor, type RecipeOption } from "@/components/recipe-editor";
 
 export type DishLine = {
   label: string;
@@ -16,6 +17,8 @@ export type DishLine = {
 export type DishRow = {
   id: string;
   name: string;
+  /** The recipe as stored, so it can be edited rather than only read. */
+  recipe: { refType: "inv" | "batch"; refId: string; qty: number }[];
   price: number;
   categories: string[];
   onMenu: boolean;
@@ -151,15 +154,19 @@ function Stat({
 
 export function DishCosts({
   dishes,
+  options,
   failed,
 }: {
   dishes: DishRow[];
+  /** Every ingredient and batch a line can point at, priced. */
+  options: RecipeOption[];
   failed: string[];
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("worst");
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
+  const [editing, setEditing] = useState<DishRow | null>(null);
 
   const summary = useMemo(() => {
     const costed = dishes.filter((d) => d.costed && d.price > 0);
@@ -505,12 +512,32 @@ export function DishCosts({
                         </table>
                       </div>
                     )}
+
+                    <button
+                      onClick={() => setEditing(d)}
+                      className="mt-4 rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-bold text-cream-50 transition-colors hover:bg-ink-800"
+                    >
+                      {d.lines.length === 0 ? "Add a recipe" : "Edit the recipe"}
+                    </button>
                   </div>
                 )}
               </li>
             );
           })}
         </ul>
+      )}
+
+      {editing && (
+        <RecipeEditor
+          key={editing.id}
+          title={`Recipe for ${editing.name}`}
+          subtitle="What one serving takes. The cost below updates as you type."
+          price={editing.price}
+          options={options}
+          initial={editing.recipe}
+          target={{ kind: "meal", mealId: editing.id }}
+          onClose={() => setEditing(null)}
+        />
       )}
 
       <p className="text-xs text-ink-800/45">
