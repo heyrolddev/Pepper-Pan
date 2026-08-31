@@ -2,7 +2,7 @@ import { getViewer } from "@/lib/auth";
 import { loadCostBook } from "@/lib/costing-server";
 import { isLow, stockValue } from "@/lib/costing";
 import { InventoryView, type BatchRow, type StockRow } from "@/components/inventory-view";
-import { loadInsight } from "@/lib/inventory-insight";
+import { loadInsight, loadPriceMoves } from "@/lib/inventory-insight";
 
 // Stock moves every service. A cached shopping list is the wrong shopping list.
 export const dynamic = "force-dynamic";
@@ -19,7 +19,10 @@ export default async function AdminInventoryPage() {
 
   // What to buy and what is about to go off. Needs the cost book first, since
   // both are worked out against the same ingredient and batch rows.
-  const insight = await loadInsight(ingredients, batches, batchIngredients);
+  const [insight, priceMoves] = await Promise.all([
+    loadInsight(ingredients, batches, batchIngredients),
+    loadPriceMoves(),
+  ]);
 
   // Grouped once here rather than looked up per card: the produce dialog
   // needs a batch's own lines to check them against the shelf.
@@ -50,6 +53,7 @@ export default async function AdminInventoryPage() {
     categories: i.categories ?? [],
     purchasePrice: Number(i.purchase_price) || 0,
     purchaseQty: Number(i.purchase_qty) || 0,
+    priceMovePct: priceMoves.get(i.id)?.pct ?? null,
   }));
 
   const batchRows: BatchRow[] = [...batchCosts.values()].map((b) => ({

@@ -190,3 +190,151 @@ export async function loadInsight(
     thin,
   };
 }
+
+/**
+ * Is this getting dearer?
+ *
+ * `purchase_log` has had rows written to it since restock landed, and two
+ * deliveries of the same thing at different prices is the earliest warning a
+ * shop gets that its margins are about to move. Compared against the previous
+ * delivery rather than an average: an average smooths away exactly the jump
+ * that matters.
+ */
+export type PriceMove = {
+  ingredientId: string;
+  /** ₱ per unit last time it was bought. */
+  previous: number;
+  latest: number;
+  /** Positive when it went up. */
+  pct: number;
+  on: string;
+};
+
+export async function loadPriceMoves(): Promise<Map<string, PriceMove>> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("purchase_log")
+    .select("ingredient_id, date, qty, cost")
+    .order("date", { ascending: false })
+    .limit(500);
+  if (error) {
+    console.error(`[insight] purchases: ${error.message}`);
+    return new Map();
+  }
+
+  const byIngredient = new Map<string, { date: string; unit: number }[]>();
+  for (const row of (data ?? []) as {
+    ingredient_id: string;
+    date: string;
+    qty: number;
+    cost: number;
+  }[]) {
+    const qty = Number(row.qty) || 0;
+    if (qty <= 0) continue;
+    const list = byIngredient.get(row.ingredient_id) ?? [];
+    list.push({ date: row.date, unit: (Number(row.cost) || 0) / qty });
+    byIngredient.set(row.ingredient_id, list);
+  }
+
+  const out = new Map<string, PriceMove>();
+  for (const [id, list] of byIngredient) {
+    if (list.length < 2) continue; // one delivery is a price, not a trend
+    const [latest, previous] = list; // already newest-first
+    if (previous.unit <= 0) continue;
+    const pct = ((latest.unit - previous.unit) / previous.unit) * 100;
+    // Under two percent is noise — a supplier rounding, not a price move.
+    if (Math.abs(pct) < 2) continue;
+    out.set(id, {
+      ingredientId: id,
+      previous: previous.unit,
+      latest: latest.unit,
+      pct,
+      on: latest.date,
+    });
+  }
+  return out;
+}
+
+/**
+ * Recipes pointing at things that no longer exist.
+ *
+ * Deleting an ingredient in use is refused, so this should stay empty — but
+ * "should" is doing a lot of work in a database that can also be edited
+ * directly, restored from a backup, or seeded by a script. A dish quietly
+ * costing less than it does reads as a dish that got more profitable, which
+ * is the failure this whole system keeps having to design against.
+ */
+export type HealthIssue = { kind: string; detail: string };
+
+export async function runHealthCheck(): Promise<HealthIssue[]> {
+  const supabase = createAdminClient();
+  const [ing, bat, mea, batIng, meaIng, meaComp] = await Promise.all([
+    supabase.from("ingredients").select("id"),
+    supabase.from("batches").select("id, name"),
+    supabase.from("meals").select("id, name"),
+    supabase.from("batch_ingredients").select("batch_id, ingredient_id"),
+    supabase.from("meal_ingredients").select("meal_id, ref_type, ref_id"),
+    supabase.from("meal_components").select("meal_id, component_meal_id"),
+  ]);
+
+  const ingIds = new Set(((ing.data ?? []) as { id: string }[]).map((r) => r.id));
+  const batchName = new Map(
+    ((bat.data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name])
+  );
+  const mealName = new Map(
+    ((mea.data ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name])
+  );
+
+  const issues: HealthIssue[] = [];
+
+  for (const r of (batIng.data ?? []) as { batch_id: string; ingredient_id: string }[]) {
+    if (!ingIds.has(r.ingredient_id)) {
+      issues.push({
+        kind: "Batch recipe",
+        detail: `"${batchName.get(r.batch_id) ?? r.batch_id}" uses an ingredient that no longer exists.`,
+      });
+    }
+  }
+  for (const r of (meaIng.data ?? []) as {
+    meal_id: string;
+    ref_type: string;
+    ref_id: string;
+  }[]) {
+    const missing =
+      r.ref_type === "inv" ? !ingIds.has(r.ref_id) : !batchName.has(r.ref_id);
+    if (missing) {
+      issues.push({
+        kind: "Dish recipe",
+        detail: `"${mealName.get(r.meal_id) ?? r.meal_id}" uses a ${r.ref_type === "inv" ? "ingredient" : "batch"} that no longer exists.`,
+      });
+    }
+  }
+  for (const r of (meaComp.data ?? []) as {
+    meal_id: string;
+    component_meal_id: string;
+  }[]) {
+    if (!mealName.has(r.component_meal_id)) {
+      issues.push({
+        kind: "Combo",
+        detail: `"${mealName.get(r.meal_id) ?? r.meal_id}" contains a dish that no longer exists.`,
+      });
+    }
+  }
+
+  // Two dishes with the same name is not corruption, but it is the reason a
+  // best-seller list can't be read — the real menu has exactly this.
+  const seen = new Map<string, number>();
+  for (const name of mealName.values()) {
+    seen.set(name, (seen.get(name) ?? 0) + 1);
+  }
+  for (const [name, n] of seen) {
+    if (n > 1) {
+      issues.push({
+        kind: "Duplicate name",
+        detail: `${n} dishes are both called "${name}" — you can't tell which one sold.`,
+      });
+    }
+  }
+
+  return issues;
+}

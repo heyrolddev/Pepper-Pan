@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { peso, FOOD_COST_TARGET, type Margin } from "@/lib/costing";
 import { RecipeEditor, type RecipeOption } from "@/components/recipe-editor";
+import { MENU_CLASS, type MenuClass } from "@/lib/costing";
 
 export type DishLine = {
   label: string;
@@ -17,6 +18,10 @@ export type DishLine = {
 export type DishRow = {
   id: string;
   name: string;
+  /** Units sold over the last 90 days. */
+  sold: number;
+  /** Null until something has sold, or when the dish can't be costed. */
+  menuClass: MenuClass | null;
   /** The recipe as stored, so it can be edited rather than only read. */
   recipe: { refType: "inv" | "batch"; refId: string; qty: number }[];
   price: number;
@@ -91,7 +96,7 @@ const SORTS: { key: Sort; label: string }[] = [
   { key: "name", label: "A–Z" },
 ];
 
-type Filter = "all" | "attention" | "menu" | "uncosted";
+type Filter = "all" | "attention" | "menu" | "uncosted" | MenuClass;
 
 /** One dish's price, split into what it cost and what's left. */
 function CostBar({ dish }: { dish: DishRow }) {
@@ -155,11 +160,14 @@ function Stat({
 export function DishCosts({
   dishes,
   options,
+  classified,
   failed,
 }: {
   dishes: DishRow[];
   /** Every ingredient and batch a line can point at, priced. */
   options: RecipeOption[];
+  /** False when nothing has sold yet, so the quadrants would be meaningless. */
+  classified: boolean;
   failed: string[];
 }) {
   const [query, setQuery] = useState("");
@@ -194,6 +202,8 @@ export function DishCosts({
         return d.verdict === "losing" || d.verdict === "tight";
       if (filter === "menu") return d.onMenu;
       if (filter === "uncosted") return !d.costed;
+      if (filter === "star" || filter === "plowhorse" || filter === "puzzle" || filter === "dog")
+        return d.menuClass === filter;
       return true;
     });
 
@@ -319,6 +329,35 @@ export function DishCosts({
           ))}
         </div>
 
+        {classified && (
+          <div className="flex flex-wrap gap-2">
+            {(["star", "plowhorse", "puzzle", "dog"] as const).map((k) => {
+              const n = dishes.filter((d) => d.menuClass === k).length;
+              if (n === 0) return null;
+              const info = MENU_CLASS[k];
+              return (
+                <button
+                  key={k}
+                  onClick={() => setFilter(filter === k ? "all" : k)}
+                  aria-pressed={filter === k}
+                  className={`flex-1 rounded-2xl p-3 text-left transition-transform hover:-translate-y-0.5 ${
+                    filter === k ? "ring-2 ring-ink-950" : ""
+                  } ${info.chip}`}
+                  style={{ minWidth: "9rem" }}
+                >
+                  <span className="block font-display text-lg font-black">
+                    {info.label}s
+                    <span className="ml-2 text-sm opacity-70 tabular-nums">{n}</span>
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-snug opacity-85">
+                    {info.blurb}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={query}
@@ -344,6 +383,14 @@ export function DishCosts({
           </div>
         </div>
       </div>
+
+      {classified &&
+        (filter === "star" || filter === "plowhorse" || filter === "puzzle" || filter === "dog") && (
+          <p className="rounded-2xl bg-cream-100 px-5 py-4 text-sm text-ink-800/80 ring-1 ring-ink-950/10">
+            <strong className="text-ink-950">{MENU_CLASS[filter].label}s.</strong>{" "}
+            {MENU_CLASS[filter].action}
+          </p>
+        )}
 
       {shown.length === 0 ? (
         <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
@@ -385,8 +432,18 @@ export function DishCosts({
                         )}
                       </p>
                     </div>
+                    <span className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    {d.menuClass && (
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-wide ${MENU_CLASS[d.menuClass].chip}`}
+                        title={MENU_CLASS[d.menuClass].blurb}
+                      >
+                        {MENU_CLASS[d.menuClass].label}
+                        <span className="ml-1.5 opacity-70 tabular-nums">{d.sold}</span>
+                      </span>
+                    )}
                     <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-wide ${tone.chip}`}
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-wide ${tone.chip}`}
                     >
                       {tone.label}
                       {d.foodCostPct !== null && (
@@ -394,6 +451,7 @@ export function DishCosts({
                           {d.foodCostPct.toFixed(0)}%
                         </span>
                       )}
+                    </span>
                     </span>
                   </div>
 

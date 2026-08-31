@@ -430,3 +430,82 @@ export function isLow(i: Ingredient): boolean {
   const reorder = Number(i.reorder) || 0;
   return reorder > 0 && (Number(i.stock) || 0) <= reorder;
 }
+
+// ---------------------------------------------------------------------------
+// Menu engineering
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a dish sits on the only two axes that matter.
+ *
+ * Popularity and margin, each split at the average, giving four boxes the
+ * restaurant trade has used for decades. The value is not the label — it is
+ * that each box implies a *different* action, and the wrong action on the
+ * wrong box loses money. Discounting a Plowhorse (already popular, already
+ * thin) is the classic way to be busier and poorer.
+ */
+export type MenuClass = "star" | "plowhorse" | "puzzle" | "dog";
+
+export const MENU_CLASS: Record<
+  MenuClass,
+  { label: string; blurb: string; action: string; chip: string }
+> = {
+  star: {
+    label: "Star",
+    blurb: "Sells well and earns well.",
+    action: "Protect it. Keep it consistent, keep the ingredients in stock, don't discount it.",
+    chip: "bg-jade-600 text-cream-50",
+  },
+  plowhorse: {
+    label: "Plowhorse",
+    blurb: "Sells well, earns little.",
+    action: "Raise the price a little, or find a cheaper way to make it. Never discount it — you'd just be busier and poorer.",
+    chip: "bg-gold-400 text-ink-950",
+  },
+  puzzle: {
+    label: "Puzzle",
+    blurb: "Earns well, hardly sells.",
+    action: "Push it. Better name, better photo, put it in front of people — the money is already in it.",
+    chip: "bg-chili-500 text-cream-50",
+  },
+  dog: {
+    label: "Dog",
+    blurb: "Doesn't sell, doesn't earn.",
+    action: "Reprice it, remake it, or take it off. It's using space on the menu and stock in the fridge.",
+    chip: "bg-ink-950/15 text-ink-800/80",
+  },
+};
+
+/**
+ * Split at the average rather than the median.
+ *
+ * A median guarantees a 50/50 split whatever the numbers look like, which
+ * would label half the menu "Dog" even in a shop where everything sells. The
+ * average moves with the shop, so a menu where one dish carries the day is
+ * described as exactly that.
+ */
+export function classifyMenu(
+  rows: { qty: number; gross: number }[]
+): { avgQty: number; avgGross: number } {
+  const selling = rows.filter((r) => r.qty > 0);
+  const base = selling.length > 0 ? selling : rows;
+  if (base.length === 0) return { avgQty: 0, avgGross: 0 };
+  return {
+    avgQty: base.reduce((s, r) => s + r.qty, 0) / base.length,
+    avgGross: base.reduce((s, r) => s + r.gross, 0) / base.length,
+  };
+}
+
+export function menuClassFor(
+  qty: number,
+  gross: number,
+  avgQty: number,
+  avgGross: number
+): MenuClass {
+  const popular = qty >= avgQty;
+  const earns = gross >= avgGross;
+  if (popular && earns) return "star";
+  if (popular) return "plowhorse";
+  if (earns) return "puzzle";
+  return "dog";
+}
