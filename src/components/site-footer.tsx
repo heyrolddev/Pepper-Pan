@@ -4,19 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Marquee } from "@/components/marquee";
 import { Logo } from "@/components/logo";
-import { SOCIALS } from "@/lib/site";
-import {
-  FacebookIcon,
-  InstagramIcon,
-  TikTokIcon,
-} from "@/components/icons";
-
-/** Name -> mark. Keyed by name so `SOCIALS` stays plain data. */
-const MARKS = {
-  Facebook: FacebookIcon,
-  Instagram: InstagramIcon,
-  TikTok: TikTokIcon,
-} as const;
+import { SocialLinks } from "@/components/social-links";
 
 /**
  * The shop's public footer.
@@ -24,7 +12,14 @@ const MARKS = {
  * Hidden on /admin: the owner signs in to run the shop, and a footer inviting
  * them to browse the menu or check "my orders" is noise in a workspace.
  */
-export function SiteFooter({ year }: { year: number }) {
+export function SiteFooter({
+  year,
+  staff = false,
+}: {
+  year: number;
+  /** Staff don't order, so the customer's links aren't theirs to follow. */
+  staff?: boolean;
+}) {
   const pathname = usePathname();
   if (pathname.startsWith("/admin")) return null;
 
@@ -53,27 +48,7 @@ export function SiteFooter({ year }: { year: number }) {
               know these three shapes, and they read at a glance in a way
               "Instagram @pepperpan.taiwanstylefood" never will. The name is
               still there for anyone who can't see the icon. */}
-          <ul className="mt-5 flex items-center gap-2">
-            {SOCIALS.map((social) => {
-              const Mark = MARKS[social.name];
-              return (
-                <li key={social.name}>
-                  <a
-                    href={social.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={`${social.name} — ${social.handle}`}
-                    className="grid h-11 w-11 place-items-center rounded-full bg-cream-50/10 text-cream-100 ring-1 ring-cream-50/15 transition-colors hover:bg-gold-400 hover:text-ink-950"
-                  >
-                    <Mark className="h-5 w-5" />
-                    <span className="sr-only">
-                      {social.name} — {social.handle}
-                    </span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
+          <SocialLinks tone="dark" className="mt-5" />
         </div>
 
         <div>
@@ -96,11 +71,15 @@ export function SiteFooter({ year }: { year: number }) {
                 Visit us
               </Link>
             </li>
-            <li>
-              <Link href="/orders" className="hover:text-gold-300">
-                My orders
-              </Link>
-            </li>
+            {/* The owner has no orders — theirs land in their own kitchen
+                queue — so the link would only ever lead to an empty page. */}
+            {!staff && (
+              <li>
+                <Link href="/orders" className="hover:text-gold-300">
+                  My orders
+                </Link>
+              </li>
+            )}
           </ul>
         </div>
 

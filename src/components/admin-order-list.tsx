@@ -252,11 +252,13 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
  * for (who, what state, how much, whether it's late); the card carries what
  * you act on.
  *
- * Live queues start open, because during service the controls *are* the point
- * and folding them would cost a tap on every order. Closed queues start folded,
- * because nobody is going to touch them again.
+ * Every queue starts folded, including the live ones. Open cards were the
+ * default during service on the theory that the controls are the point — but
+ * eight open orders is eight tall cards, and the thing a rush actually needs
+ * is to see the whole queue at once and then reach into one. Scanning is the
+ * common case; acting is the deliberate one, and it costs a tap.
  */
-function OrderRow({ order: o, startOpen }: { order: AdminOrder; startOpen: boolean }) {
+function OrderRow({ order: o }: { order: AdminOrder }) {
   const money = moneyState(o);
   const owed = money.balance > 0;
   const tone = STATUS_TONES[o.status];
@@ -264,7 +266,6 @@ function OrderRow({ order: o, startOpen }: { order: AdminOrder; startOpen: boole
 
   return (
     <Foldable
-      startOpen={startOpen}
       chip={tone.chip}
       rail={tone.rail}
       title={STATUS_LABELS[o.status]}
@@ -355,8 +356,6 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
           if (ACTIVE_ORDER_STATUSES.includes(o.status)) counts.open += 1;
         }
 
-        const live = view === "open" || STATUS_TONES[view].live;
-
         const shown =
           view === "open"
             ? filtered.filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status))
@@ -386,17 +385,9 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
                     : `No orders are ${STATUS_LABELS[view].toLowerCase()} right now.`}
               </p>
             ) : (
-              <ul className={`flex flex-col ${live ? "gap-4" : "gap-1.5"}`}>
-                {/* Only the live queues animate. Watching forty completed
-                    orders spring into place every time you open History is
-                    motion for its own sake, and it costs a frame each. */}
+              <ul className="flex flex-col gap-1.5">
                 {shown.map((o) => (
-                  <OrderRow
-                    key={o.id}
-                    order={o}
-                    // Live work opens to its controls; finished work doesn't.
-                    startOpen={live}
-                  />
+                  <OrderRow key={o.id} order={o} />
                 ))}
               </ul>
             )}

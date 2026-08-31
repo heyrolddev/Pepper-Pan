@@ -14,12 +14,14 @@ const peso = (n: number) => "₱" + n.toFixed(2);
  * Hidden on the pages that already *are* the checkout flow, where it would sit
  * on top of the real buttons and compete with them.
  */
-export function FloatingCart() {
+export function FloatingCart({ staff = false }: { staff?: boolean }) {
   const { items, count, total } = useCart();
   const pathname = usePathname();
 
   const onCheckoutFlow = pathname === "/cart" || pathname === "/checkout";
-  const show = items.length > 0 && !onCheckoutFlow;
+  // Staff can't order at all, so a bar inviting them to check out is a button
+  // that leads to a refusal.
+  const show = items.length > 0 && !onCheckoutFlow && !staff;
 
   return (
     <AnimatePresence>

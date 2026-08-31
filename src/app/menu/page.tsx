@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getViewer, isStaff } from "@/lib/auth";
 import { MenuList, type Meal } from "@/components/menu-list";
 import { PageHeader } from "@/components/page-header";
 
@@ -47,7 +48,11 @@ const emptyStateClass =
   "rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80";
 
 export default async function MenuPage() {
-  const { menu, configured } = await getMenu();
+  const [{ menu, configured }, viewer] = await Promise.all([
+    getMenu(),
+    getViewer(),
+  ]);
+  const staff = isStaff(viewer);
 
   return (
     <main className="flex-1">
@@ -76,7 +81,7 @@ export default async function MenuPage() {
             up here.
           </p>
         )}
-        {configured && menu && menu.length > 0 && <MenuList meals={menu} />}
+        {configured && menu && menu.length > 0 && <MenuList meals={menu} staff={staff} />}
       </section>
     </main>
   );

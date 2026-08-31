@@ -69,9 +69,25 @@ export async function placeOrder(
   // that into a message the customer can actually understand.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_blocked")
+    .select("is_blocked, role")
     .eq("id", user.id)
     .maybeSingle();
+
+  // The shop can't be its own customer.
+  //
+  // Every owner order lands in the same queue the kitchen works from, counts
+  // toward the day's takings and shows up in analytics — so a few taps while
+  // testing quietly become sales the shop never made, and figures the owner
+  // will later believe. The buttons are hidden and the pages redirect, but
+  // this is the guard that holds: a hidden button is still a form that can be
+  // submitted, and only the server decides what gets written.
+  if (profile?.role === "owner" || profile?.role === "staff") {
+    return {
+      error:
+        "You're signed in as shop staff, so this account can't place orders — they'd land in your own kitchen queue and count as sales. Sign in with a customer account to test ordering.",
+    };
+  }
+
   if (profile?.is_blocked) {
     return {
       error:

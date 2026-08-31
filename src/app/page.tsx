@@ -9,6 +9,8 @@ import { CountUp } from "@/components/count-up";
 import { HeroVisual } from "@/components/hero-visual";
 import { WhyUs } from "@/components/why-us";
 import { FanFavorites } from "@/components/fan-favorites";
+import { ReviewCarousel } from "@/components/review-carousel";
+import { SocialLinks } from "@/components/social-links";
 import { CustomerAvatar } from "@/components/customer-avatar";
 import { Stars } from "@/components/stars";
 import {
@@ -26,8 +28,6 @@ const ADDRESS =
   "In front of Palengkeni (New Apalit Public Market), beside Osave!, Apalit, Philippines";
 const PHONE = "+63 947 353 3060";
 const PHONE_HREF = "+639473533060";
-const TIKTOK_HANDLE = "@pepper.pan.taiwan";
-const TIKTOK_URL = "https://tiktok.com/@pepper.pan.taiwan";
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
   `Pepper Pan, ${ADDRESS}`
 )}`;
@@ -94,9 +94,11 @@ export default async function Home() {
   // Real reviews when there are any; the original invitation copy otherwise,
   // so a new shop never shows an empty or invented testimonial.
   const { reviews, average, count: reviewCount } = isConfigured()
-    ? await getPublicReviews(3)
+    ? await getPublicReviews(24)
     : { reviews: [], average: 0, count: 0 };
-  const featured = reviews.filter((r) => r.comment && r.rating >= 4).slice(0, 3);
+  // Enough to keep the carousel from repeating within one visit, without
+  // shipping the whole review history to every homepage.
+  const featured = reviews.filter((r) => r.comment && r.rating >= 4).slice(0, 8);
 
   const whyUsTiles = [
     {
@@ -387,23 +389,7 @@ export default async function Home() {
               </p>
             </div>
 
-            <ul className="mt-10 grid gap-5 md:grid-cols-3">
-              {featured.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex flex-col gap-3 rounded-3xl bg-cream-50/10 p-6 ring-1 ring-cream-50/20"
-                >
-                  <Stars rating={r.rating} className="text-gold-300" />
-                  <p className="flex-1 font-display text-lg font-bold leading-snug">
-                    &ldquo;{r.comment}&rdquo;
-                  </p>
-                  <p className="text-sm text-cream-100/70">
-                    {r.author}
-                    {r.mealName && ` · ${r.mealName}`}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            <ReviewCarousel reviews={featured} />
 
             <div className="mt-8 text-center">
               <Link
@@ -494,14 +480,17 @@ export default async function Home() {
               >
                 {PHONE}
               </a>
-              <a
-                href={TIKTOK_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-full border-2 border-ink-950 px-6 py-3 font-semibold text-ink-950 transition-colors hover:bg-ink-950 hover:text-cream-50"
-              >
-                TikTok {TIKTOK_HANDLE}
-              </a>
+            </div>
+
+            {/* The three accounts, as marks. This was one TikTok pill in a row
+                of buttons, which read as a third call to action competing with
+                Directions and the phone number — and left out the two accounts
+                the shop also posts from. */}
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-ink-800/50">
+                Follow us
+              </span>
+              <SocialLinks tone="light" />
             </div>
           </Reveal>
         </div>
