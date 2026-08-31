@@ -49,6 +49,7 @@ const GROUPS: Group[] = [
       { href: "/admin/delivery", label: "Delivery", icon: "→" },
       { href: "/admin/payments", label: "Payments", icon: "₱" },
       { href: "/admin/alerts", label: "Alerts", icon: "🔔" },
+      { href: "/admin/reset", label: "Start fresh", icon: "⟲" },
     ],
   },
 ];

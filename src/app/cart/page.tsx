@@ -139,7 +139,7 @@ function Cart({ missing }: { missing: string | null }) {
                 href="/menu"
                 className="text-center text-sm font-semibold text-cream-100/60 transition-colors hover:text-gold-400"
               >
-                ← Add more items
+                ← Browse the menu
               </Link>
             </motion.div>
           </>
