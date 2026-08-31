@@ -29,6 +29,13 @@ type Item = {
   icon: string;
   /** Which count in `badges` belongs on this row, if any. */
   badge?: keyof AdminBadges;
+  /**
+   * Hidden from staff entirely, rather than shown and then refused.
+   * A row that exists only to say "you can't" is a worse answer than a row
+   * that isn't there — and the pages themselves still check, because hiding a
+   * link has never been a permission.
+   */
+  ownerOnly?: boolean;
 };
 type Group = { title: string; items: Item[] };
 
@@ -37,9 +44,20 @@ const GROUPS: Group[] = [
     title: "Every day",
     items: [
       { href: "/admin", label: "Today", icon: "◉" },
+      { href: "/admin/counter", label: "Counter", icon: "◫" },
       { href: "/admin/orders", label: "Orders", icon: "▤", badge: "orders" },
       { href: "/admin/menu", label: "Menu", icon: "☰" },
       { href: "/admin/inbox", label: "Inbox", icon: "✉", badge: "inbox" },
+    ],
+  },
+  {
+    // The half of the business that had software written for it in the very
+    // first migration and no screen until now: fourteen tables of recipes,
+    // ingredients and costs that nothing in the app ever read.
+    title: "The kitchen",
+    items: [
+      { href: "/admin/costing", label: "Dish costs", icon: "◍", ownerOnly: true },
+      { href: "/admin/inventory", label: "Inventory", icon: "▢" },
     ],
   },
   {
@@ -58,7 +76,15 @@ const GROUPS: Group[] = [
       { href: "/admin/delivery", label: "Delivery", icon: "→" },
       { href: "/admin/payments", label: "Payments", icon: "₱", badge: "payments" },
       { href: "/admin/alerts", label: "Alerts", icon: "🔔" },
-      { href: "/admin/reset", label: "Start fresh", icon: "⟲" },
+    ],
+  },
+  {
+    // Split out of "Set up once", because neither of these is done once:
+    // a backup is only worth anything if it keeps happening.
+    title: "Your data",
+    items: [
+      { href: "/admin/backup", label: "Backup", icon: "⤓", ownerOnly: true },
+      { href: "/admin/reset", label: "Start fresh", icon: "⟲", ownerOnly: true },
     ],
   },
 ];
@@ -123,7 +149,12 @@ function Rail({
       </Link>
 
       <nav className="flex flex-1 flex-col gap-6">
-        {GROUPS.map((group) => (
+        {GROUPS.map((group) => ({
+          ...group,
+          items: group.items.filter((i) => !i.ownerOnly || role === "owner"),
+        }))
+          .filter((group) => group.items.length > 0)
+          .map((group) => (
           <div key={group.title}>
             <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-cream-100/30">
               {group.title}
