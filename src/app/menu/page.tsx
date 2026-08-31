@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { MenuList, type Meal } from "@/components/menu-list";
 import { PageHeader } from "@/components/page-header";
-import { Marquee } from "@/components/marquee";
 
 async function getMenu(): Promise<{ menu: Meal[] | null; configured: boolean }> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -52,20 +51,19 @@ export default async function MenuPage() {
 
   return (
     <main className="flex-1">
+      {/* Compact, and with no scrolling banner under it. Both were earning
+          their keep on the homepage, where the job is to make someone hungry.
+          Here the customer is already hungry — they opened the menu — and
+          every pixel above the first photo is a pixel of food they can't see
+          yet. */}
       <PageHeader
+        compact
         eyebrow="Fresh daily"
         title="The Menu"
-        subtitle="Order ahead for pickup or delivery — everything is made in-house, same day."
+        subtitle="Order ahead for pickup or delivery — everything made in-house, same day."
       />
 
-      <Marquee
-        className="border-b-4 border-ink-950 bg-gold-400 py-3 font-display text-lg font-black uppercase tracking-tight text-ink-950"
-        trackClassName="marquee-track--fast"
-        items={["Noodles", "Rice Meals", "Ji Pai", "Milktea", "Burgers", "Dim Sum"]}
-        separator="🌶"
-      />
-
-      <section className="mx-auto max-w-6xl px-6 py-14">
+      <section className="mx-auto max-w-6xl px-6 pb-14 pt-6">
         {!configured && (
           <p className={emptyStateClass}>
             Menu setup in progress — connect Supabase (see{" "}

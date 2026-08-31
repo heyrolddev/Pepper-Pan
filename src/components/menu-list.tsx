@@ -47,7 +47,7 @@ function MealCard({ meal, index }: { meal: Meal; index: number }) {
             src={meal.image_url}
             alt={meal.name}
             fill
-            sizes="(min-width: 768px) 33vw, 50vw"
+            sizes="(min-width: 1200px) 360px, (min-width: 640px) 33vw, 50vw"
             className="object-cover transition-transform duration-500 group-hover:scale-110"
           />
         ) : (
@@ -72,13 +72,16 @@ function MealCard({ meal, index }: { meal: Meal; index: number }) {
         {meal.description && (
           <p className="line-clamp-2 text-sm text-ink-800/70">{meal.description}</p>
         )}
-        <div className="mt-auto flex items-center justify-between pt-3">
-          <span className="font-display text-xl font-black text-brand-600">
+        {/* Wraps rather than squeezing. Two columns on a phone leaves about
+            120px of card, and a peso price beside a button doesn't fit that —
+            they were overlapping, with the button sitting on the price. */}
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3">
+          <span className="font-display text-lg font-black text-brand-600 sm:text-xl">
             ₱{Number(meal.price).toFixed(2)}
           </span>
           <button
             onClick={handleAdd}
-            className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold transition-all ${
+            className={`whitespace-nowrap rounded-full px-3.5 py-2 text-sm font-bold transition-all sm:px-4 ${
               added
                 ? "bg-jade-600 text-cream-50"
                 : "bg-ink-950 text-cream-50 hover:bg-brand-600"
@@ -116,46 +119,51 @@ export function MenuList({ meals }: { meals: Meal[] }) {
   }, [meals, query, activeCategory]);
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Sticky filter bar */}
-      <div className="sticky top-[var(--nav-h)] z-30 -mx-6 flex flex-col gap-4 border-b border-ink-950/10 bg-cream-50 px-6 py-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search the menu…"
-            className="w-full max-w-xs rounded-full border-2 border-ink-950/15 bg-cream-100 px-5 py-2.5 text-sm font-medium text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600"
-          />
-          <span className="text-sm font-semibold text-ink-800/60">
-            {filtered.length} item{filtered.length === 1 ? "" : "s"}
-          </span>
-        </div>
-
-        {categories.length > 2 && (
-          <div className="flex flex-wrap gap-2">
-            {categories.map((category) => (
-              <button
-                key={category}
-                onClick={() => setActiveCategory(category)}
-                className={`relative rounded-full px-4 py-1.5 text-sm font-bold transition-colors ${
-                  activeCategory === category
-                    ? "text-cream-50"
-                    : "text-ink-800 hover:text-brand-600"
-                }`}
-              >
-                {activeCategory === category && (
-                  <motion.span
-                    layoutId="menu-filter-pill"
-                    className="absolute inset-0 rounded-full bg-brand-600"
-                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                  />
-                )}
-                <span className="relative z-10">{category}</span>
-              </button>
-            ))}
+    <div className="flex flex-col gap-6">
+      {/* The search box and the filters sit on one line from small screens up,
+          rather than stacking. This bar is pinned under the header for the
+          whole page, so every row it takes is a row of food nobody can see —
+          and it stays that way the entire time they scroll. */}
+      <div className="sticky top-[var(--nav-h)] z-30 -mx-6 border-b border-ink-950/10 bg-cream-50 px-6 py-2.5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search the menu…"
+              className="w-full min-w-0 rounded-full border-2 border-ink-950/15 bg-cream-100 px-4 py-2 text-sm font-medium text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600 sm:w-52"
+            />
+            <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-ink-800/50">
+              {filtered.length} item{filtered.length === 1 ? "" : "s"}
+            </span>
           </div>
-        )}
+
+          {categories.length > 2 && (
+            <div className="flex flex-wrap gap-1">
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  onClick={() => setActiveCategory(category)}
+                  className={`relative rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
+                    activeCategory === category
+                      ? "text-cream-50"
+                      : "text-ink-800 hover:text-brand-600"
+                  }`}
+                >
+                  {activeCategory === category && (
+                    <motion.span
+                      layoutId="menu-filter-pill"
+                      className="absolute inset-0 rounded-full bg-brand-600"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                  <span className="relative z-10">{category}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {filtered.length === 0 ? (
