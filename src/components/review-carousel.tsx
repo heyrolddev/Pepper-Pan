@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import { Stars } from "@/components/stars";
 
 export type FeaturedReview = {
@@ -13,147 +12,143 @@ export type FeaturedReview = {
 };
 
 /**
- * The homepage's reviews, moving.
+ * The homepage's reviews: three cards at a time, moving.
  *
- * A fixed grid of three showed the same three forever — so the fourth review a
- * customer ever writes is one nobody outside the reviews page will read, and
- * the shop's best word-of-mouth sits in a drawer. Rotating shows all of them
- * over a minute of scrolling, which is roughly how long someone spends on a
- * homepage anyway.
+ * The first attempt showed one big quote and rotated it. It moved, which was
+ * the ask — but it threw away what the grid was good at: three cards read as
+ * *several people liked this*, and one quote reads as one person did. Social
+ * proof is partly a count, and the count has to be visible.
  *
- * It stops when it should: on hover, on keyboard focus, when the tab is in the
- * background, and permanently for anyone who's asked their system for reduced
- * motion. Text that moves on its own while you're reading it is the most
- * common way a carousel becomes worse than a list — every one of those is a
- * moment where the reader, not the timer, should be in charge.
+ * So the cards stay and the whole row pages. Three at a time on a desktop, two
+ * on a tablet, one on a phone — the widths are plain CSS, so the first paint
+ * is right before any JavaScript runs, and only the page arithmetic needs to
+ * know how many fit.
+ *
+ * It stops when it should: on hover, on keyboard focus, in a background tab,
+ * and permanently for anyone who's asked for reduced motion. Text that moves
+ * while you're reading it is how a carousel becomes worse than a list.
  */
 
-/** Long enough to read two lines without hurrying. */
-const INTERVAL = 5200;
+/** Three cards is more to read than one quote was. */
+const INTERVAL = 6500;
+
+/** Must match the `sm:` and `lg:` card widths below, or the dots lie. */
+function perPageFor(width: number): number {
+  if (width >= 1024) return 3;
+  if (width >= 640) return 2;
+  return 1;
+}
 
 export function ReviewCarousel({ reviews }: { reviews: FeaturedReview[] }) {
-  const [index, setIndex] = useState(0);
+  const [page, setPage] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [allowed, setAllowed] = useState(false);
-  const count = reviews.length;
+  const [motionOk, setMotionOk] = useState(false);
+  const [visible, setVisible] = useState(true);
+  // Three to start: the desktop case, and the widest. A phone corrects it on
+  // mount, long before the first auto-advance — and page 0 looks identical
+  // either way, so nothing visibly shifts underneath anyone.
+  const [perPage, setPerPage] = useState(3);
 
-  // Asked once and then watched: someone can turn reduced motion on while the
-  // page is open, and the honest thing is to stop rather than wait for a
+  useEffect(() => {
+    const sync = () => setPerPage(perPageFor(window.innerWidth));
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, []);
+
+  // Watched rather than read once: someone can turn reduced motion on while
+  // the page is open, and the honest thing is to stop rather than wait for a
   // reload.
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => setAllowed(!mq.matches);
+    const sync = () => setMotionOk(!mq.matches);
     sync();
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  // A carousel ticking away in a background tab is work nobody can see. It
-  // also means returning to the tab lands you mid-sentence on a review you
-  // never started.
-  const [visible, setVisible] = useState(true);
+  // A carousel ticking in a background tab is work nobody can see, and coming
+  // back to the tab lands you on a card you never started reading.
   useEffect(() => {
     const sync = () => setVisible(!document.hidden);
     document.addEventListener("visibilitychange", sync);
     return () => document.removeEventListener("visibilitychange", sync);
   }, []);
 
-  const running = allowed && !paused && visible && count > 1;
+  const pages = Math.max(1, Math.ceil(reviews.length / perPage));
+  const safePage = Math.min(page, pages - 1);
+  const running = motionOk && !paused && visible && pages > 1;
 
-  // Keyed on `index` so every manual jump restarts the full interval — landing
-  // on a review with half a second left before it slides away is worse than
-  // not being able to jump at all.
+  // Keyed on the page so a manual jump restarts the full interval. Landing on
+  // a page with half a second left before it slides away is worse than not
+  // being able to jump at all.
   useEffect(() => {
     if (!running) return;
-    const t = setTimeout(() => setIndex((i) => (i + 1) % count), INTERVAL);
+    const t = setTimeout(() => setPage((p) => (p + 1) % pages), INTERVAL);
     return () => clearTimeout(t);
-  }, [running, index, count]);
+  }, [running, safePage, pages]);
 
-  if (count === 0) return null;
-  const r = reviews[index];
+  if (reviews.length === 0) return null;
 
   return (
     <div
-      className="relative mt-10"
+      className="mt-10"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      {/* The quote sits absolutely over every review rendered invisibly, so
-          the section is as tall as the longest one and doesn't jump as the
-          text changes.
-          
-          Those invisible copies share one grid cell. In normal flow they
-          stacked, and the block reserved the *sum* of every review's height —
-          a wall of red with one quote floating in the middle of it.
-          
-          And the pair needs its own positioned box: with `inset-0` measured
-          against the whole component, the overlay reached down over the dots
-          and swallowed every click on them. The dots looked fine and simply
-          did nothing. */}
-      <div className="relative">
-        <div aria-hidden className="invisible grid" role="presentation">
-          {reviews.map((x) => (
-            <div key={x.id} className="px-6 py-1 [grid-area:1/1]">
-              {/* The stars are here because they're there. Leave them out and
-                  the reserved height is short by exactly one row of stars, so
-                  the real quote overflows its box and lands on the dots. */}
-              <Stars rating={x.rating} className="mx-auto" size="lg" />
-              <p className="mt-4 font-display text-xl font-black leading-snug sm:text-2xl">
-                &ldquo;{x.comment}&rdquo;
-              </p>
-              <p className="mt-3 text-sm">
-                {x.author}
-                {x.mealName && ` · ${x.mealName}`}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <div className="absolute inset-0 grid place-items-center">
-          <AnimatePresence mode="wait">
-            <motion.blockquote
-              key={r.id}
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -14 }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              className="mx-auto max-w-2xl px-6 text-center"
-            >
-              <Stars
-                rating={r.rating}
-                className="mx-auto text-gold-300"
-                size="lg"
-              />
-              <p className="mt-4 font-display text-xl font-black leading-snug sm:text-2xl">
-                &ldquo;{r.comment}&rdquo;
-              </p>
-              <p className="mt-3 text-sm text-cream-100/70">
-                {r.author}
-                {r.mealName && ` · ${r.mealName}`}
-              </p>
-            </motion.blockquote>
-          </AnimatePresence>
-        </div>
+      {/* The track is exactly one page wide, so translating it by 100% moves
+          by one page — not by its own full length, which is the classic way
+          this goes wrong the moment there are more cards than fit. */}
+      <div className="-mx-2.5 overflow-hidden">
+        <ul
+          className="flex w-full items-stretch transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{ transform: `translateX(-${safePage * 100}%)` }}
+        >
+          {reviews.map((r, i) => {
+            const onThisPage =
+              i >= safePage * perPage && i < (safePage + 1) * perPage;
+            return (
+              <li
+                key={r.id}
+                className="w-full shrink-0 px-2.5 sm:w-1/2 lg:w-1/3"
+                // Cards scrolled out of view are still in the document, so a
+                // keyboard would otherwise tab onto a card nobody can see.
+                aria-hidden={!onThisPage}
+              >
+                <figure className="flex h-full flex-col gap-3 rounded-3xl bg-cream-50/10 p-6 ring-1 ring-cream-50/20">
+                  <Stars rating={r.rating} className="text-gold-300" />
+                  <blockquote className="flex-1 font-display text-lg font-bold leading-snug">
+                    &ldquo;{r.comment}&rdquo;
+                  </blockquote>
+                  <figcaption className="text-sm text-cream-100/70">
+                    {r.author}
+                    {r.mealName && ` · ${r.mealName}`}
+                  </figcaption>
+                </figure>
+              </li>
+            );
+          })}
+        </ul>
       </div>
 
-      {count > 1 && (
-        <div className="mt-6 flex justify-center gap-2">
-          {reviews.map((x, i) => (
+      {pages > 1 && (
+        <div className="mt-6 flex justify-center gap-1">
+          {Array.from({ length: pages }, (_, i) => (
             <button
-              key={x.id}
-              onClick={() => setIndex(i)}
-              aria-label={`Review ${i + 1} of ${count}`}
-              aria-current={i === index}
+              key={i}
+              onClick={() => setPage(i)}
+              aria-label={`Reviews, page ${i + 1} of ${pages}`}
+              aria-current={i === safePage}
               // A tap target the size of the dot is a tap target nobody hits,
-              // so the button is finger-sized and the dot just sits in it.
-              className="grid h-8 w-8 place-items-center"
+              // so the button is finger-sized and the dot sits inside it.
+              className="grid h-9 w-9 place-items-center"
             >
               <span
                 className={`block rounded-full transition-all ${
-                  i === index
-                    ? "h-2.5 w-6 bg-gold-400"
+                  i === safePage
+                    ? "h-2.5 w-7 bg-gold-400"
                     : "h-2.5 w-2.5 bg-cream-50/35 hover:bg-cream-50/60"
                 }`}
               />
