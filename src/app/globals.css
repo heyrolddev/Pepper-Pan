@@ -180,6 +180,74 @@ body {
   }
 }
 
+/* ---------------------------------------------------------------- */
+/* The pan, firing up                                                */
+/* ---------------------------------------------------------------- */
+/*
+ * Only transform and opacity, so the browser never has to lay the page out
+ * again to draw a frame. This runs while the rest of the page is still being
+ * built, which is exactly when a layout-thrashing animation would be felt.
+ *
+ * Each part has its own rhythm and none of the durations divide evenly into
+ * each other — a fire that loops in lockstep reads as a graphic, not a flame.
+ */
+
+.pan-body {
+  /* Pivots around the middle of the bowl, so the toss looks like a wrist. */
+  transform-origin: 100px 122px;
+  animation: pan-shake 1.1s ease-in-out infinite;
+}
+
+.pan-flame {
+  /* fill-box, so each tongue grows from its own base rather than from a
+     point at the bottom of the whole drawing. */
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: pan-flicker 0.62s ease-in-out infinite alternate;
+}
+.pan-flame--1 { animation-duration: 0.53s; }
+.pan-flame--2 { animation-duration: 0.71s; }
+.pan-flame--3 { animation-duration: 0.47s; animation-delay: -0.2s; }
+.pan-flame--core { animation-duration: 0.39s; }
+
+.pan-toss {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pan-toss 1.28s cubic-bezier(0.4, 0, 0.55, 1) infinite;
+}
+/* Thrown at different moments and to different heights — three peppercorns
+   rising together is a graphic, not a toss. */
+.pan-toss--1 { animation-delay: -0.1s; --toss-x: -7px; --toss-y: -44px; }
+.pan-toss--2 { animation-delay: -0.62s; --toss-x: 2px; --toss-y: -56px; }
+.pan-toss--3 { animation-delay: -0.95s; --toss-x: 8px; --toss-y: -38px; }
+
+@keyframes pan-shake {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-2.5px) rotate(-1.5deg); }
+}
+
+@keyframes pan-flicker {
+  from { transform: scaleY(0.8) scaleX(1.06); opacity: 0.8; }
+  to { transform: scaleY(1.14) scaleX(0.94); opacity: 1; }
+}
+
+/* Up out of the pan and back down, with the pause at the top a real toss has. */
+@keyframes pan-toss {
+  0%, 12% { transform: translate(0, 0) rotate(0deg); }
+  45% { transform: translate(var(--toss-x, 0), var(--toss-y, -46px)) rotate(160deg); }
+  78%, 100% { transform: translate(0, 0) rotate(360deg); }
+}
+
+/* Nothing here is information, so a reduced-motion preference gets the
+   drawing and none of the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .pan-body,
+  .pan-flame,
+  .pan-toss {
+    animation: none;
+  }
+}
+
 .intro-dot {
   animation: intro-hop 0.9s ease-in-out infinite;
 }
