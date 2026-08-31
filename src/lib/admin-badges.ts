@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { ACTIVE_ORDER_STATUSES } from "@/lib/orders";
+import { OUTSTANDING_PAYMENT_STATUSES } from "@/lib/payments";
 
 /**
  * What is actually waiting for the owner, counted per screen.
@@ -25,7 +26,7 @@ export type AdminBadges = {
   orders: number;
   /** Chats the assistant handed over and nobody has picked up. */
   inbox: number;
-  /** GCash receipts sent in and not yet checked against the account. */
+  /** Money the shop hasn't got yet — receipts to check, and balances owed. */
   payments: number;
 };
 
@@ -71,11 +72,14 @@ export async function getAdminBadges(): Promise<AdminBadges> {
         db
           .from("orders")
           .select("id", { count: "exact", head: true })
-          .eq("payment_status", "submitted")
-          // A cancelled order's receipt is nobody's job any more, and it can
-          // never be verified — left in, it would sit on this badge forever.
-          // The dashboard's own "awaiting payment" tile already excludes
-          // these; the two are meant to agree.
+          // Anything the shop is still waiting on money for: nothing paid, a
+          // receipt nobody has checked, or a down payment with the balance
+          // outstanding. Only `paid` and `refunded` are settled, so the badge
+          // clears exactly when the ledger's "Still owed" and "Needs checking"
+          // queues do — the number and the page it opens agree.
+          .in("payment_status", OUTSTANDING_PAYMENT_STATUSES)
+          // A cancelled order owes nothing and can never be settled — left in,
+          // it would sit on this badge forever.
           .neq("status", "cancelled")
       ),
     ]);

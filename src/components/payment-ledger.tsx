@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { AdminSearch } from "@/components/admin-search";
+import { Foldable } from "@/components/foldable";
 import { PaymentVerifier } from "@/components/payment-verifier";
 import { formatDateTimeFull } from "@/lib/format-date";
 import { STATUS_LABELS, STATUS_TONES, type OrderStatus } from "@/lib/orders";
 import {
   METHOD_LABEL,
+  isOutstanding,
   moneyLine,
   moneyState,
   type PaymentMethod,
@@ -69,50 +71,43 @@ const peso = (n: number) =>
   "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function bucketOf(row: LedgerRow): Exclude<Bucket, "all"> {
-  const m = moneyState(row);
-  if (m.awaitingCheck) return "attention";
-  return m.balance > 0 ? "owed" : "settled";
+  if (row.payment_status === "submitted") return "attention";
+  // The same rule the sidebar badge counts on, so the badge and this page can
+  // never disagree about how much is outstanding.
+  return isOutstanding(row.payment_status) ? "owed" : "settled";
 }
 
-function Row({ row }: { row: LedgerRow }) {
+function Row({ row, startOpen }: { row: LedgerRow; startOpen: boolean }) {
   const m = moneyState(row);
+  const tone = STATUS_TONES[row.status];
+  const who = row.contact_name || "Walk-in";
+  const stuck = row.status === "completed" && m.balance > 0;
 
   return (
-    <li className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide ${
-                STATUS_TONES[row.status].chip
-              }`}
-            >
-              {STATUS_LABELS[row.status]}
-            </span>
-            <span className="font-display text-lg font-bold text-ink-950">
-              {row.contact_name || "Walk-in"}
-            </span>
-            {/* An order that's finished and still owes money is the worst
-                case on this page: nobody is coming back for it. */}
-            {row.status === "completed" && m.balance > 0 && (
-              <span className="rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide text-cream-50">
-                ⚠ Completed unpaid
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-sm text-ink-800/60">
-            {row.contact_phone && <>{row.contact_phone} · </>}
-            {METHOD_LABEL[row.payment_method]} · #{row.id.slice(0, 8)} ·{" "}
-            {formatDateTimeFull(row.created_at)}
-          </p>
-        </div>
-
-        <span className="text-right">
-          <span className="block font-display text-xl font-black text-brand-600">
-            {peso(m.total)}
-          </span>
+    <Foldable
+      startOpen={startOpen}
+      chip={tone.chip}
+      rail={tone.rail}
+      title={STATUS_LABELS[row.status]}
+      folded={
+        <>
           <span
-            className={`block text-[11px] font-bold ${
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${tone.chip}`}
+          >
+            {STATUS_LABELS[row.status]}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-950">
+            {who}
+          </span>
+          {/* An order that's finished and still owes money is the worst case
+              on this page: nobody is coming back for it. */}
+          {stuck && (
+            <span className="shrink-0 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cream-50">
+              ⚠ Unpaid
+            </span>
+          )}
+          <span
+            className={`hidden shrink-0 text-xs font-bold sm:block ${
               m.settled
                 ? "text-jade-700"
                 : m.partPaid
@@ -124,21 +119,55 @@ function Row({ row }: { row: LedgerRow }) {
           >
             {moneyLine(m)}
           </span>
-        </span>
-      </div>
+          <span className="shrink-0 font-display text-sm font-black tabular-nums text-ink-950">
+            {peso(m.total)}
+          </span>
+        </>
+      }
+    >
+      <div className="bg-cream-100 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-display text-lg font-bold text-ink-950">{who}</p>
+            <p className="mt-1 text-sm text-ink-800/60">
+              {row.contact_phone && <>{row.contact_phone} · </>}
+              {METHOD_LABEL[row.payment_method]} · #{row.id.slice(0, 8)} ·{" "}
+              {formatDateTimeFull(row.created_at)}
+            </p>
+          </div>
+          <span className="text-right">
+            <span className="block font-display text-xl font-black text-brand-600">
+              {peso(m.total)}
+            </span>
+            <span
+              className={`block text-[11px] font-bold ${
+                m.settled
+                  ? "text-jade-700"
+                  : m.partPaid
+                    ? "text-chili-700"
+                    : m.awaitingCheck
+                      ? "text-gold-700"
+                      : "text-ink-800/55"
+              }`}
+            >
+              {moneyLine(m)}
+            </span>
+          </span>
+        </div>
 
-      <PaymentVerifier
-        orderId={row.id}
-        method={row.payment_method}
-        status={row.payment_status}
-        plan={row.payment_plan}
-        reference={row.payment_reference}
-        receiptUrl={row.payment_receipt_url}
-        total={m.total}
-        downpayment={Number(row.downpayment_amount)}
-        downpaymentConfirmedAt={row.downpayment_confirmed_at}
-      />
-    </li>
+        <PaymentVerifier
+          orderId={row.id}
+          method={row.payment_method}
+          status={row.payment_status}
+          plan={row.payment_plan}
+          reference={row.payment_reference}
+          receiptUrl={row.payment_receipt_url}
+          total={m.total}
+          downpayment={Number(row.downpayment_amount)}
+          downpaymentConfirmedAt={row.downpayment_confirmed_at}
+        />
+      </div>
+    </Foldable>
   );
 }
 
@@ -237,7 +266,15 @@ export function PaymentLedger({ rows }: { rows: LedgerRow[] }) {
             ) : (
               <ul className="flex flex-col gap-3">
                 {owedFirst.map((r) => (
-                  <Row key={r.id} row={r} />
+                  <Row
+                    key={r.id}
+                    row={r}
+                    // Rows that still want something from the owner open to
+                    // their controls. Settled ones don't — and in Everything,
+                    // each row decides for itself rather than the tab deciding
+                    // for all of them.
+                    startOpen={bucketOf(r) !== "settled"}
+                  />
                 ))}
               </ul>
             )}

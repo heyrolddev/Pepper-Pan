@@ -60,6 +60,8 @@ export type StatusTone = {
   chip: string;
   /** Just the colour — for the dot beside an unselected tab. */
   dot: string;
+  /** Border colour, for the rail down the left edge of a folded row. */
+  rail: string;
   /** Does the shop still owe someone food? */
   live: boolean;
   /** What this queue means, in the owner's terms. */
@@ -70,42 +72,49 @@ export const STATUS_TONES: Record<OrderStatus, StatusTone> = {
   pending: {
     chip: "bg-gold-400 text-ink-950",
     dot: "bg-gold-400",
+    rail: "border-gold-400",
     live: true,
     hint: "New in. Nobody has accepted these yet.",
   },
   confirmed: {
     chip: "bg-chili-600 text-cream-50",
     dot: "bg-chili-600",
+    rail: "border-chili-600",
     live: true,
     hint: "Accepted, not started. Give each one an ETA.",
   },
   preparing: {
     chip: "bg-brand-600 text-cream-50",
     dot: "bg-brand-600",
+    rail: "border-brand-600",
     live: true,
     hint: "On the wok right now.",
   },
   ready: {
     chip: "bg-jade-600 text-cream-50",
     dot: "bg-jade-600",
+    rail: "border-jade-600",
     live: true,
     hint: "Cooked and waiting — for a rider, or for the customer.",
   },
   out_for_delivery: {
     chip: "bg-ink-800 text-cream-100",
     dot: "bg-ink-800",
+    rail: "border-ink-800",
     live: true,
     hint: "With a rider. Mark completed once it lands.",
   },
   completed: {
     chip: "bg-ink-950/10 text-ink-800",
     dot: "bg-ink-950/25",
+    rail: "border-ink-950/20",
     live: false,
     hint: "Finished. Anything still owed is flagged in red.",
   },
   cancelled: {
     chip: "bg-brand-600/15 text-brand-700",
     dot: "bg-brand-600/50",
+    rail: "border-brand-600/40",
     live: false,
     hint: "Called off. Open a row for the reason.",
   },

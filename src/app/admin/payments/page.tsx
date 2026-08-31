@@ -3,7 +3,7 @@ import { getPaymentSettings } from "@/lib/payments-server";
 import { PaymentSettingsForm } from "@/components/payment-settings-form";
 import { PaymentLedger, type LedgerRow } from "@/components/payment-ledger";
 import { PaymentsTabs } from "@/components/payments-tabs";
-import { moneyState } from "@/lib/payments";
+import { isOutstanding, moneyState } from "@/lib/payments";
 
 const COLUMNS =
   "id, created_at, status, contact_name, contact_phone, revenue, delivery_fee, payment_method, payment_status, payment_plan, payment_reference, payment_receipt_url, downpayment_amount, downpayment_confirmed_at";
@@ -32,8 +32,11 @@ export default async function AdminPaymentsPage() {
     getLedger(),
   ]);
 
+  // The same rule as the sidebar badge: everything the shop is still waiting
+  // on money for. If these two ever disagree, the badge is pointing at a
+  // number the page doesn't show.
   const waiting = rows.filter(
-    (r) => r.payment_status === "submitted" && r.status !== "cancelled"
+    (r) => r.status !== "cancelled" && isOutstanding(r.payment_status)
   ).length;
 
   const owed = rows.reduce((sum, r) => sum + moneyState(r).balance, 0);

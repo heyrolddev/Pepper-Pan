@@ -85,6 +85,29 @@ export function amountDueNow(
 }
 
 /**
+ * Is the shop still waiting on money for this order?
+ *
+ * Defined on the status alone, and shared by all three places that ask: the
+ * sidebar badge's SQL, the Payments tab's own count, and the ledger's buckets.
+ * They have to agree — a badge that says 4 over a page showing 3 is a badge
+ * nobody trusts twice.
+ *
+ * Status rather than a computed balance, because the computed one has an edge
+ * the badge's SQL can't reproduce: a `partial` whose down payment happens to
+ * equal the total has a zero balance but is still, as far as anyone has
+ * recorded, only part-paid. Erring toward chasing money beats forgetting it.
+ */
+export const OUTSTANDING_PAYMENT_STATUSES: PaymentStatus[] = [
+  "unpaid",
+  "submitted",
+  "partial",
+];
+
+export function isOutstanding(status: PaymentStatus): boolean {
+  return OUTSTANDING_PAYMENT_STATUSES.includes(status);
+}
+
+/**
  * What the shop has actually been paid, and what is still owed.
  *
  * Derived from the status rather than stored, because a stored "amount paid"
