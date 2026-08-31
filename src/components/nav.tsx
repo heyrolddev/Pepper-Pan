@@ -39,6 +39,24 @@ function countLabel(n: number) {
   return n > 99 ? "99+" : String(n);
 }
 
+/**
+ * The gold rule under whichever tab you're on.
+ *
+ * One shared `layoutId` across every tab, so Motion slides the same underline
+ * from the old tab to the new one rather than crossfading two of them. That is
+ * also why this is a component and not four copies: the rule has to be one
+ * element to travel, and four hand-written copies drift apart the first time
+ * one of them is edited.
+ */
+function ActiveRule() {
+  return (
+    <motion.span
+      layoutId="nav-active"
+      className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-gold-400"
+    />
+  );
+}
+
 export function Nav({
   signedIn,
   staff,
@@ -56,6 +74,7 @@ export function Nav({
   const firstName = (name ?? "").trim().split(/\s+/)[0] || null;
   const { count } = useCart();
   const pathname = usePathname();
+  const onAccount = pathname.startsWith("/account");
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
 
@@ -110,12 +129,7 @@ export function Nav({
               className={`relative hidden rounded-full px-3 py-2 transition-colors sm:block ${linkClass}`}
             >
               {link.label}
-              {pathname === link.href && (
-                <motion.span
-                  layoutId="nav-active"
-                  className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-gold-400"
-                />
-              )}
+              {pathname === link.href && <ActiveRule />}
             </Link>
           ))}
 
@@ -148,7 +162,7 @@ export function Nav({
             <Link
               href="/orders"
               title={`${activeOrders} order${activeOrders === 1 ? "" : "s"} in progress`}
-              className={`hidden items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 transition-colors min-[880px]:inline-flex ${linkClass}`}
+              className={`relative hidden items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 transition-colors min-[880px]:inline-flex ${linkClass}`}
             >
               My orders
               {activeOrders > 0 && (
@@ -157,11 +171,20 @@ export function Nav({
                   initial={{ scale: 0.5 }}
                   animate={{ scale: 1 }}
                   transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                  className={countClass("bg-jade-600")}
+                  className={`relative ${countClass("bg-jade-600")}`}
                 >
-                  {countLabel(activeOrders)}
+                  {/* A number alone reads as a total — "3 orders", the way the
+                      cart badge does. The ring says these are happening *now*,
+                      which is the thing worth walking back to the phone for.
+                      Behind the digits, so it never obscures them. */}
+                  <span
+                    aria-hidden
+                    className="absolute inset-0 animate-ping rounded-full bg-jade-600 opacity-60"
+                  />
+                  <span className="relative">{countLabel(activeOrders)}</span>
                 </motion.span>
               )}
+              {pathname.startsWith("/orders") && <ActiveRule />}
             </Link>
           )}
 
@@ -179,31 +202,10 @@ export function Nav({
             </Link>
           )}
 
-          {/* The account chip carries the customer's own name, so the header
-              reads as their account rather than a generic "Account" link. */}
-          {signedIn && !staff && (
-            <Link
-              href="/account"
-              title="Your account"
-              className={`flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 font-bold transition-all hover:scale-105 min-[880px]:pr-3 ${
-                scrolled
-                  ? "bg-ink-950/5 text-ink-950 ring-1 ring-ink-950/10"
-                  : "bg-cream-50/10 text-cream-50 ring-1 ring-cream-50/20"
-              }`}
-            >
-              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-600 text-xs font-black text-cream-50">
-                {(firstName ?? "?").charAt(0).toUpperCase()}
-              </span>
-              <span className="hidden max-w-24 truncate text-xs min-[880px]:block">
-                {firstName ?? "Account"}
-              </span>
-            </Link>
-          )}
-
           {!staff && (
           <Link
             href="/cart"
-            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 transition-colors ${linkClass}`}
+            className={`relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 transition-colors ${linkClass}`}
           >
             Cart
             {count > 0 && (
@@ -217,8 +219,41 @@ export function Nav({
                 {countLabel(count)}
               </motion.span>
             )}
+            {pathname === "/cart" && <ActiveRule />}
           </Link>
           )}
+
+          {/* The account chip carries the customer's own name, so the header
+              reads as their account rather than a generic "Account" link.
+              Being a chip rather than a text link, it can't take the gold rule
+              the other tabs use — so on its own page the whole chip goes gold
+              instead. Same signal, in the shape this control actually has. */}
+          {signedIn && !staff && (
+            <Link
+              href="/account"
+              title="Your account"
+              aria-current={onAccount ? "page" : undefined}
+              className={`flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 font-bold transition-all hover:scale-105 min-[880px]:pr-3 ${
+                onAccount
+                  ? "bg-gold-400 text-ink-950 ring-2 ring-gold-400"
+                  : scrolled
+                    ? "bg-ink-950/5 text-ink-950 ring-1 ring-ink-950/10"
+                    : "bg-cream-50/10 text-cream-50 ring-1 ring-cream-50/20"
+              }`}
+            >
+              <span
+                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black ${
+                  onAccount ? "bg-ink-950 text-gold-400" : "bg-brand-600 text-cream-50"
+                }`}
+              >
+                {(firstName ?? "?").charAt(0).toUpperCase()}
+              </span>
+              <span className="hidden max-w-24 truncate text-xs min-[880px]:block">
+                {firstName ?? "Account"}
+              </span>
+            </Link>
+          )}
+
 
           {signedIn ? (
             // Hidden on the compact row, where it wrapped to two lines and

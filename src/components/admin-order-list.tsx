@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { OrderStatusPicker } from "@/components/order-status-picker";
 import { EtaPicker } from "@/components/eta-picker";
 import { AdminSearch } from "@/components/admin-search";
 import { PaymentVerifier } from "@/components/payment-verifier";
-import type { OrderStatus } from "@/lib/orders";
+import { ACTIVE_ORDER_STATUSES, STATUS_LABELS, STATUS_TONES, ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
+import { OrderBoard, type View } from "@/components/order-board";
 import type { PaymentMethod, PaymentPlan, PaymentStatus } from "@/lib/payments";
 import { formatDateTimeFull } from "@/lib/format-date";
 import { EtaCountdown } from "@/components/eta-countdown";
@@ -57,6 +58,17 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            {/* Status first, in the queue's own colour. The picker on the
+                right says what you can change it to; this says what it is,
+                where the eye already starts. Scanning twenty orders should
+                not mean reading twenty dropdowns. */}
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide ${
+                STATUS_TONES[o.status].chip
+              }`}
+            >
+              {STATUS_LABELS[o.status]}
+            </span>
             <span className="font-display text-lg font-bold text-ink-950">
               {o.contact_name || p?.full_name || "Walk-in"}
             </span>
@@ -197,6 +209,11 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
 }
 
 export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
+  // "Open" is the working view during service; the per-status tabs answer a
+  // specific question. Kept here rather than in the URL because it's a glance,
+  // not a destination — nobody bookmarks "the cancelled ones".
+  const [view, setView] = useState<View>("open");
+
   // Everything a shop would plausibly type into the box: who ordered, their
   // number, what they ordered, the status, and the short order id.
   const searchText = useCallback(
@@ -229,10 +246,20 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
       placeholder="Search name, number, item, status…"
     >
       {(filtered, query) => {
-        const open = filtered.filter((o) =>
-          ["pending", "confirmed", "preparing", "ready"].includes(o.status)
-        );
-        const rest = filtered.filter((o) => !open.includes(o));
+        // Counts come from what the search left behind, not from every order
+        // in the shop. A tab that says 40 and then shows 2 is a tab lying
+        // about what clicking it does.
+        const counts = { open: 0 } as Record<View, number>;
+        for (const st of ORDER_STATUSES) counts[st] = 0;
+        for (const o of filtered) {
+          counts[o.status] += 1;
+          if (ACTIVE_ORDER_STATUSES.includes(o.status)) counts.open += 1;
+        }
+
+        const shown =
+          view === "open"
+            ? filtered.filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status))
+            : filtered.filter((o) => o.status === view);
 
         if (query.trim() && filtered.length === 0) {
           return (
@@ -243,19 +270,23 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
         }
 
         return (
-          <div className="flex flex-col gap-10">
-            <section>
-              <h2 className="font-display text-2xl font-black text-ink-950">
-                Open orders{open.length > 0 && ` (${open.length})`}
-              </h2>
-              {open.length === 0 ? (
-                <p className="mt-4 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-                  Nothing waiting — you&apos;re all caught up. 🎉
-                </p>
-              ) : (
-                <ul className="mt-5 flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
+            <OrderBoard view={view} onView={setView} counts={counts} />
+
+            {shown.length === 0 ? (
+              <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
+                {view === "open"
+                  ? "Nothing waiting — you're all caught up. 🎉"
+                  : `No orders are ${STATUS_LABELS[view].toLowerCase()} right now.`}
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-4">
+                {/* Only the live queues animate. Watching forty completed
+                    orders spring into place every time you open History is
+                    motion for its own sake, and it costs a frame each. */}
+                {view === "open" || STATUS_TONES[view].live ? (
                   <AnimatePresence initial={false}>
-                    {open.map((o) => (
+                    {shown.map((o) => (
                       <motion.div
                         key={o.id}
                         layout
@@ -268,24 +299,11 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
                       </motion.div>
                     ))}
                   </AnimatePresence>
-                </ul>
-              )}
-            </section>
-
-            <section>
-              <h2 className="font-display text-2xl font-black text-ink-950">History</h2>
-              {rest.length === 0 ? (
-                <p className="mt-4 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-                  No past orders yet.
-                </p>
-              ) : (
-                <ul className="mt-5 flex flex-col gap-4">
-                  {rest.map((o) => (
-                    <OrderCard key={o.id} order={o} />
-                  ))}
-                </ul>
-              )}
-            </section>
+                ) : (
+                  shown.map((o) => <OrderCard key={o.id} order={o} />)
+                )}
+              </ul>
+            )}
           </div>
         );
       }}
