@@ -41,7 +41,10 @@ function MealCard({ meal, index }: { meal: Meal; index: number }) {
       whileHover={{ y: -6 }}
       className="group flex flex-col overflow-hidden rounded-3xl bg-cream-100 ring-1 ring-ink-950/10 transition-shadow hover:shadow-xl hover:shadow-ink-950/10"
     >
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-gradient-to-br from-chili-400 to-brand-600">
+      {/* Square, to match how the food is actually photographed: a round dish
+          shot from above fills a square and gets trimmed by anything else. The
+          card was 4:3, which cut the top and bottom off every photo. */}
+      <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-br from-chili-400 to-brand-600">
         {meal.image_url ? (
           <Image
             src={meal.image_url}

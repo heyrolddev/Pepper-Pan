@@ -128,17 +128,17 @@ export function MealEditor({ meal }: { meal: AdminMeal }) {
       onSubmit={handleSave}
       className="flex flex-col gap-4 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10 sm:flex-row"
     >
-      {/* The same 4:3 the customer's menu card uses. It was square here, which
-          meant the owner approved a crop nobody else ever saw — the sides went
-          missing on the shop and there was no way to tell from HQ. */}
+      {/* Whatever shape the customer's menu card is, this matches it. When the
+          two disagree the owner approves a crop nobody else ever sees, and the
+          live menu quietly loses the edges of every photo. */}
       <div className="flex shrink-0 flex-col items-center gap-2">
-        <div className="relative aspect-[4/3] w-36 overflow-hidden rounded-xl bg-gradient-to-br from-chili-400 to-brand-600">
+        <div className="relative aspect-square w-32 overflow-hidden rounded-xl bg-gradient-to-br from-chili-400 to-brand-600">
           {imageUrl ? (
             <Image
               src={imageUrl}
               alt={meal.name}
               fill
-              sizes="144px"
+              sizes="128px"
               className="object-cover"
             />
           ) : (
@@ -169,9 +169,9 @@ export function MealEditor({ meal }: { meal: AdminMeal }) {
         {/* The one number that stops photos being trimmed. Said here, where
             the photo is chosen, rather than in a document nobody opens. */}
         <p className="text-center text-[11px] leading-tight text-ink-800/45">
-          Best at <strong className="font-semibold">1200 × 900</strong>
+          Best at <strong className="font-semibold">1200 × 1200</strong>
           <br />
-          (landscape, 4:3)
+          (square)
         </p>
       </div>
 
