@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getViewer, isStaff } from "@/lib/auth";
 import { notifyOrderStatus } from "@/lib/notify";
+import { syncStockForStatus } from "@/lib/stock-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { pushToStaff } from "@/lib/push";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
@@ -66,6 +67,11 @@ export async function setOrderStatus(
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  // Confirming an order is the moment its ingredients stop being available
+  // for anything else, so that is when they come off the shelf. Idempotent,
+  // so moving on through preparing/ready/completed changes nothing again.
+  await syncStockForStatus(orderId, status);
 
   // Awaited rather than fired and forgotten: on serverless the function can
   // be frozen the moment the response is returned, which would drop a
@@ -139,6 +145,11 @@ export async function cancelOrderAsStaff(
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  // Whatever was taken off the shelf for this order goes back. A no-op when
+  // the order was never confirmed, so a cancelled `pending` order doesn't
+  // invent stock that was never deducted.
+  await syncStockForStatus(orderId, "cancelled");
 
   await notifyOrderStatus(orderId);
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getViewer, isStaff } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordOrderCost } from "@/lib/costing-server";
+import { syncStockForStatus } from "@/lib/stock-server";
 import type { PaymentMethod } from "@/lib/payments";
 
 export type CounterLine = { mealId: string; qty: number };
@@ -131,7 +132,12 @@ export async function recordWalkInSale(input: {
     return { error: linesError.message };
   }
 
+  // The estimate first, from current recipe prices, so an order always has a
+  // cost even if stock movement can't run. Then the real thing: the movement
+  // engine overwrites `cogs` with what actually came off the shelf, lot
+  // prices and all. Same column, refined — not two sources of truth.
   await recordOrderCost(order.id);
+  await syncStockForStatus(order.id, input.toKitchen ? "confirmed" : "completed");
 
   // The board, the day's takings and the sidebar counts all move.
   revalidatePath("/admin");
