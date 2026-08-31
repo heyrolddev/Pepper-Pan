@@ -77,15 +77,33 @@ type State =
   | "off"
   | "on";
 
+/**
+ * Where a browser remembers that it was already asked.
+ *
+ * Per browser rather than per account, because a subscription *is* per
+ * browser: saying "not now" on a laptop shouldn't stop the phone being asked,
+ * and that phone is the one that matters.
+ */
+const DISMISSED_KEY = "pp_push_asked";
+
 export function PushToggle({
   vapidKey,
   audience,
+  /**
+   * "prompt" asks once and then gets out of the way — it disappears the moment
+   * the question is answered either way, because a switch already set is a
+   * setting, and settings belong on the account page rather than in front of
+   * someone checking on their food.
+   */
+  variant = "settings",
 }: {
   /** Null when the shop hasn't generated a keypair yet. */
   vapidKey: string | null;
   audience: "owner" | "customer";
+  variant?: "prompt" | "settings";
 }) {
   const [state, setState] = useState<State>("checking");
+  const [dismissed, setDismissed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +112,14 @@ export function PushToggle({
     let cancelled = false;
 
     (async () => {
+      try {
+        if (localStorage.getItem(DISMISSED_KEY) === "1" && !cancelled) {
+          setDismissed(true);
+        }
+      } catch {
+        // Private browsing: ask again rather than hide the switch entirely.
+      }
+
       if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
         // On an iPhone this is the *normal* state for a site opened in
         // Safari, not a broken browser — so say the useful thing.
@@ -122,6 +148,16 @@ export function PushToggle({
       cancelled = true;
     };
   }, []);
+
+  /** The question has been answered; stop asking on this browser. */
+  function remember() {
+    try {
+      localStorage.setItem(DISMISSED_KEY, "1");
+    } catch {
+      /* nothing to do — worst case it asks again */
+    }
+    setDismissed(true);
+  }
 
   async function turnOn() {
     if (!vapidKey) return;
@@ -170,6 +206,7 @@ export function PushToggle({
       }
 
       setState("on");
+      remember();
       setNote("Turned on. Sending a test now…");
       const test = await sendTestPush();
       setNote(
@@ -215,6 +252,12 @@ export function PushToggle({
     setNote(testError ? null : "Sent — check your notifications.");
     setError(testError);
     setBusy(false);
+  }
+
+  // As a prompt this is a question, and a question that has been answered
+  // should stop being asked. The full control still lives on the account page.
+  if (variant === "prompt" && (dismissed || state === "on" || state === "checking")) {
+    return null;
   }
 
   const copy =
@@ -307,13 +350,24 @@ export function PushToggle({
             </button>
           </div>
         ) : (
-          <button
-            onClick={turnOn}
-            disabled={busy}
-            className="rounded-full bg-brand-600 px-6 py-3 font-bold text-cream-50 transition-transform hover:scale-105 disabled:opacity-50"
-          >
-            {busy ? "Setting up…" : "Turn on notifications"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={turnOn}
+              disabled={busy}
+              className="rounded-full bg-brand-600 px-6 py-3 font-bold text-cream-50 transition-transform hover:scale-105 disabled:opacity-50"
+            >
+              {busy ? "Setting up…" : "Turn on notifications"}
+            </button>
+            {variant === "prompt" && (
+              <button
+                onClick={remember}
+                disabled={busy}
+                className="rounded-full px-5 py-3 text-sm font-bold text-ink-800/60 transition-colors hover:text-brand-600 disabled:opacity-50"
+              >
+                Not now
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -324,6 +378,9 @@ export function PushToggle({
         <p className="mt-4 text-xs text-ink-800/50">
           Each device is separate — to make another phone or tablet ring too,
           open this page there and turn it on as well.
+          {audience === "customer" && variant === "prompt" && (
+            <> You can change this later under your account.</>
+          )}
         </p>
       )}
     </div>

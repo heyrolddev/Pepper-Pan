@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/page-header";
 import { AccountForm } from "@/components/account-form";
 import { getDeliverySettings } from "@/lib/delivery-server";
 import { SignOutButton } from "@/components/sign-out-button";
+import { PushToggle } from "@/components/push-toggle";
+import { pushConfigured } from "@/lib/push";
 
 export default async function AccountPage() {
   if (!isConfigured()) {
@@ -97,6 +99,18 @@ export default async function AccountPage() {
             Browse the menu →
           </Link>
         </div>
+
+        {/* Notifications live here for good. On My orders they're a one-time
+            question; once it's answered either way, it's a setting — and a
+            setting in front of someone checking on their food is clutter. */}
+        {pushConfigured() && (
+          <div className="mt-10">
+            <PushToggle
+              audience="customer"
+              vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
+            />
+          </div>
+        )}
 
         {/* The header drops sign-out on a phone, where it wrapped onto two
             lines and pushed the row into the logo. It belongs here anyway:

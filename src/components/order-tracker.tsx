@@ -610,16 +610,53 @@ export function OrderTracker({
         </section>
       )}
 
-      {past.length > 0 && (
-        <section>
-          <h2 className="font-display text-2xl font-black text-ink-950">History</h2>
-          <ul className="mt-5 flex flex-col gap-5">
-            {past.map((o) => (
-              <OrderCard key={o.id} order={o} />
-            ))}
-          </ul>
-        </section>
-      )}
+      {past.length > 0 && <History orders={past} />}
     </div>
+  );
+}
+
+/**
+ * Finished orders, folded down to the most recent one.
+ *
+ * A regular builds a long list quickly, and the twentieth order from three
+ * months ago is not what anyone opens this page for — but it still pushed
+ * everything useful off the screen. Only the newest shows; the rest are one
+ * tap away, and the button says how many so nobody has to wonder whether
+ * their history survived.
+ *
+ * Orders still in flight are never folded: those are the reason to be here.
+ */
+function History({ orders }: { orders: TrackedOrder[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? orders : orders.slice(0, 1);
+  const hidden = orders.length - shown.length;
+
+  return (
+    <section>
+      <h2 className="font-display text-2xl font-black text-ink-950">History</h2>
+      <ul className="mt-5 flex flex-col gap-5">
+        {shown.map((o) => (
+          <OrderCard key={o.id} order={o} />
+        ))}
+      </ul>
+
+      {hidden > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="mt-5 w-full rounded-2xl bg-cream-100 px-5 py-3 text-sm font-bold text-ink-950 ring-1 ring-ink-950/10 transition-colors hover:bg-cream-200"
+        >
+          Show {hidden} more order{hidden === 1 ? "" : "s"} ↓
+        </button>
+      )}
+
+      {expanded && orders.length > 1 && (
+        <button
+          onClick={() => setExpanded(false)}
+          className="mt-3 w-full rounded-2xl px-5 py-2 text-sm font-bold text-ink-800/60 transition-colors hover:text-brand-600"
+        >
+          Show less ↑
+        </button>
+      )}
+    </section>
   );
 }

@@ -211,10 +211,20 @@ export default async function OrdersPage() {
             {pushConfigured() && (
               <PushToggle
                 audience="customer"
+                variant="prompt"
                 vapidKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null}
               />
             )}
             <OrderTracker orders={tracked} customerId={user.id} />
+
+            {/* Somewhere to go from here. Without it the only way back to the
+                menu from a page full of finished orders is the header. */}
+            <Link
+              href="/menu"
+              className="self-center rounded-full bg-brand-600 px-7 py-3 font-bold text-cream-50 transition-transform hover:scale-105"
+            >
+              Browse the menu →
+            </Link>
           </div>
         )}
       </section>

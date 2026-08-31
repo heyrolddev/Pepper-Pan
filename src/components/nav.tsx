@@ -9,11 +9,17 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { Logo } from "@/components/logo";
 import { ChefHatIcon } from "@/components/icons";
 
+/**
+ * Only what someone is here to *do*.
+ *
+ * Story and Visit are worth reading once and never again, and they already sit
+ * in the footer where that kind of thing belongs. Keeping them up here cost
+ * two slots in a row that has to hold a cart, an order count, a name and a way
+ * out — and it pushed the full row past the width of a laptop.
+ */
 const links = [
   { href: "/menu", label: "Menu" },
   { href: "/reviews", label: "Reviews" },
-  { href: "/#story", label: "Story" },
-  { href: "/#visit", label: "Visit" },
 ];
 
 /**
