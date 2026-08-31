@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Logo } from "@/components/logo";
 
 /**
- * Intro overlay, shown once per visit.
+ * Intro overlay, shown on every page load.
  *
  * The markup is rendered server-side so it covers the page from the very
  * first paint (otherwise you'd see the real page, then the loader drop on
@@ -29,6 +29,8 @@ export function Preloader() {
     }
 
     // Long enough to read the logo, short enough that nobody waits on it.
+    // It plays on every page load now, so this second matters more than it
+    // would have as a one-off.
     const timer = setTimeout(() => setDone(true), 1100);
     return () => clearTimeout(timer);
   }, []);

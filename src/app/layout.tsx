@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
@@ -78,29 +79,44 @@ export const viewport: Viewport = {
 /**
  * Runs before first paint so the real page never flashes before the overlay.
  *
- * The intro is a first-impression, not a toll booth: it plays once per visit
- * and every load after that goes straight to the page. A hungry customer
- * coming back to check their order should not wait two seconds to see it,
- * and neither should anyone who reloads. A reduced-motion preference skips
- * it entirely. Client-side route changes never re-run this.
+ * Two jobs, and the second one is load-bearing.
+ *
+ * It decides whether this load gets the intro: every page load does, except
+ * inside HQ and except for anyone who has asked their device for less motion.
+ * Client-side route changes never re-run this, so moving between pages
+ * without a reload stays instant either way.
+ *
+ * And it locks scrolling behind the overlay — which is why the path check
+ * matters more than it looks. Only the Preloader component removes that lock,
+ * and the Preloader isn't rendered in HQ. Locking a page whose overlay will
+ * never appear would freeze it for good. The timeout below is the second
+ * belt: whatever happens, nothing stays frozen.
  */
 const introScript = `(function(){try{
 var d=document.documentElement;
-var seen=false;
-try{seen=sessionStorage.getItem('pp_intro')==='1';}catch(e){seen=false;}
-if(seen||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+var hq=location.pathname.indexOf('/admin')===0;
+if(hq||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
   d.setAttribute('data-intro','skip');
 }else{
   d.classList.add('intro-lock');
-  try{sessionStorage.setItem('pp_intro','1');}catch(e){}
+  // A page that cannot be scrolled is broken, so the lock releases itself
+  // even if the overlay never mounts.
+  setTimeout(function(){d.classList.remove('intro-lock');},4000);
 }
 }catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // HQ brings its own sidebar shell. The shop's header, status banner, cart
+  // button, chat widget and footer are for customers, and following the owner
+  // into the back office they were only ever clutter — and, with a sidebar,
+  // a second navigation competing with the first.
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const inHQ = pathname.startsWith("/admin");
+
   const [viewer, chat, activeOrders] = await Promise.all([
     getViewer(),
-    getChatSettings(),
-    countActiveOrders(),
+    inHQ ? Promise.resolve({ messengerUrl: null }) : getChatSettings(),
+    inHQ ? Promise.resolve(0) : countActiveOrders(),
   ]);
 
   return (
@@ -116,34 +132,42 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body className="flex min-h-full flex-col bg-cream-50 font-sans text-ink-900">
         <CartProvider>
-          <Preloader />
+          {!inHQ && <Preloader />}
           <Cursor />
           <ScrollProgress />
-          {/* Above the nav, not below it — and that ordering is load-bearing.
-              Every page's masthead uses `.under-nav`, which pulls itself up by
-              exactly the nav's height so the dark hero runs behind a
-              transparent header. That only works while the masthead is the
-              nav's next sibling. With the banner in between, the hero rose by
-              the banner's height instead of the nav's: it stopped short of the
-              top, leaving a strip of cream page showing with the logo and the
-              account chip straddling the edge of it, and it covered the banner
-              itself — so the one message that says "we're closed today" was
-              painted over by the page it was warning about.
+          {!inHQ && (
+            <>
+            {/* Above the nav, not below it — and that ordering is load-bearing.
+                Every page's masthead uses `.under-nav`, which pulls itself up by
+                exactly the nav's height so the dark hero runs behind a
+                transparent header. That only works while the masthead is the
+                nav's next sibling. With the banner in between, the hero rose by
+                the banner's height instead of the nav's: it stopped short of the
+                top, leaving a strip of cream page showing with the logo and the
+                account chip straddling the edge of it, and it covered the banner
+                itself — so the one message that says "we're closed today" was
+                painted over by the page it was warning about.
 
-              Anything added here later belongs above this line, not between
-              the banner and the page. */}
-          <ShopStatusBanner />
-          <Nav
-            signedIn={!!viewer}
-            staff={isStaff(viewer)}
-            name={viewer?.profile?.full_name ?? null}
-            activeOrders={activeOrders}
-          />
+                Anything added here later belongs above this line, not between
+                the banner and the page. */}
+            <ShopStatusBanner />
+            <Nav
+              signedIn={!!viewer}
+              staff={isStaff(viewer)}
+              name={viewer?.profile?.full_name ?? null}
+              activeOrders={activeOrders}
+            />
+            </>
+          )}
+
           {children}
-          <FloatingCart />
-          <AskWidget messengerUrl={chat.messengerUrl} />
-
-          <SiteFooter year={new Date().getFullYear()} />
+          {!inHQ && (
+            <>
+              <FloatingCart />
+              <AskWidget messengerUrl={chat.messengerUrl} />
+              <SiteFooter year={new Date().getFullYear()} />
+            </>
+          )}
         </CartProvider>
       </body>
     </html>

@@ -4,6 +4,7 @@ import { ColumnChart, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { formatDateTime } from "@/lib/format-date";
+import { StatTile, Delta, pesoRound } from "@/components/stat-tile";
 
 // Shop-timezone day labels, so a bar is filed under the day the shop had,
 // not the day the viewer's device thinks it was.
@@ -17,8 +18,9 @@ const dayCaption = new Intl.DateTimeFormat("en-PH", {
   day: "numeric",
 });
 
-const peso = (n: number) =>
-  "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Headline figures are whole pesos — see pesoRound. Exact amounts still show
+// to the centavo where one is actually owed, which is what `peso` is for.
+const peso = pesoRound;
 
 type OrderRow = {
   id: string;
@@ -32,47 +34,6 @@ type OrderRow = {
   payment_method: string;
   contact_name: string | null;
 };
-
-function StatTile({
-  label,
-  value,
-  detail,
-  tone = "plain",
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: "plain" | "alert" | "good";
-}) {
-  const ring =
-    tone === "alert"
-      ? "ring-2 ring-brand-600"
-      : tone === "good"
-        ? "ring-2 ring-jade-600"
-        : "ring-1 ring-ink-950/10";
-  return (
-    <div className={`rounded-2xl bg-cream-100 p-5 ${ring}`}>
-      <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">{label}</p>
-      <p className="mt-2 font-display text-3xl font-black text-ink-950">{value}</p>
-      {detail && <p className="mt-1 text-sm text-ink-800/60">{detail}</p>}
-    </div>
-  );
-}
-
-/** Trend against the previous comparable period, stated in words not just colour. */
-function Delta({ now, before, label }: { now: number; before: number; label: string }) {
-  if (before === 0) return null;
-  const pct = Math.round(((now - before) / before) * 100);
-  if (!Number.isFinite(pct) || pct === 0) return null;
-  const up = pct > 0;
-  return (
-    <p
-      className={`mt-1 text-sm font-bold ${up ? "text-jade-700" : "text-brand-700"}`}
-    >
-      {up ? "▲" : "▼"} {Math.abs(pct)}% {up ? "up from" : "down from"} {label}
-    </p>
-  );
-}
 
 export default async function AdminDashboard({
   searchParams,
@@ -187,35 +148,25 @@ export default async function AdminDashboard({
       <section className="flex flex-col gap-4">
         <DateRangePicker from={fromDate} to={toDate} isDefault={!customRange} />
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <div className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
-            <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">
-              Sales today
-            </p>
-            <p className="mt-2 font-display text-3xl font-black text-ink-950">
-              {peso(sum(todays))}
-            </p>
-            <p className="mt-1 text-sm text-ink-800/60">
-              {todays.length} order{todays.length === 1 ? "" : "s"}
-            </p>
+          <StatTile
+            label="Sales today"
+            value={peso(sum(todays))}
+            detail={`${todays.length} order${todays.length === 1 ? "" : "s"}`}
+          >
             <Delta now={sum(todays)} before={sum(yesterdays)} label="yesterday" />
-          </div>
+          </StatTile>
 
-          <div className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
-            <p className="text-xs font-bold uppercase tracking-widest text-ink-800/55">
-              {customRange ? "Sales in range" : "Sales this month"}
-            </p>
-            <p className="mt-2 font-display text-3xl font-black text-ink-950">
-              {peso(sum(inRange))}
-            </p>
-            <p className="mt-1 text-sm text-ink-800/60">
-              {inRange.length} order{inRange.length === 1 ? "" : "s"}
-            </p>
+          <StatTile
+            label={customRange ? "Sales in range" : "Sales this month"}
+            value={peso(sum(inRange))}
+            detail={`${inRange.length} order${inRange.length === 1 ? "" : "s"}`}
+          >
             <Delta
               now={sum(inRange)}
               before={sum(inPrevRange)}
               label={`the ${spanDays} days before`}
             />
-          </div>
+          </StatTile>
           <StatTile
             label="Average order"
             value={peso(avgOrder)}
