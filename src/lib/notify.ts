@@ -54,7 +54,7 @@ function bodyFor(
       return "Salamat! We've got your order and the kitchen has it. We'll let you know the moment it's ready.";
     case "ready":
       return fulfillment === "delivery"
-        ? "Your food is ready and waiting for a rider. We'll tell you when it leaves."
+        ? "Your food is ready and waiting for a rider. They'll call or text you when they're close, so keep your phone nearby."
         : "Your food is ready for pickup — we're in front of Palengkeni, beside Osave.";
     case "out_for_delivery":
       return "Your rider has left the stall. Keep your phone nearby. 🛵";
@@ -79,7 +79,7 @@ function pushBodyFor(status: OrderStatus, fulfillment: string): string {
       return "The kitchen has it. We'll tell you when it's ready.";
     case "ready":
       return fulfillment === "delivery"
-        ? "Ready and waiting for a rider."
+        ? "Waiting for a rider — they'll ring you. Keep your phone nearby. 📱"
         : "Ready for pickup — in front of Palengkeni, beside Osave.";
     case "out_for_delivery":
       return "On its way to you. Keep your phone nearby. 🛵";
