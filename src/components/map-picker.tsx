@@ -137,10 +137,23 @@ export function MapPicker({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* `relative z-0` is doing real work here, not styling.
+       *
+       * Leaflet stacks its own furniture high: the tile and marker panes sit
+       * at z-index 400-600 and the zoom control at 1000. The site's chrome —
+       * the sticky nav, the floating cart — sits at z-40. Without a stacking
+       * context of its own, the map's numbers are measured against the page
+       * root, so a map halfway down the page painted straight over the header
+       * and over the checkout bar.
+       *
+       * Giving the container `position: relative` and `z-index: 0` makes it a
+       * stacking context, which confines every number Leaflet uses to the
+       * inside of this box. The box itself then sits at level 0, below all
+       * the chrome, where a map belongs. */}
       <div
         ref={containerRef}
         style={{ height }}
-        className="w-full overflow-hidden rounded-2xl ring-2 ring-ink-950/15"
+        className="relative z-0 w-full overflow-hidden rounded-2xl ring-2 ring-ink-950/15"
       />
       <div className="flex flex-wrap items-center gap-2">
         <button
