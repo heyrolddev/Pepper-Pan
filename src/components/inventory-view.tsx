@@ -13,6 +13,7 @@ import {
   RecipeEditor,
   type RecipeOption,
 } from "@/components/recipe-editor";
+import { WasteForm } from "@/components/waste-form";
 
 export type StockRow = {
   id: string;
@@ -45,8 +46,30 @@ function editable(s: StockRow): EditableIngredient {
 }
 
 /** Which dialog is open, and over which row. */
+export type SuggestionRow = {
+  id: string;
+  name: string;
+  unit: string;
+  stock: number;
+  dailyAvg: number;
+  daysLeft: number;
+  buy: number;
+  cost: number;
+  coveredBy: { name: string; qty: number; unit: string }[];
+};
+
+export type ExpiringRow = {
+  name: string;
+  unit: string;
+  qty: number;
+  cost: number;
+  expiryDate: string;
+  daysLeft: number;
+};
+
 type Editing =
   | { kind: "new" }
+  | { kind: "waste" }
   | { kind: "edit" | "restock" | "count"; row: StockRow }
   | { kind: "produce" | "recipe"; batch: BatchRow }
   | null;
@@ -137,11 +160,20 @@ function Stat({
 export function InventoryView({
   stock,
   batches,
+  suggestions,
+  expiring,
+  usageDays,
+  thinHistory,
   canSeeCosts,
   failed,
 }: {
   stock: StockRow[];
   batches: BatchRow[];
+  suggestions: SuggestionRow[];
+  expiring: ExpiringRow[];
+  /** Days of consumption history the averages are built on. */
+  usageDays: number;
+  thinHistory: boolean;
   canSeeCosts: boolean;
   failed: string[];
 }) {
@@ -224,12 +256,20 @@ export function InventoryView({
             marinades you make in bulk. Selling now takes stock off the shelf.
           </p>
         </div>
-        <button
-          onClick={() => setEditing({ kind: "new" })}
-          className="shrink-0 rounded-2xl bg-ink-950 px-5 py-3 text-sm font-black text-cream-50 transition-colors hover:bg-ink-800"
-        >
-          + Add an ingredient
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            onClick={() => setEditing({ kind: "waste" })}
+            className="rounded-2xl bg-ink-950/5 px-5 py-3 text-sm font-black text-ink-800/70 ring-1 ring-ink-950/10 transition-colors hover:bg-brand-600 hover:text-cream-50"
+          >
+            Log waste
+          </button>
+          <button
+            onClick={() => setEditing({ kind: "new" })}
+            className="rounded-2xl bg-ink-950 px-5 py-3 text-sm font-black text-cream-50 transition-colors hover:bg-ink-800"
+          >
+            + Add an ingredient
+          </button>
+        </div>
       </div>
 
       {failed.length > 0 && (
@@ -273,30 +313,135 @@ export function InventoryView({
         />
       </div>
 
-      {/* The shopping list. Above the table, because at 5am nobody scrolls. */}
-      {low.length > 0 && (
-        <section className="rounded-3xl bg-ink-950 p-6 text-cream-50">
-          <h3 className="font-display text-xl font-black">
-            Buy before the next service
+      {/* Going off first: no amount of restocking fixes something already in
+          the fridge with two days left on it. */}
+      {expiring.length > 0 && (
+        <section className="rounded-3xl bg-chili-500/15 p-6 ring-1 ring-chili-500/30">
+          <h3 className="font-display text-xl font-black text-ink-950">
+            Use these first
           </h3>
-          <p className="mt-1 text-sm text-cream-100/60">
-            {low.length} ingredient{low.length === 1 ? "" : "s"} at or under the
-            level you set.
+          <p className="mt-1 text-sm text-ink-800/60">
+            {expiring.length} lot{expiring.length === 1 ? "" : "s"} at or near
+            the date. Cooking draws on the oldest first automatically — this is
+            so you can plan around it.
           </p>
           <ul className="mt-4 flex flex-wrap gap-2">
-            {low.map((s) => (
+            {expiring.map((e, i) => (
+              <li
+                key={i}
+                className={`rounded-2xl px-4 py-2.5 ring-1 ${
+                  e.daysLeft < 0
+                    ? "bg-brand-600 text-cream-50 ring-brand-700/30"
+                    : "bg-cream-50 text-ink-950 ring-ink-950/10"
+                }`}
+              >
+                <span className="font-bold">{e.name}</span>
+                <span className="ml-2 text-sm tabular-nums">
+                  {e.qty.toLocaleString("en-PH")} {e.unit}
+                </span>
+                <span
+                  className={`ml-2 text-xs font-bold ${
+                    e.daysLeft < 0 ? "text-cream-100/80" : "text-chili-700"
+                  }`}
+                >
+                  {e.daysLeft < 0
+                    ? `${Math.abs(e.daysLeft)}d past`
+                    : e.daysLeft === 0
+                      ? "today"
+                      : `${e.daysLeft}d left`}
+                </span>
+                {canSeeCosts && (
+                  <span className="ml-2 text-xs opacity-50">{peso(e.cost, 0)}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Before there is any sales history there is nothing to average, so the
+          shopping list simply wouldn't render — and an absent panel looks
+          like a broken one. This says why, and points at the levels the
+          owner set, which are all there is to go on in week one. */}
+      {suggestions.length === 0 && low.length > 0 && (
+        <section className="rounded-3xl border-2 border-dashed border-ink-950/15 p-6">
+          <h3 className="font-display text-lg font-black text-ink-950">
+            No usage history yet
+          </h3>
+          <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
+            Once sales start going through, this becomes a shopping list worked
+            out from what you actually get through in a day. Until then, the{" "}
+            {low.length} flagged below are against the reorder levels you set
+            yourself.
+          </p>
+        </section>
+      )}
+
+      {/* The shopping list. Above the table, because at 5am nobody scrolls.
+          Built from what the shop actually gets through rather than from the
+          reorder number somebody guessed once — and it says how long each one
+          has left, which is the part a static level can never tell you. */}
+      {suggestions.length > 0 && (
+        <section className="rounded-3xl bg-ink-950 p-6 text-cream-50">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-display text-xl font-black">
+              Buy before the next service
+            </h3>
+            {canSeeCosts && (
+              <span className="font-display text-lg font-black tabular-nums text-gold-400">
+                {peso(suggestions.reduce((sum, s) => sum + s.cost, 0), 0)}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-cream-100/60">
+            {thinHistory
+              ? `Based on only ${usageDays} day${usageDays === 1 ? "" : "s"} of sales so far — treat it as a rough first guess.`
+              : `Worked out from what you've actually used over the last ${usageDays} days.`}
+          </p>
+          <ul className="mt-4 flex flex-col gap-2">
+            {suggestions.map((s) => (
               <li
                 key={s.id}
-                className="rounded-2xl bg-cream-50/10 px-4 py-2.5 ring-1 ring-cream-50/15"
+                className="rounded-2xl bg-cream-50/10 px-4 py-3 ring-1 ring-cream-50/15"
               >
-                <span className="font-bold">{s.name}</span>
-                <span className="ml-2 text-sm tabular-nums text-gold-300">
-                  {s.stock.toLocaleString("en-PH")} {s.unit} left
-                </span>
-                {s.buysAs && canSeeCosts && (
-                  <span className="ml-2 text-xs text-cream-100/40">
-                    buys as ₱{s.buysAs}
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <span className="font-bold">
+                    {s.name}
+                    <span className="ml-2 text-sm font-normal text-cream-100/50">
+                      {s.stock.toLocaleString("en-PH")} {s.unit} left ·{" "}
+                      {s.dailyAvg.toLocaleString("en-PH", {
+                        maximumFractionDigits: 1,
+                      })}{" "}
+                      {s.unit}/day
+                    </span>
                   </span>
+                  <span className="text-sm">
+                    <span
+                      className={`font-black tabular-nums ${
+                        s.daysLeft < 1 ? "text-brand-300" : "text-gold-400"
+                      }`}
+                    >
+                      {s.daysLeft < 1
+                        ? "out now"
+                        : `${s.daysLeft.toFixed(1)} days left`}
+                    </span>
+                    <span className="ml-3 text-cream-100/70">
+                      buy ~{s.buy.toLocaleString("en-PH", { maximumFractionDigits: 0 })}{" "}
+                      {s.unit}
+                    </span>
+                  </span>
+                </div>
+                {s.coveredBy.length > 0 && (
+                  <p className="mt-1 text-xs text-jade-300">
+                    Low, but you already have{" "}
+                    {s.coveredBy
+                      .map(
+                        (c) =>
+                          `${c.qty.toLocaleString("en-PH")} ${c.unit} of ${c.name}`
+                      )
+                      .join(", ")}{" "}
+                    made.
+                  </p>
                 )}
               </li>
             ))}
@@ -537,6 +682,22 @@ export function InventoryView({
       {/* Keyed on the row so opening a second ingredient's form resets every
           field — a restock dialog carrying the last one's quantity is how a
           delivery gets recorded against the wrong shelf. */}
+      {editing?.kind === "waste" && (
+        <WasteForm
+          options={[
+            ...ingredientOptions,
+            ...batches.map((b) => ({
+              id: b.id,
+              name: b.name,
+              unit: b.yieldUnit,
+              unitCost: b.perUnit,
+              kind: "batch" as const,
+              stock: b.stock,
+            })),
+          ]}
+          onClose={() => setEditing(null)}
+        />
+      )}
       {editing?.kind === "new" && (
         <IngredientForm
           units={units}
