@@ -13,7 +13,7 @@ import {
   type PaymentSettings,
 } from "@/lib/payments";
 import { notifyNewOrder } from "@/lib/notify";
-import { recordOrderCost } from "@/lib/costing-server";
+import { recordOrderCost, loadAvailability } from "@/lib/costing-server";
 
 type PlaceOrderInput = {
   // `name` is the browser's copy, used only to name a sold-out dish back to
@@ -108,6 +108,7 @@ export async function placeOrder(
   }
 
   const priceById = new Map(meals.map((m) => [m.id, Number(m.price)]));
+  const nameById = new Map(meals.map((m) => [m.id, m.name as string]));
   // Name the dish. "One of the items in your cart" makes the customer open
   // every line to work out which — and a sold-out dish is annoying enough
   // without a guessing game on top.
@@ -283,6 +284,25 @@ export async function placeOrder(
         ? `${schedule.state.reason ?? "We're closed right now."} You can still order ahead — pick a time at checkout.`
         : (schedule.settings.paused_message?.trim() ??
           "We've paused orders for now — please check back a little later."),
+    };
+  }
+
+  // Can the kitchen actually make this? Checked here, on the server, because
+  // the menu greying a button out is a courtesy and not a control: a stale
+  // tab, a back button or a crafted request all reach this line with a dish
+  // whose ingredients ran out ten minutes ago. Selling food that cannot be
+  // cooked costs a refund and a customer.
+  const makeable = await loadAvailability();
+  const short = input.items.filter((i) => {
+    const n = makeable.get(i.mealId);
+    return n !== undefined && n < i.qty;
+  });
+  if (short.length > 0) {
+    const names = short
+      .map((i) => nameById.get(i.mealId) ?? "an item")
+      .join(", ");
+    return {
+      error: `Sorry — we've just run out of ${names}. Take it out of your cart and the rest can go through.`,
     };
   }
 

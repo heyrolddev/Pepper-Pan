@@ -11,6 +11,8 @@ export type CounterMeal = {
   categories: string[] | null;
   is_public: boolean;
   is_available: boolean;
+  /** Servings the shelf can still make. Null when there's no recipe to go on. */
+  makeable?: number | null;
 };
 
 /**
@@ -199,6 +201,10 @@ export function CounterTill({
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
               {shown.map((m) => {
                 const qty = ticket[m.id] ?? 0;
+                // Never blocked at the till — the person is standing there
+                // and the count may simply be behind. Flagged loudly instead,
+                // and the server refuses if it is genuinely short.
+                const out = m.makeable !== null && m.makeable !== undefined && m.makeable <= 0;
                 return (
                   <li key={m.id}>
                     <button
@@ -218,10 +224,16 @@ export function CounterTill({
                           {qty}
                         </span>
                       )}
-                      {!m.is_public && (
-                        <span className="absolute bottom-1.5 right-2 text-[9px] font-black uppercase tracking-wide opacity-40">
-                          counter only
+                      {out ? (
+                        <span className="absolute bottom-1.5 right-2 rounded-full bg-brand-600 px-1.5 text-[9px] font-black uppercase tracking-wide text-cream-50">
+                          no stock
                         </span>
+                      ) : (
+                        !m.is_public && (
+                          <span className="absolute bottom-1.5 right-2 text-[9px] font-black uppercase tracking-wide opacity-40">
+                            counter only
+                          </span>
+                        )
                       )}
                     </button>
                   </li>

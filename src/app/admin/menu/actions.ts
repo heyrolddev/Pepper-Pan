@@ -58,6 +58,7 @@ export async function createMeal(input: {
   name: string;
   price: number;
   category: string;
+  description?: string;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
   if (!isStaff(viewer)) return { error: "Not allowed." };
@@ -73,6 +74,7 @@ export async function createMeal(input: {
       name: input.name.trim(),
       price: input.price,
       categories: input.category.trim() ? [input.category.trim()] : [],
+      description: input.description?.trim() || null,
       is_public: true,
       is_available: true,
     })

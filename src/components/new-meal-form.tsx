@@ -13,6 +13,7 @@ export function NewMealForm() {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,11 +22,17 @@ export function NewMealForm() {
     setBusy(true);
     setError(null);
     try {
-      const res = await createMeal({ name, price: Number(price), category });
+      const res = await createMeal({
+        name,
+        price: Number(price),
+        category,
+        description,
+      });
       if (res.error) return setError(res.error);
       setName("");
       setPrice("");
       setCategory("");
+      setDescription("");
       setOpen(false);
       router.refresh();
     } catch (e) {
@@ -75,6 +82,22 @@ export function NewMealForm() {
           className={fieldClass}
         />
       </div>
+      {/* Asked for at the point the dish is created, not left until later.
+          "You can add a description after creating it" is how seventy-three
+          dishes end up on a menu with nothing but a name — and a name alone
+          tells a first-time customer nothing about what Ji Pai or XLB is. */}
+      <textarea
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        rows={2}
+        maxLength={160}
+        placeholder="What is it? e.g. Crispy fried chicken cutlet, Taiwanese street-style"
+        className={fieldClass}
+      />
+      <p className="-mt-1 text-xs text-ink-800/45">
+        Shown under the name on the menu. {160 - description.length} characters
+        left.
+      </p>
       {error && (
         <p className="rounded-xl bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700">
           {error}
@@ -97,7 +120,7 @@ export function NewMealForm() {
         </button>
       </div>
       <p className="text-xs text-ink-800/55">
-        You can add a photo and description after creating it.
+        You can add a photo after creating it.
       </p>
     </form>
   );

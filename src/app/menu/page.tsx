@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getViewer, isStaff } from "@/lib/auth";
 import { MenuList, type Meal } from "@/components/menu-list";
 import { PageHeader } from "@/components/page-header";
+import { loadAvailability } from "@/lib/costing-server";
 
 async function getMenu(): Promise<{ menu: Meal[] | null; configured: boolean }> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -31,10 +32,17 @@ async function getMenu(): Promise<{ menu: Meal[] | null; configured: boolean }> 
       )
     );
 
+    // How many the shelf can still make. Derived, never written back to
+    // `is_available` — that switch is the owner's own "we've 86'd it today",
+    // and a background process overwriting it would destroy an intent the
+    // system can't tell apart from its own guess.
+    const makeable = await loadAvailability();
+
     const menu = (data as Meal[]).map((m) => ({
       ...m,
       avg_rating: byMeal.get(m.id) ? Number(byMeal.get(m.id)!.avg_rating) : null,
       review_count: byMeal.get(m.id)?.review_count ?? 0,
+      makeable: makeable.get(m.id) ?? null,
     }));
 
     return { menu, configured: true };
