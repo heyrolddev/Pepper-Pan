@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/costing";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
 import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
+import { hqTitle } from "@/lib/hq-theme";
 
 export type CounterMeal = {
   id: string;
@@ -150,7 +151,7 @@ export function CounterTill({
     <div className="flex flex-col gap-6 pb-24 lg:pb-0">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="font-display text-2xl font-black text-ink-950">Counter</h2>
+          <h2 className={hqTitle}>Counter</h2>
           <p className="mt-1 max-w-xl text-sm text-ink-800/60">
             Ring up someone at the stall. It lands in the same books as an
             online order, so the day&apos;s takings finally mean the whole day.

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import type { AdminCustomer } from "@/components/customer-row";
 import { AdminCustomerList } from "@/components/admin-customer-list";
+import { hqTitle } from "@/lib/hq-theme";
 
 type ProfileRow = {
   id: string;
@@ -55,7 +56,7 @@ export default async function AdminCustomersPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">
+        <h2 className={hqTitle}>
           Customers ({customers.length})
         </h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">

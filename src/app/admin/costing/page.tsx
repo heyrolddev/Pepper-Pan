@@ -5,6 +5,7 @@ import { loadCostBook, loadSalesVolume } from "@/lib/costing-server";
 import { classifyMenu, marginFor, menuClassFor } from "@/lib/costing";
 import { DishCosts, type DishRow } from "@/components/dish-costs";
 import type { RecipeOption } from "@/components/recipe-editor";
+import { hqTitle } from "@/lib/hq-theme";
 
 // Recipes and prices change from the Menu screen; a cached cost is a wrong one.
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export default async function AdminCostingPage() {
   if (!can(viewer, "costs")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
-        <h2 className="font-display text-2xl font-black text-ink-950">Owner only</h2>
+        <h2 className={hqTitle}>Owner only</h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
           Costs and margins are the owner&apos;s to see. Staff can check what
           stock is left on the Inventory screen.

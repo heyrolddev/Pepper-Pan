@@ -4,6 +4,7 @@ import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { AnalysisPanel } from "@/components/analysis-panel";
 import { buildSnapshot } from "./snapshot";
 import { StatTile as Tile, pesoRound } from "@/components/stat-tile";
+import { hqTitle } from "@/lib/hq-theme";
 
 // Whole pesos on the headline figures, for the same reason as the dashboard.
 const peso = pesoRound;
@@ -56,7 +57,7 @@ export default async function AdminAnalyticsPage() {
   return (
     <div className="flex flex-col gap-10">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Analytics</h2>
+        <h2 className={hqTitle}>Analytics</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           What your last 30 days actually say — and, when you ask for it, what
           to post, boost and promote because of it.

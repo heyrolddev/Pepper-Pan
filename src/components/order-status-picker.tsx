@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { setOrderStatus } from "@/app/admin/orders/actions";
 import { STATUS_LABELS, statusesFor, type OrderStatus } from "@/lib/orders";
 import { moneyLine, type MoneyState } from "@/lib/payments";
+import { hqTitle } from "@/lib/hq-theme";
 
 export function OrderStatusPicker({
   orderId,
@@ -85,7 +86,7 @@ export function OrderStatusPicker({
             className="absolute inset-0 bg-ink-950/70"
           />
           <div className="relative w-full max-w-sm rounded-3xl bg-cream-50 p-6 text-left shadow-2xl ring-1 ring-ink-950/10">
-            <p className="font-display text-2xl font-black text-ink-950">
+            <p className={hqTitle}>
               This one still owes money
             </p>
             <p className="mt-3 rounded-2xl bg-brand-50 px-4 py-3 font-bold text-brand-700">

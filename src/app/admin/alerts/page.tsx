@@ -4,6 +4,7 @@ import { getViewer, can } from "@/lib/auth";
 import { pushConfigured } from "@/lib/push";
 import { PushToggle } from "@/components/push-toggle";
 import { formatDateTime } from "@/lib/format-date";
+import { hqTitle } from "@/lib/hq-theme";
 
 /**
  * Where the owner decides which phones the shop is allowed to ring.
@@ -57,7 +58,7 @@ export default async function AdminAlertsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Alerts</h2>
+        <h2 className={hqTitle}>Alerts</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           The only way to hear about an order while HQ isn&apos;t open in front
           of you. It costs nothing — no SMS load, no subscription.

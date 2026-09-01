@@ -11,6 +11,7 @@ import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { formatDateTime, shopToday } from "@/lib/format-date";
 import { StatTile, Delta, pesoRound } from "@/components/stat-tile";
+import { hqTitle } from "@/lib/hq-theme";
 
 // Shop-timezone day labels, so a bar is filed under the day the shop had,
 // not the day the viewer's device thinks it was.
@@ -288,7 +289,7 @@ export default async function AdminDashboard({
 
       {/* Sales trend */}
       <section>
-        <h2 className="font-display text-2xl font-black text-ink-950">Sales trend</h2>
+        <h2 className={hqTitle}>Sales trend</h2>
         <p className="mt-1 text-sm text-ink-800/60">
           Revenue per day, last 14 days · hover a bar for the exact figure
         </p>
@@ -320,7 +321,7 @@ export default async function AdminDashboard({
       {/* Recent orders */}
       <section>
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl font-black text-ink-950">Recent orders</h2>
+          <h2 className={hqTitle}>Recent orders</h2>
           <Link href="/admin/orders" className="text-sm font-bold text-brand-600 hover:underline">
             View all →
           </Link>

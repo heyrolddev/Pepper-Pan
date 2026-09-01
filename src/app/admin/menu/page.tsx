@@ -6,6 +6,7 @@ import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
 import { CategoryBar } from "@/components/category-bar";
 import { categoryOf, type MenuCategory } from "@/lib/categories";
+import { hqTitle } from "@/lib/hq-theme";
 
 export default async function AdminMenuPage() {
   const viewer = await getViewer();
@@ -16,7 +17,7 @@ export default async function AdminMenuPage() {
   if (!can(viewer, "menu.availability")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
-        <h2 className="font-display text-2xl font-black text-ink-950">
+        <h2 className={hqTitle}>
           Not your screen
         </h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
@@ -57,7 +58,7 @@ export default async function AdminMenuPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="font-display text-2xl font-black text-ink-950">
+          <h2 className={hqTitle}>
             Menu ({meals.length})
           </h2>
           <p className="mt-1 text-sm text-ink-800/60">

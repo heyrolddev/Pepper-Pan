@@ -9,6 +9,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { ShiftClock } from "@/components/shift-clock";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { roleCan, roleLabel, type Capability } from "@/lib/permissions";
+import { accentFor } from "@/lib/hq-theme";
 
 /**
  * HQ as a workspace rather than a web page.
@@ -302,7 +303,15 @@ export function AdminShell({
   }, [open]);
 
   return (
-    <div className="flex min-h-screen bg-cream-50">
+    // The section's colour, set once here and read by every heading on the
+    // page through `hqTitle`. Set on the whole shell rather than on `<main>`
+    // so the phone drawer's header picks it up as well — the accent is meant
+    // to say which part of HQ you're in, and the drawer is where you go to
+    // change that.
+    <div
+      className="flex min-h-screen bg-cream-50"
+      style={{ "--hq-accent": accentFor(pathname) } as React.CSSProperties}
+    >
       {/* Desktop rail — always there, never in the way. */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 lg:block">
         <Rail

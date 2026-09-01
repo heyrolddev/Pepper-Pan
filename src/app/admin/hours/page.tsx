@@ -2,6 +2,7 @@ import { NotAllowed } from "@/components/not-allowed";
 import { can, getViewer } from "@/lib/auth";
 import { getSchedule } from "@/lib/hours-server";
 import { HoursEditor, TodayLine } from "@/components/hours-editor";
+import { hqTitle } from "@/lib/hq-theme";
 
 export default async function AdminHoursPage() {
   const viewer = await getViewer();
@@ -16,7 +17,7 @@ export default async function AdminHoursPage() {
   if (!schedule.configured) {
     return (
       <div className="rounded-3xl bg-gold-50 p-8 ring-1 ring-gold-400/40">
-        <h2 className="font-display text-2xl font-black text-ink-950">Opening hours</h2>
+        <h2 className={hqTitle}>Opening hours</h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
           Run <strong>migration 0013</strong> in the Supabase SQL Editor to switch
           this on. Until then the shop is treated as always open — orders can
@@ -31,7 +32,7 @@ export default async function AdminHoursPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Opening hours</h2>
+        <h2 className={hqTitle}>Opening hours</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           These drive everything: whether the site takes an order right now, what
           Ask Pepper Pan tells people, and which times an advance order can be

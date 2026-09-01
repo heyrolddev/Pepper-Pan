@@ -5,6 +5,7 @@ import { peso } from "@/lib/costing";
 import { formatDateTime } from "@/lib/format-date";
 import { ROLE_BLURBS, ROLE_LABELS } from "@/lib/permissions";
 import { setStaffRole } from "@/app/admin/staff/actions";
+import { hqTitle } from "@/lib/hq-theme";
 
 export type Person = {
   id: string;
@@ -248,7 +249,7 @@ export function StaffView({
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Staff</h2>
+        <h2 className={hqTitle}>Staff</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           Who works here, the hours they kept, and what each shift rang up.
         </p>

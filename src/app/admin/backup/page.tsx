@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { countRows } from "@/lib/backup";
 import { runHealthCheck } from "@/lib/inventory-insight";
 import { BackupPanel, type BackupFile } from "@/components/backup-panel";
+import { hqTitle } from "@/lib/hq-theme";
 
 // Row counts and the last-backup date are the two things this page exists to
 // report. Both are worthless cached.
@@ -69,7 +70,7 @@ export default async function AdminBackupPage() {
   if (!can(viewer, "settings")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
-        <h2 className="font-display text-2xl font-black text-ink-950">Owner only</h2>
+        <h2 className={hqTitle}>Owner only</h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
           Downloading a copy of the shop&apos;s records — including every
           customer&apos;s name, number and address — is the owner&apos;s

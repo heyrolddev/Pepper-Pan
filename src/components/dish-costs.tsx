@@ -5,6 +5,7 @@ import { peso, FOOD_COST_TARGET, type Margin } from "@/lib/costing";
 import { RecipeEditor, type RecipeOption } from "@/components/recipe-editor";
 import { MENU_CLASS, type MenuClass } from "@/lib/costing";
 import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
+import { hqTitle } from "@/lib/hq-theme";
 
 export type DishLine = {
   label: string;
@@ -258,7 +259,7 @@ export function DishCosts({
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Dish costs</h2>
+        <h2 className={hqTitle}>Dish costs</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           What each dish costs you to make, worked out from the recipes and
           ingredient prices you&apos;ve already entered — and what&apos;s left

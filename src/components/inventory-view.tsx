@@ -14,6 +14,7 @@ import {
   type RecipeOption,
 } from "@/components/recipe-editor";
 import { WasteForm } from "@/components/waste-form";
+import { hqTitle } from "@/lib/hq-theme";
 
 export type StockRow = {
   id: string;
@@ -262,7 +263,7 @@ export function InventoryView({
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="font-display text-2xl font-black text-ink-950">Inventory</h2>
+          <h2 className={hqTitle}>Inventory</h2>
           <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
             What&apos;s on the shelf, what&apos;s running out, and the sauces and
             marinades you make in bulk. Selling now takes stock off the shelf.

@@ -3,6 +3,7 @@ import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { StatTile } from "@/components/stat-tile";
 import { formatDateTime } from "@/lib/format-date";
 import { STATUS_LABELS, STATUS_TONES, type OrderStatus } from "@/lib/orders";
+import { hqTitle } from "@/lib/hq-theme";
 
 export type ServiceOrder = {
   id: string;
@@ -59,7 +60,7 @@ export function StaffToday({
 
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="font-display text-2xl font-black text-ink-950">
+          <h2 className={hqTitle}>
             Hi {name.split(/\s+/)[0] || "there"}
           </h2>
           <p className="mt-1 text-sm text-ink-800/60">
@@ -129,7 +130,7 @@ export function StaffToday({
           should not have to navigate to find out what is next. */}
       <section>
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl font-black text-ink-950">
+          <h2 className={hqTitle}>
             The queue
           </h2>
           <Link
@@ -182,7 +183,7 @@ export function StaffToday({
           before somebody orders it, not after. */}
       {shortDishes.length > 0 && (
         <section>
-          <h2 className="font-display text-2xl font-black text-ink-950">
+          <h2 className={hqTitle}>
             Running out
           </h2>
           <p className="mt-1 text-sm text-ink-800/60">
