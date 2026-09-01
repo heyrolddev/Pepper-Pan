@@ -1,5 +1,6 @@
+import { NotAllowed } from "@/components/not-allowed";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getViewer } from "@/lib/auth";
+import { getViewer, can } from "@/lib/auth";
 import { pushConfigured } from "@/lib/push";
 import { PushToggle } from "@/components/push-toggle";
 import { formatDateTime } from "@/lib/format-date";
@@ -17,6 +18,12 @@ import { formatDateTime } from "@/lib/format-date";
 export const dynamic = "force-dynamic";
 export default async function AdminAlertsPage() {
   const viewer = await getViewer();
+  // Hidden from the sidebar too, but hiding a link is not a permission:
+  // a bookmark reaches this page all the same.
+  if (!can(viewer, "settings")) {
+    return <NotAllowed>Alerts are set up by the owner.</NotAllowed>;
+  }
+
   const configured = pushConfigured();
 
   // Own devices only. Read under the service role because this page also

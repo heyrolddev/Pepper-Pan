@@ -2,6 +2,21 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { can, getViewer } from "@/lib/auth";
+
+/**
+ * Opening hours, closures and the shop's own switches.
+ *
+ * These four actions had no check of their own and leaned entirely on RLS,
+ * which for `shop_hours` says "any staff" — so anyone on the counter could
+ * close the shop for the day, or reopen one the owner had closed. The database
+ * is not wrong to allow it; the shop is wrong to offer it.
+ */
+async function mayChangeSettings(): Promise<boolean> {
+  return can(await getViewer(), "settings");
+}
+
+const NOT_YOURS = "Only the owner can change the shop's hours and closures.";
 
 /** Every path that shows an open/closed state or a schedule. */
 function revalidateShop() {
@@ -14,6 +29,7 @@ function revalidateShop() {
 export async function saveHours(
   days: { weekday: number; is_open: boolean; opens: string; closes: string }[]
 ): Promise<{ error: string | null }> {
+  if (!(await mayChangeSettings())) return { error: NOT_YOURS };
   const supabase = await createClient();
 
   for (const day of days) {
@@ -53,6 +69,7 @@ export async function saveShopSettings(input: {
   minLeadHours: number;
   maxDaysAhead: number;
 }): Promise<{ error: string | null }> {
+  if (!(await mayChangeSettings())) return { error: NOT_YOURS };
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -82,6 +99,7 @@ export async function addClosure(
   closedOn: string,
   reason: string
 ): Promise<{ error: string | null }> {
+  if (!(await mayChangeSettings())) return { error: NOT_YOURS };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(closedOn)) return { error: "Pick a date." };
 
   const supabase = await createClient();
@@ -100,6 +118,7 @@ export async function addClosure(
 }
 
 export async function removeClosure(closedOn: string): Promise<{ error: string | null }> {
+  if (!(await mayChangeSettings())) return { error: NOT_YOURS };
   const supabase = await createClient();
   const { error } = await supabase.from("shop_closures").delete().eq("closed_on", closedOn);
   if (error) return { error: error.message };

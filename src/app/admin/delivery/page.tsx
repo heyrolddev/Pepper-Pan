@@ -1,7 +1,16 @@
+import { NotAllowed } from "@/components/not-allowed";
+import { can, getViewer } from "@/lib/auth";
 import { getDeliverySettings } from "@/lib/delivery-server";
 import { DeliverySettingsForm } from "@/components/delivery-settings-form";
 
 export default async function AdminDeliveryPage() {
+  const viewer = await getViewer();
+  // Hidden from the sidebar too, but hiding a link is not a permission:
+  // a bookmark reaches this page all the same.
+  if (!can(viewer, "settings")) {
+    return <NotAllowed>Delivery fees and the area covered are the owner&apos;s to set.</NotAllowed>;
+  }
+
   const settings = await getDeliverySettings();
 
   return (

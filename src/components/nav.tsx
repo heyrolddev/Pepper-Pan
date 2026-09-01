@@ -8,6 +8,7 @@ import { useCart } from "@/lib/cart-context";
 import { SignOutButton } from "@/components/sign-out-button";
 import { Logo } from "@/components/logo";
 import { ChefHatIcon } from "@/components/icons";
+import { roleLabel } from "@/lib/permissions";
 
 /**
  * Only what someone is here to *do*.
@@ -60,11 +61,18 @@ function ActiveRule() {
 export function Nav({
   signedIn,
   staff,
+  role,
   name,
   activeOrders = 0,
 }: {
   signedIn: boolean;
   staff: boolean;
+  /**
+   * Which job, not just "one of ours". The badge used to read "Owner" for
+   * everyone who worked here, so every member of staff was shown a title that
+   * belonged to somebody else.
+   */
+  role?: string | null;
   name: string | null;
   /** Orders still in flight — badged so a customer can find the countdown. */
   activeOrders?: number;
@@ -153,7 +161,7 @@ export function Nav({
                 <ChefHatIcon className="h-3.5 w-3.5" />
               </span>
               <span className="hidden text-xs uppercase tracking-wide sm:block">
-                Owner
+                {roleLabel(role)}
               </span>
             </Link>
           )}

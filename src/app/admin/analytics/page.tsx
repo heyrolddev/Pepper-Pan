@@ -1,3 +1,5 @@
+import { NotAllowed } from "@/components/not-allowed";
+import { can, getViewer } from "@/lib/auth";
 import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { AnalysisPanel } from "@/components/analysis-panel";
 import { buildSnapshot } from "./snapshot";
@@ -12,6 +14,13 @@ function hourCaption(h: number) {
 }
 
 export default async function AdminAnalyticsPage() {
+  const viewer = await getViewer();
+  // Hidden from the sidebar too, but hiding a link is not a permission:
+  // a bookmark reaches this page all the same.
+  if (!can(viewer, "business")) {
+    return <NotAllowed>Analytics is the owner&apos;s. What needs doing this shift is on Today, and the order board has the queue.</NotAllowed>;
+  }
+
   const snapshot = await buildSnapshot();
 
   const weekday: Bar[] = snapshot.byWeekday.map((d) => ({

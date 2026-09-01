@@ -1,4 +1,4 @@
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { loadCostBook, loadSalesVolume } from "@/lib/costing-server";
 import { classifyMenu, marginFor, menuClassFor } from "@/lib/costing";
 import { DishCosts, type DishRow } from "@/components/dish-costs";
@@ -13,7 +13,7 @@ export default async function AdminCostingPage() {
   // What every dish earns is the owner's business, not a shift's. Hidden from
   // the sidebar for staff too, but checked here because hiding a link is not
   // a permission.
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "costs")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
         <h2 className="font-display text-2xl font-black text-ink-950">Owner only</h2>

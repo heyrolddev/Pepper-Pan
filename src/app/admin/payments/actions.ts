@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 
 const BLOCKED_MESSAGE =
@@ -24,7 +24,7 @@ export async function savePaymentSettings(input: {
   downpaymentPercent: number;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "settings")) return { error: "Only the owner can change payment settings." };
 
   if (!input.codEnabled && !input.gcashEnabled) {
     return { error: "Keep at least one payment method switched on." };
@@ -76,7 +76,7 @@ export async function uploadGcashQr(
   formData: FormData
 ): Promise<{ error: string | null; url?: string }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "settings")) return { error: "Only the owner can change payment settings." };
 
   const checked = validateImage(formData.get("file"));
   if ("error" in checked) return { error: checked.error };

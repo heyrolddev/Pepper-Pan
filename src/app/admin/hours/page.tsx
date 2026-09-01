@@ -1,7 +1,16 @@
+import { NotAllowed } from "@/components/not-allowed";
+import { can, getViewer } from "@/lib/auth";
 import { getSchedule } from "@/lib/hours-server";
 import { HoursEditor, TodayLine } from "@/components/hours-editor";
 
 export default async function AdminHoursPage() {
+  const viewer = await getViewer();
+  // Hidden from the sidebar too, but hiding a link is not a permission:
+  // a bookmark reaches this page all the same.
+  if (!can(viewer, "settings")) {
+    return <NotAllowed>Opening hours are set by the owner. If the shop needs to close early, tell them — it changes what customers can order.</NotAllowed>;
+  }
+
   const schedule = await getSchedule();
 
   if (!schedule.configured) {

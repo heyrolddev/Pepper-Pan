@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 
 /**
  * Only the owner may change trust flags — a database trigger enforces the
@@ -13,7 +13,7 @@ export async function setCustomerFlags(
   flags: { isVerified?: boolean; isBlocked?: boolean }
 ): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "business")) {
     return { error: "Only the shop owner can change this." };
   }
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
 
@@ -20,9 +20,29 @@ type Result = { error: string | null };
  * of migration 0016, nobody can edit or delete afterwards.
  */
 
-async function requireStaff() {
+/**
+ * Moving stock, setting a cost, editing a recipe: manager and above.
+ *
+ * Was `isStaff` — everyone who worked here — which put every ingredient's
+ * purchase price and every recipe in reach of whoever was on the counter.
+ */
+async function requireStock() {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return null;
+  if (!can(viewer, "stock.manage")) return null;
+  return viewer;
+}
+
+/**
+ * Writing off what was thrown away: everyone.
+ *
+ * Deliberately the wider gate. Waste is logged at the moment it happens, by
+ * the person it happened to; requiring a manager for it is how a shop ends up
+ * with a waste log that says nothing was ever wasted and a shelf that
+ * disagrees with the system.
+ */
+async function requireWaste() {
+  const viewer = await getViewer();
+  if (!can(viewer, "waste")) return null;
   return viewer;
 }
 
@@ -71,7 +91,7 @@ export async function saveIngredient(input: {
   /** Only used when creating — afterwards stock moves through restock/sales. */
   openingStock?: number;
 }): Promise<Result & { id?: string }> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change the store room." };
 
   const name = input.name.trim();
@@ -140,7 +160,7 @@ export async function saveIngredient(input: {
 }
 
 export async function deleteIngredient(id: string): Promise<Result> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change the store room." };
 
   const supabase = createAdminClient();
@@ -197,7 +217,7 @@ export async function recordRestock(input: {
   /** Whether to move the standard cost to this delivery's price. */
   updateStandardCost: boolean;
 }): Promise<Result> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can record a delivery." };
 
   if (input.qty <= 0) return { error: "How much arrived?" };
@@ -279,7 +299,7 @@ export async function adjustStock(input: {
   countedQty: number;
   note?: string;
 }): Promise<Result> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can adjust stock." };
   if (!Number.isFinite(input.countedQty) || input.countedQty < 0) {
     return { error: "Enter the counted amount." };
@@ -356,7 +376,7 @@ export async function produceBatch(input: {
   batchId: string;
   multiplier: number;
 }): Promise<Result & { cost?: number }> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can record a batch." };
   if (!(input.multiplier > 0)) return { error: "How many batches?" };
 
@@ -395,7 +415,7 @@ export async function saveBatch(input: {
   /** Set only for a repack — a bought item split into portions, no recipe. */
   manualCostPerUnit: number | null;
 }): Promise<Result & { id?: string }> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change batches." };
 
   const name = input.name.trim();
@@ -446,7 +466,7 @@ export async function saveBatchRecipe(input: {
   batchId: string;
   lines: { ingredientId: string; qty: number }[];
 }): Promise<Result> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change recipes." };
 
   const lines = input.lines.filter((l) => l.ingredientId && l.qty > 0);
@@ -490,7 +510,7 @@ export async function saveMealRecipe(input: {
   mealId: string;
   lines: { refType: "inv" | "batch"; refId: string; qty: number }[];
 }): Promise<Result> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change recipes." };
 
   const lines = input.lines.filter((l) => l.refId && l.qty > 0);
@@ -561,7 +581,7 @@ export async function recordWaste(input: {
   category: WasteCategory;
   note?: string;
 }): Promise<Result & { cost?: number }> {
-  const viewer = await requireStaff();
+  const viewer = await requireWaste();
   if (!viewer) return { error: "Only shop staff can log waste." };
   if (!(input.qty > 0)) return { error: "How much was it?" };
   if (!input.reason.trim()) return { error: "What happened to it?" };
@@ -672,7 +692,7 @@ export async function saveMealPackaging(input: {
   mealId: string;
   lines: { refType: "inv" | "batch"; refId: string; qty: number }[];
 }): Promise<Result> {
-  const viewer = await requireStaff();
+  const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change packaging." };
 
   const lines = input.lines.filter((l) => l.refId && l.qty > 0);
@@ -722,10 +742,8 @@ export async function saveMealPackaging(input: {
 export async function saveOrderPackaging(input: {
   lines: { refType: "inv" | "batch"; refId: string; qty: number }[];
 }): Promise<Result> {
-  const viewer = await getViewer();
-  if (viewer?.profile?.role !== "owner") {
-    return { error: "Only the owner can change this." };
-  }
+  const viewer = await requireStock();
+  if (!viewer) return { error: "Not allowed." };
 
   const lines = input.lines.filter((l) => l.refId && l.qty > 0);
   const supabase = createAdminClient();

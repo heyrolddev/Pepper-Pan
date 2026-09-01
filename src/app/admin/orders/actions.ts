@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { notifyOrderStatus } from "@/lib/notify";
 import { syncStockForStatus } from "@/lib/stock-server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -45,7 +45,7 @@ export async function setOrderStatus(
   }
 
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "orders")) return { error: "Not allowed." };
 
   const supabase = await createClient();
   // `.select()` matters: without it PostgREST reports success even when a
@@ -94,7 +94,7 @@ export async function setOrderEta(
   minutes: number | null
 ): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "orders")) return { error: "Not allowed." };
 
   if (minutes !== null && (!Number.isFinite(minutes) || minutes < 0 || minutes > 600)) {
     return { error: "Enter an ETA between 0 and 600 minutes." };
@@ -129,7 +129,7 @@ export async function cancelOrderAsStaff(
   reason: string
 ): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "orders")) return { error: "Not allowed." };
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -169,7 +169,7 @@ export async function setPaymentStatus(
   if (!PAYMENT_STATUSES.includes(status)) return { error: "Unknown payment status." };
 
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "orders")) return { error: "Not allowed." };
 
   const now = new Date().toISOString();
   const supabase = await createClient();
@@ -219,7 +219,7 @@ export async function alertEtaElapsed(
   orderId: string
 ): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "orders")) return { error: "Not allowed." };
 
   try {
     const db = createAdminClient();

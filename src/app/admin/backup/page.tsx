@@ -1,4 +1,4 @@
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { countRows } from "@/lib/backup";
 import { runHealthCheck } from "@/lib/inventory-insight";
@@ -66,7 +66,7 @@ export default async function AdminBackupPage() {
 
   // Same gate as the download route, said out loud. Staff run the shop; the
   // shop's entire history leaving the building is the owner's call.
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "settings")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
         <h2 className="font-display text-2xl font-black text-ink-950">Owner only</h2>

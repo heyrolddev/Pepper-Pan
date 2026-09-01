@@ -1,6 +1,7 @@
 import "server-only";
 import webpush from "web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { SHOP_ROLES } from "@/lib/permissions";
 
 /**
  * Reaching a phone whose browser is closed.
@@ -161,7 +162,7 @@ export async function pushToStaff(payload: PushPayload): Promise<number> {
     const { data: staff } = await db
       .from("profiles")
       .select("id")
-      .in("role", ["owner", "staff"]);
+      .in("role", SHOP_ROLES);
 
     const ids = (staff ?? []).map((s) => s.id as string);
     return await deliver(await subscriptionsFor(ids), payload);

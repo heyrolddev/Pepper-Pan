@@ -1,6 +1,6 @@
 "use server";
 
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { analyseShop, type Advice } from "@/lib/marketing-analyst";
 import { buildSnapshot } from "./snapshot";
 
@@ -18,7 +18,7 @@ export async function runAnalysis(): Promise<{
   // The /admin layout gates the page, but a Server Action is its own endpoint
   // — anyone who learns its id can call it. So the check is repeated here.
   const viewer = await getViewer();
-  if (!isStaff(viewer)) {
+  if (!can(viewer, "business")) {
     return { advice: null, error: "Only the shop's own account can run this." };
   }
 

@@ -3,13 +3,14 @@
 import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/costing";
 import { formatDateTime } from "@/lib/format-date";
+import { ROLE_BLURBS, ROLE_LABELS } from "@/lib/permissions";
 import { setStaffRole } from "@/app/admin/staff/actions";
 
 export type Person = {
   id: string;
   name: string | null;
   phone: string | null;
-  role: "owner" | "staff" | "customer";
+  role: "owner" | "manager" | "staff" | "customer";
   joined: string;
   onShift: boolean;
   shiftsWorked: number;
@@ -193,7 +194,7 @@ function RoleButton({
   tone,
 }: {
   person: Person;
-  to: "staff" | "customer";
+  to: "manager" | "staff" | "customer";
   label: string;
   tone: "dark" | "red";
 }) {
@@ -296,18 +297,32 @@ export function StaffView({
                   )}
                 </p>
                 <p className="text-xs text-ink-800/50">
-                  {p.role === "owner" ? "Owner" : p.role === "staff" ? "Staff" : "No access"}
+                  {p.role === "customer" ? "No access" : ROLE_LABELS[p.role]}
                   {p.phone && ` · ${p.phone}`}
                   {p.shiftsWorked > 0 && ` · ${p.shiftsWorked} shift${p.shiftsWorked === 1 ? "" : "s"}`}
                 </p>
+                {p.role !== "customer" && (
+                  <p className="mt-0.5 max-w-md text-xs text-ink-800/40">
+                    {ROLE_BLURBS[p.role]}
+                  </p>
+                )}
               </div>
+              {/* The whole ladder, not one toggle. With only "make staff" and
+                  "stand down" there was nowhere to put somebody who runs a
+                  service but shouldn't see the books — which is most of the
+                  people a stall actually promotes. */}
               {p.id !== ownerId && p.role !== "owner" && (
-                <RoleButton
-                  person={p}
-                  to={p.role === "staff" ? "customer" : "staff"}
-                  label={p.role === "staff" ? "Stand down" : "Make staff"}
-                  tone={p.role === "staff" ? "red" : "dark"}
-                />
+                <div className="flex shrink-0 flex-wrap gap-1.5">
+                  {p.role !== "staff" && (
+                    <RoleButton person={p} to="staff" label="Staff" tone="dark" />
+                  )}
+                  {p.role !== "manager" && (
+                    <RoleButton person={p} to="manager" label="Manager" tone="dark" />
+                  )}
+                  {p.role !== "customer" && (
+                    <RoleButton person={p} to="customer" label="Stand down" tone="red" />
+                  )}
+                </div>
               )}
             </li>
           ))}
@@ -341,7 +356,10 @@ export function StaffView({
                       </p>
                       <p className="text-xs text-ink-800/50">{p.phone ?? "No number"}</p>
                     </div>
-                    <RoleButton person={p} to="staff" label="Make staff" tone="dark" />
+                    <div className="flex shrink-0 gap-1.5">
+                      <RoleButton person={p} to="staff" label="Make staff" tone="dark" />
+                      <RoleButton person={p} to="manager" label="Make manager" tone="dark" />
+                    </div>
                   </li>
                 ))}
               </ul>

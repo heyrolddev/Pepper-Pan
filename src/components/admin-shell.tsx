@@ -8,6 +8,7 @@ import type { AdminBadges } from "@/lib/admin-badges";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ShiftClock } from "@/components/shift-clock";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
+import { roleCan, roleLabel, type Capability } from "@/lib/permissions";
 
 /**
  * HQ as a workspace rather than a web page.
@@ -31,12 +32,17 @@ type Item = {
   /** Which count in `badges` belongs on this row, if any. */
   badge?: keyof AdminBadges;
   /**
-   * Hidden from staff entirely, rather than shown and then refused.
-   * A row that exists only to say "you can't" is a worse answer than a row
-   * that isn't there — and the pages themselves still check, because hiding a
-   * link has never been a permission.
+   * What you must be able to do for this row to exist.
+   *
+   * Hidden entirely rather than shown and then refused: a row that exists only
+   * to say "you can't" is a worse answer than a row that isn't there. The
+   * pages themselves still check, because hiding a link has never been a
+   * permission — this only decides what is worth offering.
+   *
+   * Named as a capability rather than a role so that the sidebar and the page
+   * behind it cannot drift: both ask the same question of the same table.
    */
-  ownerOnly?: boolean;
+  needs?: Capability;
 };
 type Group = { title: string; items: Item[] };
 
@@ -45,10 +51,13 @@ const GROUPS: Group[] = [
     title: "Every day",
     items: [
       { href: "/admin", label: "Today", icon: "◉" },
-      { href: "/admin/counter", label: "Counter", icon: "◫" },
-      { href: "/admin/orders", label: "Orders", icon: "▤", badge: "orders" },
-      { href: "/admin/menu", label: "Menu", icon: "☰" },
-      { href: "/admin/inbox", label: "Inbox", icon: "✉", badge: "inbox" },
+      { href: "/admin/counter", label: "Counter", icon: "◫", needs: "till" },
+      { href: "/admin/orders", label: "Orders", icon: "▤", badge: "orders", needs: "orders" },
+      // Staff lose this one: it is where prices, photos and descriptions are
+      // set. A manager keeps it to mark a dish sold out mid-service, and the
+      // screen itself is what hides the price fields from them.
+      { href: "/admin/menu", label: "Menu", icon: "☰", needs: "menu.availability" },
+      { href: "/admin/inbox", label: "Inbox", icon: "✉", badge: "inbox", needs: "chat" },
     ],
   },
   {
@@ -57,31 +66,34 @@ const GROUPS: Group[] = [
     // ingredients and costs that nothing in the app ever read.
     title: "The kitchen",
     items: [
-      { href: "/admin/costing", label: "Dish costs", icon: "◍", ownerOnly: true },
-      { href: "/admin/inventory", label: "Inventory", icon: "▢" },
+      { href: "/admin/costing", label: "Dish costs", icon: "◍", needs: "costs" },
+      // Everyone who works here keeps this row — but it is two different
+      // screens behind it. Staff get counts and a waste button; a manager gets
+      // the money, the restocking and the recipes.
+      { href: "/admin/inventory", label: "Inventory", icon: "▢", needs: "stock.view" },
     ],
   },
   {
     title: "Understand",
     items: [
-      { href: "/admin/analytics", label: "Analytics", icon: "◈" },
+      { href: "/admin/analytics", label: "Analytics", icon: "◈", needs: "business" },
       // Named apart from "Payments" on purpose: that one is how customers pay
       // the shop, this one is what the shop pays out. Sharing the ₱ icon as
       // well would have made two very different screens look like a pair.
-      { href: "/admin/money", label: "Costs & cash", icon: "◆", ownerOnly: true },
-      { href: "/admin/reviews", label: "Reviews", icon: "★" },
-      { href: "/admin/customers", label: "Customers", icon: "◑" },
-      { href: "/admin/staff", label: "Staff", icon: "◔", ownerOnly: true },
-      { href: "/admin/faq", label: "Answers", icon: "?" },
+      { href: "/admin/money", label: "Costs & cash", icon: "◆", needs: "business" },
+      { href: "/admin/reviews", label: "Reviews", icon: "★", needs: "chat" },
+      { href: "/admin/customers", label: "Customers", icon: "◑", needs: "business" },
+      { href: "/admin/staff", label: "Staff", icon: "◔", needs: "staff.manage" },
+      { href: "/admin/faq", label: "Answers", icon: "?", needs: "chat" },
     ],
   },
   {
     title: "Set up once",
     items: [
-      { href: "/admin/hours", label: "Hours", icon: "◷" },
-      { href: "/admin/delivery", label: "Delivery", icon: "→" },
-      { href: "/admin/payments", label: "Payments", icon: "₱", badge: "payments" },
-      { href: "/admin/alerts", label: "Alerts", icon: "🔔" },
+      { href: "/admin/hours", label: "Hours", icon: "◷", needs: "settings" },
+      { href: "/admin/delivery", label: "Delivery", icon: "→", needs: "settings" },
+      { href: "/admin/payments", label: "Payments", icon: "₱", badge: "payments", needs: "settings" },
+      { href: "/admin/alerts", label: "Alerts", icon: "🔔", needs: "settings" },
     ],
   },
   {
@@ -89,8 +101,8 @@ const GROUPS: Group[] = [
     // a backup is only worth anything if it keeps happening.
     title: "Your data",
     items: [
-      { href: "/admin/backup", label: "Backup", icon: "⤓", ownerOnly: true },
-      { href: "/admin/reset", label: "Start fresh", icon: "⟲", ownerOnly: true },
+      { href: "/admin/backup", label: "Backup", icon: "⤓", needs: "settings" },
+      { href: "/admin/reset", label: "Start fresh", icon: "⟲", needs: "settings" },
     ],
   },
 ];
@@ -152,14 +164,14 @@ function Rail({
       <Link href="/admin" onClick={onNavigate} className="px-2">
         <Logo width={130} className="h-auto w-[130px]" />
         <p className="mt-2 text-[11px] font-bold uppercase tracking-widest text-gold-400">
-          {role === "owner" ? "Owner" : "Staff"} · HQ
+          {roleLabel(role)} · HQ
         </p>
       </Link>
 
       <nav className="flex flex-1 flex-col gap-6">
         {GROUPS.map((group) => ({
           ...group,
-          items: group.items.filter((i) => !i.ownerOnly || role === "owner"),
+          items: group.items.filter((i) => !i.needs || roleCan(role, i.needs)),
         }))
           .filter((group) => group.items.length > 0)
           .map((group) => (

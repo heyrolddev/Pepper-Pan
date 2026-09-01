@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 
 const BLOCKED_MESSAGE =
@@ -24,7 +24,9 @@ export async function saveMeal(input: {
   isAvailable: boolean;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what a dish is or costs." };
+  }
   if (!input.name.trim()) return { error: "Name is required." };
   if (!Number.isFinite(input.price) || input.price < 0) {
     return { error: "Enter a valid price." };
@@ -61,7 +63,9 @@ export async function createMeal(input: {
   description?: string;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what a dish is or costs." };
+  }
   if (!input.name.trim()) return { error: "Name is required." };
   if (!Number.isFinite(input.price) || input.price < 0) {
     return { error: "Enter a valid price." };
@@ -95,7 +99,9 @@ export async function createMeal(input: {
  */
 export async function deleteMeal(id: string): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what a dish is or costs." };
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.from("meals").delete().eq("id", id).select("id");
@@ -124,7 +130,9 @@ export async function uploadMealImage(
   formData: FormData
 ): Promise<{ error: string | null; url?: string }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what a dish is or costs." };
+  }
 
   const mealId = String(formData.get("mealId") ?? "");
   if (!mealId) return { error: "Missing meal." };
@@ -150,4 +158,39 @@ export async function uploadMealImage(
 
   revalidateMenu();
   return { error: null, url: uploaded.url };
+}
+
+
+/**
+ * Sold out, and back on again.
+ *
+ * Split from `saveMeal` because they are two different powers that happened to
+ * be the same UPDATE. "We've run out of chicken" has to be sayable mid-service
+ * by whoever notices; "this now costs ₱149" is the owner's alone. Rolled into
+ * one action, the only way to let a manager do the first was to let them do
+ * the second.
+ *
+ * Written through the caller's own session rather than the service role, so
+ * the column guard in migration 0021 gets a say too: if this ever grew a
+ * second field by accident, the database would put it back.
+ */
+export async function setMealAvailability(
+  id: string,
+  isAvailable: boolean
+): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.availability")) return { error: "Not allowed." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("meals")
+    .update({ is_available: isAvailable })
+    .eq("id", id)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  revalidateMenu();
+  return { error: null };
 }

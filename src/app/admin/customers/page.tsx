@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import type { AdminCustomer } from "@/components/customer-row";
 import { AdminCustomerList } from "@/components/admin-customer-list";
 
@@ -16,7 +16,7 @@ type ProfileRow = {
 export default async function AdminCustomersPage() {
   const supabase = await createClient();
   const viewer = await getViewer();
-  const canManage = viewer?.profile?.role === "owner";
+  const canManage = can(viewer, "business");
 
   const [{ data: profileRows }, { data: orderRows }] = await Promise.all([
     supabase

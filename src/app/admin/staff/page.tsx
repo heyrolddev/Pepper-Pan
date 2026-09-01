@@ -1,4 +1,5 @@
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
+import { SHOP_ROLES } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shiftLength } from "@/lib/shifts-server";
 import { StaffView, type Person, type ShiftReport } from "@/components/staff-view";
@@ -16,7 +17,7 @@ type ProfileRow = {
 
 export default async function AdminStaffPage() {
   const viewer = await getViewer();
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "staff.manage")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
         <h2 className="font-display text-2xl font-black text-ink-950">Owner only</h2>
@@ -33,7 +34,7 @@ export default async function AdminStaffPage() {
     supabase
       .from("profiles")
       .select("id, full_name, phone, role, created_at")
-      .in("role", ["owner", "staff", "customer"])
+      .in("role", [...SHOP_ROLES, "customer"])
       .order("created_at", { ascending: false }),
     supabase
       .from("staff_shifts")
@@ -149,7 +150,7 @@ export default async function AdminStaffPage() {
       people={people}
       candidates={candidates}
       reports={reports}
-      ownerId={viewer.profile?.id ?? ""}
+      ownerId={viewer?.profile?.id ?? ""}
     />
   );
 }

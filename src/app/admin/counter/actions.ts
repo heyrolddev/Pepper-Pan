@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordOrderCost } from "@/lib/costing-server";
 import { syncStockForStatus } from "@/lib/stock-server";
@@ -47,7 +47,7 @@ export async function recordWalkInSale(input: {
   note?: string;
 }): Promise<CounterResult> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Only shop staff can record a sale." };
+  if (!can(viewer, "till")) return { error: "Only shop staff can record a sale." };
 
   const lines = input.lines.filter((l) => l.qty > 0);
   if (lines.length === 0) return { error: "Add something to the order first." };

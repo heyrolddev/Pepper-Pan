@@ -1,3 +1,5 @@
+import { NotAllowed } from "@/components/not-allowed";
+import { can, getViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getPaymentSettings } from "@/lib/payments-server";
 import { PaymentSettingsForm } from "@/components/payment-settings-form";
@@ -27,6 +29,13 @@ async function getLedger(): Promise<{ rows: LedgerRow[]; error: string | null }>
 }
 
 export default async function AdminPaymentsPage() {
+  const viewer = await getViewer();
+  // Hidden from the sidebar too, but hiding a link is not a permission:
+  // a bookmark reaches this page all the same.
+  if (!can(viewer, "settings")) {
+    return <NotAllowed>Payment settings are the owner&apos;s. Confirming a customer&apos;s GCash reference is on the order board.</NotAllowed>;
+  }
+
   const [settings, { rows, error }] = await Promise.all([
     getPaymentSettings(),
     getLedger(),

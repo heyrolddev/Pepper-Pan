@@ -167,6 +167,7 @@ export function InventoryView({
   usageDays,
   thinHistory,
   canSeeCosts,
+  canManage,
   failed,
 }: {
   stock: StockRow[];
@@ -177,6 +178,15 @@ export function InventoryView({
   usageDays: number;
   thinHistory: boolean;
   canSeeCosts: boolean;
+  /**
+   * May this person move stock, or only look at it?
+   *
+   * Separate from `canSeeCosts` because they are separate questions and the
+   * shop answers them differently: a manager restocks all day and never needs
+   * to know what the shop's margin is. Squashing the two into one flag is
+   * what would force the owner to hand over the books to get a shelf counted.
+   */
+  canManage: boolean;
   failed: string[];
 }) {
   const [tab, setTab] = useState<"stock" | "batches">("stock");
@@ -265,12 +275,18 @@ export function InventoryView({
           >
             Log waste
           </button>
-          <button
-            onClick={() => setEditing({ kind: "new" })}
-            className="rounded-2xl bg-ink-950 px-5 py-3 text-sm font-black text-cream-50 transition-colors hover:bg-ink-800"
-          >
-            + Add an ingredient
-          </button>
+          {/* Logging waste stays with everyone. Throwing away a burnt batch
+              happens at the moment it burns, by whoever burnt it — a system
+              that makes that need a manager is a system where waste quietly
+              stops being logged and the shelf drifts from the count. */}
+          {canManage && (
+            <button
+              onClick={() => setEditing({ kind: "new" })}
+              className="rounded-2xl bg-ink-950 px-5 py-3 text-sm font-black text-cream-50 transition-colors hover:bg-ink-800"
+            >
+              + Add an ingredient
+            </button>
+          )}
         </div>
       </div>
 
@@ -574,6 +590,7 @@ export function InventoryView({
                     decoration, and decoration that looks like a priority is
                     worse than none — this way the colour is the shopping
                     list, same as the red badge. */}
+                {canManage && (
                 <div className="mt-3 flex gap-1.5">
                   <button
                     onClick={() => setEditing({ kind: "restock", row: s })}
@@ -598,6 +615,7 @@ export function InventoryView({
                     Edit
                   </button>
                 </div>
+                )}
               </li>
             ))}
           </ul>
@@ -666,6 +684,7 @@ export function InventoryView({
                   </ul>
                 )}
 
+                {canManage && (
                 <div className="mt-3 flex gap-1.5">
                   <button
                     onClick={() => setEditing({ kind: "produce", batch: b })}
@@ -689,6 +708,7 @@ export function InventoryView({
                     </button>
                   )}
                 </div>
+                )}
               </li>
             );
           })}

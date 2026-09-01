@@ -1,4 +1,4 @@
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { countResettable } from "./actions";
 import { ResetPanel } from "@/components/reset-panel";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminResetPage() {
   const viewer = await getViewer();
 
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "settings")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
         <h2 className="font-display text-2xl font-black text-ink-950">
