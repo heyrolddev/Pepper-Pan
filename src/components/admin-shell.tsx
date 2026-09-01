@@ -10,6 +10,7 @@ import { ShiftClock } from "@/components/shift-clock";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { roleCan, roleLabel, type Capability } from "@/lib/permissions";
 import { accentFor } from "@/lib/hq-theme";
+import { useShiftRealtime } from "@/lib/use-shift-realtime";
 
 /**
  * HQ as a workspace rather than a web page.
@@ -280,6 +281,12 @@ export function AdminShell({
   // owner could sit on Payments while three orders came in and the rail would
   // go on saying nothing until they navigated.
   const { connected } = useOrderRealtime({ channelKey: "shell" });
+  // Subscribed in the shell, beside the orders one, because the clock it
+  // keeps honest is in the rail — which is on every HQ screen. Put on the
+  // Staff page instead, the counter tablet (which never opens that page)
+  // would go on showing a stale clock all day, and that is the case this is
+  // for.
+  useShiftRealtime("shell");
   // The drawer remembers which page it was opened on, and is only open while
   // that's still the page. Derived rather than synchronised: every link
   // already closes it on click, but the back button changes the path without
