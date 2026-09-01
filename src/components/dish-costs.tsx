@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { peso, FOOD_COST_TARGET, type Margin } from "@/lib/costing";
 import { RecipeEditor, type RecipeOption } from "@/components/recipe-editor";
 import { MENU_CLASS, type MenuClass } from "@/lib/costing";
+import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
 
 export type DishLine = {
   label: string;
@@ -166,6 +167,7 @@ export function DishCosts({
   classified,
   orderPackagingCost,
   orderPackaging,
+  known = [],
   failed,
 }: {
   dishes: DishRow[];
@@ -175,6 +177,8 @@ export function DishCosts({
   classified: boolean;
   /** Charged once per take-out order — the bag — not per dish. */
   orderPackagingCost: number;
+  /** Category colours, so this screen reads the same way the menu does. */
+  known?: MenuCategory[];
   orderPackaging: { refType: "inv" | "batch"; refId: string; qty: number }[];
   failed: string[];
 }) {
@@ -182,6 +186,10 @@ export function DishCosts({
   const [sort, setSort] = useState<Sort>("worst");
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
+  const colours = useMemo(
+    () => new Map(known.map((c) => [c.name, c.colour])),
+    [known]
+  );
   const [editing, setEditing] = useState<DishRow | null>(null);
   // Which editor is open on a dish: its recipe, or what it travels in.
   const [editingWhat, setEditingWhat] = useState<"recipe" | "packaging">("recipe");
@@ -449,7 +457,15 @@ export function DishCosts({
                         {d.name}
                       </p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-800/50">
-                        {d.categories.length > 0 && <span>{d.categories.join(" · ")}</span>}
+                        {d.categories.length > 0 && (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                              colourOf(categoryOf(d.categories), colours).soft
+                            }`}
+                          >
+                            {categoryOf(d.categories)}
+                          </span>
+                        )}
                         {!d.onMenu && (
                           <span className="rounded-full bg-ink-950/10 px-2 py-0.5 font-bold">
                             Hidden

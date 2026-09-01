@@ -1,4 +1,6 @@
 import { can, getViewer } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { MenuCategory } from "@/lib/categories";
 import { loadCostBook, loadSalesVolume } from "@/lib/costing-server";
 import { classifyMenu, marginFor, menuClassFor } from "@/lib/costing";
 import { DishCosts, type DishRow } from "@/components/dish-costs";
@@ -46,6 +48,13 @@ export default async function AdminCostingPage() {
 
   // Menu engineering needs popularity as well as margin.
   const soldByMeal = await loadSalesVolume();
+
+  const supabase = createAdminClient();
+  const { data: catRows } = await supabase
+    .from("menu_categories")
+    .select("name, colour, sort_order")
+    .order("sort_order")
+    .order("name");
 
   // What a recipe line may point at: every ingredient, and every batch at its
   // cost per unit of yield — the same number the costing engine multiplies by.
@@ -144,6 +153,7 @@ export default async function AdminCostingPage() {
         refId: l.ref_id,
         qty: Number(l.qty) || 0,
       }))}
+      known={(catRows ?? []) as MenuCategory[]}
       failed={failed}
     />
   );

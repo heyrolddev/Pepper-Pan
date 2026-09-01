@@ -48,10 +48,18 @@ const ORDER = [
   'profiles',
   'ingredients', 'ingredient_lots',
   'batches', 'batch_ingredients',
+  // Categories before meals: nothing enforces it with a foreign key, but a
+  // menu that comes back before its own vocabulary shows every dish
+  // uncoloured until the next table lands.
+  'menu_categories',
   'meals', 'meal_ingredients', 'meal_components',
+  'meal_packaging', 'order_packaging',
+  // Shifts before orders: an order carries `shift_id`.
+  'staff_shifts',
   'orders', 'order_lines',
   'purchase_log', 'consumption_log', 'waste_log',
   'cash_ledger', 'receivables', 'cycle_counts', 'oe_templates',
+  'fixed_costs', 'assets',
   'reviews', 'chat_threads', 'chat_messages', 'faq_entries',
   'activity_log',
 ];

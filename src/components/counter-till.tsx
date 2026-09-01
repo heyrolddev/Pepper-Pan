@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/costing";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
+import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
 
 export type CounterMeal = {
   id: string;
@@ -36,12 +37,15 @@ export function CounterTill({
   takenToday,
   salesToday,
   staffName,
+  known = [],
 }: {
   meals: CounterMeal[];
   loadError: string | null;
   takenToday: number;
   salesToday: number;
   staffName: string;
+  /** Category colours, so the till reads the same way the menu does. */
+  known?: MenuCategory[];
 }) {
   const [ticket, setTicket] = useState<Ticket>({});
   const [query, setQuery] = useState("");
@@ -57,16 +61,26 @@ export function CounterTill({
 
   const byId = useMemo(() => new Map(meals.map((m) => [m.id, m])), [meals]);
 
+  const colours = useMemo(
+    () => new Map(known.map((c) => [c.name, c.colour])),
+    [known]
+  );
+
   const categories = useMemo(() => {
-    const seen = new Set<string>();
-    for (const m of meals) for (const c of m.categories ?? []) seen.add(c);
-    return ["All", ...[...seen].sort()];
-  }, [meals]);
+    // Same order as the customer's menu, for the same reason the tiles are
+    // big: someone standing at the counter is finding things by position and
+    // colour, not by reading. Two screens that disagree about where Drinks
+    // sits cost a second every order.
+    const used = new Set(meals.map((m) => categoryOf(m.categories)));
+    const ordered = known.map((c) => c.name).filter((n) => used.has(n));
+    const rest = [...used].filter((n) => !ordered.includes(n)).sort();
+    return ["All", ...ordered, ...rest];
+  }, [meals, known]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return meals.filter((m) => {
-      if (category !== "All" && !(m.categories ?? []).includes(category)) return false;
+      if (category !== "All" && categoryOf(m.categories) !== category) return false;
       return !q || m.name.toLowerCase().includes(q);
     });
   }, [meals, query, category]);
@@ -187,20 +201,29 @@ export function CounterTill({
             className="rounded-xl bg-cream-100 px-4 py-3 text-base text-ink-950 ring-1 ring-ink-950/10 placeholder:text-ink-800/40 focus:outline-none focus:ring-2 focus:ring-gold-400"
           />
           <div className="flex flex-wrap gap-1.5">
-            {categories.map((c) => (
-              <button
-                key={c}
-                onClick={() => setCategory(c)}
-                aria-pressed={category === c}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
-                  category === c
-                    ? "bg-ink-950 text-cream-50"
-                    : "bg-cream-100 text-ink-800/60 ring-1 ring-ink-950/10 hover:bg-cream-200"
-                }`}
-              >
-                {c}
-              </button>
-            ))}
+            {categories.map((c) => {
+              const on = category === c;
+              const tone = colourOf(c, colours);
+              return (
+                <button
+                  key={c}
+                  onClick={() => setCategory(c)}
+                  aria-pressed={on}
+                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                    on
+                      ? c === "All"
+                        ? "bg-ink-950 text-cream-50"
+                        : tone.chip
+                      : "bg-cream-100 text-ink-800/60 ring-1 ring-ink-950/10 hover:bg-cream-200"
+                  }`}
+                >
+                  {!on && c !== "All" && (
+                    <span aria-hidden className={`h-2 w-2 rounded-full ${tone.dot}`} />
+                  )}
+                  {c}
+                </button>
+              );
+            })}
           </div>
 
           {shown.length === 0 ? (

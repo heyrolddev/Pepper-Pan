@@ -4,6 +4,8 @@ import type { AdminMeal } from "@/components/meal-editor";
 import { AdminMenuList } from "@/components/admin-menu-list";
 import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
+import { CategoryBar } from "@/components/category-bar";
+import { categoryOf, type MenuCategory } from "@/lib/categories";
 
 export default async function AdminMenuPage() {
   const viewer = await getViewer();
@@ -26,12 +28,29 @@ export default async function AdminMenuPage() {
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("meals")
-    .select("id, name, price, description, categories, image_url, is_public, is_available")
-    .order("name");
+  const [{ data, error }, { data: catRows }] = await Promise.all([
+    supabase
+      .from("meals")
+      .select("id, name, price, description, categories, image_url, is_public, is_available")
+      .order("name"),
+    // The shop's own vocabulary. Ordered the way the customer's menu orders
+    // its filter pills, so the owner sets that order here and sees it there.
+    supabase
+      .from("menu_categories")
+      .select("name, colour, sort_order")
+      .order("sort_order")
+      .order("name"),
+  ]);
 
   const meals = (data ?? []) as AdminMeal[];
+  const categories = (catRows ?? []) as MenuCategory[];
+
+  // How many dishes are in each, so deleting one can say what's in the way.
+  const counts: Record<string, number> = {};
+  for (const m of meals) {
+    const c = categoryOf(m.categories);
+    counts[c] = (counts[c] ?? 0) + 1;
+  }
   const hidden = meals.filter((m) => !m.is_public || !m.is_available).length;
 
   return (
@@ -47,7 +66,7 @@ export default async function AdminMenuPage() {
               : "Mark a dish sold out when it runs out. Prices and photos are the owner's."}
           </p>
         </div>
-        {canEdit && <NewMealForm />}
+        {canEdit && <NewMealForm categories={categories} />}
       </div>
 
       {error && (
@@ -56,8 +75,10 @@ export default async function AdminMenuPage() {
         </p>
       )}
 
+      {canEdit && <CategoryBar categories={categories} counts={counts} />}
+
       {canEdit ? (
-        <AdminMenuList meals={meals} />
+        <AdminMenuList meals={meals} categories={categories} />
       ) : (
         // Prices stripped on the server, not just left unrendered. Props to a
         // client component are serialised into the page, so a price that is

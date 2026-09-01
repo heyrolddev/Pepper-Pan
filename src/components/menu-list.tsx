@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { Stars } from "@/components/stars";
 import { LOW_STOCK_SERVINGS } from "@/lib/costing";
+import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
 
 export type Meal = {
   id: string;
@@ -168,20 +169,38 @@ function MealCard({
   );
 }
 
-export function MenuList({ meals, staff = false }: { meals: Meal[]; staff?: boolean }) {
+export function MenuList({
+  meals,
+  staff = false,
+  known = [],
+}: {
+  meals: Meal[];
+  staff?: boolean;
+  /** The shop's categories and their colours. Empty is fine — see `colourOf`. */
+  known?: MenuCategory[];
+}) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
 
+  const colours = useMemo(
+    () => new Map(known.map((c) => [c.name, c.colour])),
+    [known]
+  );
+
   const categories = useMemo(() => {
-    const set = new Set<string>();
-    for (const meal of meals) set.add(meal.categories[0] || "Menu");
-    return ["All", ...set];
-  }, [meals]);
+    // Ordered by the shop's own sort order first, then anything a dish names
+    // that has no row yet — so the owner controls the order of the pills, and
+    // a category they haven't got round to still appears rather than vanishing.
+    const used = new Set(meals.map((m) => categoryOf(m.categories)));
+    const ordered = known.map((c) => c.name).filter((n) => used.has(n));
+    const rest = [...used].filter((n) => !ordered.includes(n)).sort();
+    return ["All", ...ordered, ...rest];
+  }, [meals, known]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return meals.filter((m) => {
-      const category = m.categories[0] || "Menu";
+      const category = categoryOf(m.categories);
       const matchesCategory = activeCategory === "All" || category === activeCategory;
       const matchesQuery =
         !q ||
@@ -214,26 +233,42 @@ export function MenuList({ meals, staff = false }: { meals: Meal[]; staff?: bool
 
           {categories.length > 2 && (
             <div className="flex flex-wrap gap-1">
-              {categories.map((category) => (
-                <button
-                  key={category}
-                  onClick={() => setActiveCategory(category)}
-                  className={`relative rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
-                    activeCategory === category
-                      ? "text-cream-50"
-                      : "text-ink-800 hover:text-brand-600"
-                  }`}
-                >
-                  {activeCategory === category && (
-                    <motion.span
-                      layoutId="menu-filter-pill"
-                      className="absolute inset-0 rounded-full bg-brand-600"
-                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                    />
-                  )}
-                  <span className="relative z-10">{category}</span>
-                </button>
-              ))}
+              {categories.map((category) => {
+                const active = activeCategory === category;
+                // "All" keeps the brand red it always had — it isn't a
+                // category and shouldn't borrow one's colour. Everything else
+                // is painted in its own, which is the whole point: the eye
+                // learns where Drinks is and stops reading the words.
+                const tone = colourOf(category, colours);
+                const dot = category === "All" ? "bg-brand-600" : tone.dot;
+                return (
+                  <button
+                    key={category}
+                    onClick={() => setActiveCategory(category)}
+                    className={`relative rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
+                      active
+                        ? category === "All"
+                          ? "text-cream-50"
+                          : tone.chip
+                        : "text-ink-800 hover:text-brand-600"
+                    }`}
+                  >
+                    {active && category === "All" && (
+                      <motion.span
+                        layoutId="menu-filter-pill"
+                        className="absolute inset-0 rounded-full bg-brand-600"
+                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                      />
+                    )}
+                    <span className="relative z-10 flex items-center gap-1.5">
+                      {!active && category !== "All" && (
+                        <span aria-hidden className={`h-2 w-2 rounded-full ${dot}`} />
+                      )}
+                      {category}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
