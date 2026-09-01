@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { can, getViewer } from "@/lib/auth";
 import { deriveTriggers } from "@/lib/faq";
 
 /**
@@ -11,10 +12,23 @@ import { deriveTriggers } from "@/lib/faq";
  * `chat_threads` only lets staff update, so a customer who found this action
  * couldn't mark their own thread handled and hide it from the shop.
  */
+/**
+ * These six leaned entirely on RLS and had no check of their own.
+ *
+ * For most of them that was harmless — the policy said `is_staff()` and so
+ * does the capability. `saveChatSettings` was not: it writes the Facebook
+ * page the shop's "Ask Pepper Pan" button opens, which is the same kind of
+ * decision as the GCash number, and any shift could have changed it.
+ *
+ * Stated here as well as in the policy, because an action whose only guard is
+ * a policy in another file is an action nobody remembers to guard when the
+ * policy is edited.
+ */
 export async function setThreadHandled(
   threadId: string,
   handled: boolean
 ): Promise<{ error: string | null }> {
+  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -47,6 +61,7 @@ export async function saveChatSettings(input: {
   messengerUrl: string;
   pageId: string;
 }): Promise<{ error: string | null }> {
+  if (!can(await getViewer(), "settings")) return { error: "Only the owner can change where customers are sent to chat." };
   const url = input.messengerUrl.trim();
   if (url && !/^https:\/\/(m\.me|www\.facebook\.com|facebook\.com)\//i.test(url)) {
     return {
@@ -90,6 +105,7 @@ export async function replyToThread(
   threadId: string,
   text: string
 ): Promise<{ error: string | null }> {
+  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
   const body = text.trim();
   if (!body) return { error: "Type a reply first." };
   if (body.length > 2000) return { error: "That's too long for one message." };
@@ -138,6 +154,7 @@ export async function teachAnswer(input: {
   triggers: string;
   threadId?: string;
 }): Promise<{ error: string | null }> {
+  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
   const question = input.question.trim().slice(0, 300);
   const answer = input.answer.trim().slice(0, 2000);
   if (!question) return { error: "What was the question?" };
@@ -183,6 +200,7 @@ export async function updateFaqEntry(input: {
   isActive: boolean;
   priority: number;
 }): Promise<{ error: string | null }> {
+  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
   const question = input.question.trim().slice(0, 300);
   const answer = input.answer.trim().slice(0, 2000);
   if (!question || !answer) return { error: "A question and an answer are both needed." };
@@ -214,6 +232,7 @@ export async function updateFaqEntry(input: {
 }
 
 export async function deleteFaqEntry(id: string): Promise<{ error: string | null }> {
+  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
   const supabase = await createClient();
   const { error } = await supabase.from("faq_entries").delete().eq("id", id);
   if (error) return { error: error.message };
