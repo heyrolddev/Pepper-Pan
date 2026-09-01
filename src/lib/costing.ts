@@ -415,10 +415,19 @@ export function marginFor(price: number, cost: number, costed: boolean): Margin 
 
 /** ₱1,234.50 — two decimals, because ingredient costs live in centavos. */
 export function peso(n: number, decimals = 2): string {
-  return "₱" + n.toLocaleString("en-PH", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+  // The sign goes outside the symbol. "₱-1.25" reads as a currency code
+  // followed by a number and is easy to skim straight past — which is the
+  // worst possible place to lose a minus, since a dish that loses money once
+  // it's boxed is exactly the thing this screen exists to surface.
+  const sign = n < 0 ? "−" : "";
+  return (
+    sign +
+    "₱" +
+    Math.abs(n).toLocaleString("en-PH", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })
+  );
 }
 
 /** What this ingredient's remaining stock is worth. */

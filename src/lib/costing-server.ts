@@ -13,6 +13,7 @@ import {
   type MealCost,
   type MealIngredient,
 } from "@/lib/costing";
+import { isPacked } from "@/lib/orders";
 
 /**
  * The recipe book, loaded once.
@@ -25,6 +26,13 @@ import {
 export type CostBook = {
   ingredients: Ingredient[];
   batches: Batch[];
+  /** Per-dish take-out packaging, priced per serving. */
+  packagingCost: Map<string, number>;
+  /** The same lines, so the editor can show and change them. */
+  mealPackaging: MealIngredient[];
+  /** Charged once per take-out order, not per dish. */
+  orderPackaging: { ref_type: string; ref_id: string; qty: number }[];
+  orderPackagingCost: number;
   /** The raw recipe rows, for the screens that edit them rather than cost them. */
   batchIngredients: BatchIngredient[];
   mealIngredients: MealIngredient[];
@@ -36,14 +44,17 @@ export type CostBook = {
 
 export async function loadCostBook(): Promise<CostBook> {
   const supabase = createAdminClient();
-  const [ing, bat, batIng, mea, meaIng, meaComp] = await Promise.all([
-    supabase.from("ingredients").select("*"),
-    supabase.from("batches").select("*"),
-    supabase.from("batch_ingredients").select("*"),
-    supabase.from("meals").select("*").order("name"),
-    supabase.from("meal_ingredients").select("*"),
-    supabase.from("meal_components").select("*"),
-  ]);
+  const [ing, bat, batIng, mea, meaIng, meaComp, mealPack, orderPack] =
+    await Promise.all([
+      supabase.from("ingredients").select("*"),
+      supabase.from("batches").select("*"),
+      supabase.from("batch_ingredients").select("*"),
+      supabase.from("meals").select("*").order("name"),
+      supabase.from("meal_ingredients").select("*"),
+      supabase.from("meal_components").select("*"),
+      supabase.from("meal_packaging").select("*"),
+      supabase.from("order_packaging").select("*"),
+    ]);
 
   // supabase-js returns errors rather than throwing, so a failed read arrives
   // as an empty array and would otherwise cost every dish at ₱0 — which looks
@@ -82,9 +93,42 @@ export async function loadCostBook(): Promise<CostBook> {
     batchCosts
   );
 
+  // Packaging is priced with the same unit costs as the food, but kept apart:
+  // a dish eaten at the stall uses none of it, and rolling it into the recipe
+  // is exactly what forced 27 duplicate dishes onto this menu.
+  const priceOf = (refType: string, refId: string, qty: number) => {
+    if (refType === "batch") return (batchCosts.get(refId)?.perUnit ?? 0) * qty;
+    const found = ingredients.find((i) => i.id === refId);
+    return (Number(found?.cost) || 0) * qty;
+  };
+
+  const mealPackaging = (mealPack.data ?? []) as MealIngredient[];
+  const packagingCost = new Map<string, number>();
+  for (const line of mealPackaging) {
+    packagingCost.set(
+      line.meal_id,
+      (packagingCost.get(line.meal_id) ?? 0) +
+        priceOf(line.ref_type, line.ref_id, Number(line.qty) || 0)
+    );
+  }
+
+  const orderPackaging = (orderPack.data ?? []) as {
+    ref_type: string;
+    ref_id: string;
+    qty: number;
+  }[];
+  const orderPackagingCost = orderPackaging.reduce(
+    (sum, l) => sum + priceOf(l.ref_type, l.ref_id, Number(l.qty) || 0),
+    0
+  );
+
   return {
     ingredients,
     batches,
+    packagingCost,
+    mealPackaging,
+    orderPackaging,
+    orderPackagingCost,
     batchIngredients: (batIng.data ?? []) as BatchIngredient[],
     mealIngredients: (meaIng.data ?? []) as MealIngredient[],
     batchCosts,
@@ -107,7 +151,11 @@ export async function recordOrderCost(orderId: string): Promise<void> {
 
   const [{ data: order, error: orderError }, { data: lines, error: linesError }] =
     await Promise.all([
-      supabase.from("orders").select("revenue").eq("id", orderId).maybeSingle(),
+      supabase
+        .from("orders")
+        .select("revenue, fulfillment")
+        .eq("id", orderId)
+        .maybeSingle(),
       supabase.from("order_lines").select("meal_id, qty").eq("order_id", orderId),
     ]);
 
@@ -123,17 +171,28 @@ export async function recordOrderCost(orderId: string): Promise<void> {
     return;
   }
 
-  const { mealCosts } = await loadCostBook();
+  const { mealCosts, packagingCost, orderPackagingCost } = await loadCostBook();
+
+  // Anything not eaten at the stall leaves in a box, and the box is a real
+  // cost. Charged here on the same rule the stock engine uses, so the estimate
+  // and the movement that later overwrites it are answering the same question.
+  const packed = isPacked((order as { fulfillment?: string }).fulfillment ?? "pickup");
 
   let cogs = 0;
+  let anyLine = false;
   for (const line of (lines ?? []) as { meal_id: string; qty: number }[]) {
+    anyLine = true;
+    const qty = Number(line.qty) || 0;
+    if (packed) cogs += (packagingCost.get(line.meal_id) ?? 0) * qty;
     const mc = mealCosts.get(line.meal_id);
     // A dish with no recipe adds nothing rather than guessing. It makes the
     // cost a floor and the profit a ceiling, which is why the screens that
     // show profit also say how many dishes still have no recipe.
     if (!mc?.costed) continue;
-    cogs += mc.cost * (Number(line.qty) || 0);
+    cogs += mc.cost * qty;
   }
+  // The bag: once for the order, however many dishes are in it.
+  if (packed && anyLine) cogs += orderPackagingCost;
 
   const revenue = Number(order.revenue) || 0;
   const { error } = await supabase

@@ -140,8 +140,10 @@ export default async function AdminDashboard({
     };
   });
 
-  const pickup = live.filter((o) => o.fulfillment === "pickup").length;
   const delivery = live.filter((o) => o.fulfillment === "delivery").length;
+  const dineIn = live.filter((o) => o.fulfillment === "dine_in").length;
+  // Everything that isn't delivered or eaten here is collected at the stall.
+  const pickup = live.length - delivery - dineIn;
   // Delivery fees are tracked apart from food sales, so "sales" never
   // silently includes money that goes straight back out to the rider.
   const deliveryFeesMonth = monthly.reduce((s, o) => s + Number(o.delivery_fee || 0), 0);
@@ -223,8 +225,8 @@ export default async function AdminDashboard({
             detail="Registered accounts"
           />
           <StatTile
-            label="Pickup / delivery"
-            value={`${pickup} / ${delivery}`}
+            label={dineIn > 0 ? "Take-out / delivery / dine in" : "Take-out / delivery"}
+            value={dineIn > 0 ? `${pickup} / ${delivery} / ${dineIn}` : `${pickup} / ${delivery}`}
             detail={
               deliveryFeesMonth > 0
                 ? `${peso(deliveryFeesMonth)} in fees this month`

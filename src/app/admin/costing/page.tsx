@@ -25,8 +25,24 @@ export default async function AdminCostingPage() {
     );
   }
 
-  const { mealCosts, batchCosts, ingredients, mealIngredients, failed } =
-    await loadCostBook();
+  const {
+    mealCosts,
+    batchCosts,
+    ingredients,
+    mealIngredients,
+    packagingCost,
+    mealPackaging,
+    orderPackaging,
+    orderPackagingCost,
+    failed,
+  } = await loadCostBook();
+
+  const packagingByMeal = new Map<string, typeof mealPackaging>();
+  for (const mp of mealPackaging) {
+    const list = packagingByMeal.get(mp.meal_id) ?? [];
+    list.push(mp);
+    packagingByMeal.set(mp.meal_id, list);
+  }
 
   // Menu engineering needs popularity as well as margin.
   const soldByMeal = await loadSalesVolume();
@@ -94,6 +110,12 @@ export default async function AdminCostingPage() {
       foodCostPct: m.foodCostPct,
       verdict: m.verdict,
       problems: mc.problems,
+      packagingCost: packagingCost.get(mc.meal.id) ?? 0,
+      packaging: (packagingByMeal.get(mc.meal.id) ?? []).map((r) => ({
+        refType: r.ref_type as "inv" | "batch",
+        refId: r.ref_id,
+        qty: Number(r.qty) || 0,
+      })),
       recipe: (recipeByMeal.get(mc.meal.id) ?? []).map((r) => ({
         refType: r.ref_type as "inv" | "batch",
         refId: r.ref_id,
@@ -116,6 +138,12 @@ export default async function AdminCostingPage() {
       dishes={dishes}
       options={options}
       classified={anySales}
+      orderPackagingCost={orderPackagingCost}
+      orderPackaging={orderPackaging.map((l) => ({
+        refType: l.ref_type as "inv" | "batch",
+        refId: l.ref_id,
+        qty: Number(l.qty) || 0,
+      }))}
       failed={failed}
     />
   );

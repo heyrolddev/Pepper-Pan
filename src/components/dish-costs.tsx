@@ -22,6 +22,9 @@ export type DishRow = {
   sold: number;
   /** Null until something has sold, or when the dish can't be costed. */
   menuClass: MenuClass | null;
+  /** What this dish costs to send out in a box, on top of the food. */
+  packagingCost: number;
+  packaging: { refType: "inv" | "batch"; refId: string; qty: number }[];
   /** The recipe as stored, so it can be edited rather than only read. */
   recipe: { refType: "inv" | "batch"; refId: string; qty: number }[];
   price: number;
@@ -161,6 +164,8 @@ export function DishCosts({
   dishes,
   options,
   classified,
+  orderPackagingCost,
+  orderPackaging,
   failed,
 }: {
   dishes: DishRow[];
@@ -168,6 +173,9 @@ export function DishCosts({
   options: RecipeOption[];
   /** False when nothing has sold yet, so the quadrants would be meaningless. */
   classified: boolean;
+  /** Charged once per take-out order — the bag — not per dish. */
+  orderPackagingCost: number;
+  orderPackaging: { refType: "inv" | "batch"; refId: string; qty: number }[];
   failed: string[];
 }) {
   const [query, setQuery] = useState("");
@@ -175,6 +183,9 @@ export function DishCosts({
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<DishRow | null>(null);
+  // Which editor is open on a dish: its recipe, or what it travels in.
+  const [editingWhat, setEditingWhat] = useState<"recipe" | "packaging">("recipe");
+  const [editingOrderPackaging, setEditingOrderPackaging] = useState(false);
 
   const summary = useMemo(() => {
     const costed = dishes.filter((d) => d.costed && d.price > 0);
@@ -301,6 +312,25 @@ export function DishCosts({
           }
           tone={summary.uncosted.length === 0 ? "plain" : "warn"}
         />
+      </div>
+
+      {/* One dish, two ways of serving it — and the bag, which belongs to the
+          order rather than to any dish in it. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl bg-cream-100 px-5 py-4 ring-1 ring-ink-950/10">
+        <div>
+          <p className="font-bold text-ink-950">Every take-out order includes</p>
+          <p className="mt-0.5 text-sm text-ink-800/55">
+            {orderPackaging.length === 0
+              ? "Nothing yet — add the bag here rather than on each dish, or a four-dish order is charged four bags."
+              : `${peso(orderPackagingCost)} on top of the food, once per order.`}
+          </p>
+        </div>
+        <button
+          onClick={() => setEditingOrderPackaging(true)}
+          className="shrink-0 rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-bold text-cream-50 transition-colors hover:bg-ink-800"
+        >
+          {orderPackaging.length === 0 ? "Set it up" : "Change it"}
+        </button>
       </div>
 
       {/* Controls */}
@@ -469,6 +499,22 @@ export function DishCosts({
                         {d.costed ? peso(d.cost) : "—"}
                       </strong>
                     </span>
+                    {/* The same dish, two ways of serving it. Eaten here it
+                        uses no packaging at all; in a box it costs more, and
+                        that difference used to be a whole second dish on the
+                        menu. */}
+                    {d.packagingCost > 0 && (
+                      <span className="text-sm text-ink-800/60">
+                        + box{" "}
+                        <strong className="font-display text-base tabular-nums text-chili-700">
+                          {peso(d.packagingCost)}
+                        </strong>
+                      </span>
+                    )}
+                    {/* With packaging set up there are two answers, not one,
+                        and printing only the food-cost one beside a "+ box"
+                        line reads as "you keep this much anyway" — which is
+                        the box's cost quietly disappearing. Both are shown. */}
                     <span className="text-sm text-ink-800/60">
                       You keep{" "}
                       <strong
@@ -478,6 +524,21 @@ export function DishCosts({
                       >
                         {d.costed ? peso(d.gross) : "—"}
                       </strong>
+                      {d.costed && d.packagingCost > 0 && (
+                        <>
+                          {" here · "}
+                          <strong
+                            className={`font-display text-base tabular-nums ${
+                              d.gross - d.packagingCost < 0
+                                ? "text-brand-600"
+                                : "text-jade-700"
+                            }`}
+                          >
+                            {peso(d.gross - d.packagingCost)}
+                          </strong>
+                          {" in a box"}
+                        </>
+                      )}
                     </span>
                   </div>
 
@@ -571,12 +632,28 @@ export function DishCosts({
                       </div>
                     )}
 
-                    <button
-                      onClick={() => setEditing(d)}
-                      className="mt-4 rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-bold text-cream-50 transition-colors hover:bg-ink-800"
-                    >
-                      {d.lines.length === 0 ? "Add a recipe" : "Edit the recipe"}
-                    </button>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingWhat("recipe");
+                          setEditing(d);
+                        }}
+                        className="rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-bold text-cream-50 transition-colors hover:bg-ink-800"
+                      >
+                        {d.lines.length === 0 ? "Add a recipe" : "Edit the recipe"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingWhat("packaging");
+                          setEditing(d);
+                        }}
+                        className="rounded-xl bg-chili-500/15 px-4 py-2.5 text-sm font-bold text-chili-700 transition-colors hover:bg-chili-500 hover:text-cream-50"
+                      >
+                        {d.packaging.length === 0
+                          ? "Add take-out packaging"
+                          : `Packaging (${d.packaging.length})`}
+                      </button>
+                    </div>
                   </div>
                 )}
               </li>
@@ -585,9 +662,9 @@ export function DishCosts({
         </ul>
       )}
 
-      {editing && (
+      {editing && editingWhat === "recipe" && (
         <RecipeEditor
-          key={editing.id}
+          key={`r-${editing.id}`}
           title={`Recipe for ${editing.name}`}
           subtitle="What one serving takes. The cost below updates as you type."
           price={editing.price}
@@ -597,11 +674,35 @@ export function DishCosts({
           onClose={() => setEditing(null)}
         />
       )}
+      {editing && editingWhat === "packaging" && (
+        <RecipeEditor
+          key={`p-${editing.id}`}
+          title={`Take-out packaging for ${editing.name}`}
+          subtitle="Only charged when it leaves in a box. Eaten at the stall, none of this is used."
+          price={null}
+          options={options}
+          initial={editing.packaging}
+          target={{ kind: "packaging", mealId: editing.id }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editingOrderPackaging && (
+        <RecipeEditor
+          title="What every take-out order includes"
+          subtitle="Charged once per order, not once per dish — the bag belongs here, not on each dish."
+          price={null}
+          options={options}
+          initial={orderPackaging}
+          target={{ kind: "order-packaging" }}
+          onClose={() => setEditingOrderPackaging(false)}
+        />
+      )}
 
       <p className="text-xs text-ink-800/45">
-        Ingredients only — gas, packaging, the stall and your time are on top.
-        The line on each bar marks {FOOD_COST_TARGET}%, the usual food-cost
-        target for street food; under it, there&apos;s room for everything else.
+        The bar is food cost only — packaging is shown beside it, and gas, the
+        stall and your time are still on top of both. The line marks{" "}
+        {FOOD_COST_TARGET}%, the usual food-cost target for street food; under
+        it, there&apos;s room for everything else.
       </p>
     </div>
   );

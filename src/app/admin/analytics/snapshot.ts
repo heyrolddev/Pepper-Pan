@@ -159,6 +159,7 @@ export async function buildSnapshot(): Promise<ShopSnapshot> {
     fulfillment: {
       pickup: last30.filter((o) => o.fulfillment === "pickup").length,
       delivery: last30.filter((o) => o.fulfillment === "delivery").length,
+      dineIn: last30.filter((o) => o.fulfillment === "dine_in").length,
       deliveryFees:
         Math.round(last30.reduce((s, o) => s + Number(o.delivery_fee || 0), 0) * 100) / 100,
     },

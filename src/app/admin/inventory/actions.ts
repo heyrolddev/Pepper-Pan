@@ -655,3 +655,99 @@ export async function recordWaste(input: {
   revalidate();
   return { error: null, cost: total };
 }
+
+/* ------------------------------------------------------------------ */
+/* Packaging                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What a dish needs to travel, per serving.
+ *
+ * Stored apart from the recipe on purpose. A dish eaten at the stall uses
+ * none of it, and rolling packaging into the recipe is exactly what forced
+ * 27 duplicate "(T.O)" dishes onto this menu — two entries, two prices to
+ * keep in step, and a best-seller list split between the twins.
+ */
+export async function saveMealPackaging(input: {
+  mealId: string;
+  lines: { refType: "inv" | "batch"; refId: string; qty: number }[];
+}): Promise<Result> {
+  const viewer = await requireStaff();
+  if (!viewer) return { error: "Only shop staff can change packaging." };
+
+  const lines = input.lines.filter((l) => l.refId && l.qty > 0);
+  const supabase = createAdminClient();
+
+  const { data: meal } = await supabase
+    .from("meals")
+    .select("name")
+    .eq("id", input.mealId)
+    .maybeSingle();
+  if (!meal) return { error: "That dish no longer exists." };
+
+  const { error: clearError } = await supabase
+    .from("meal_packaging")
+    .delete()
+    .eq("meal_id", input.mealId);
+  if (clearError) return { error: clearError.message };
+
+  if (lines.length > 0) {
+    const { error } = await supabase.from("meal_packaging").insert(
+      lines.map((l) => ({
+        meal_id: input.mealId,
+        ref_type: l.refType,
+        ref_id: l.refId,
+        qty: l.qty,
+      }))
+    );
+    if (error) return { error: error.message };
+  }
+
+  await log(
+    "inventory",
+    `Changed take-out packaging for "${meal.name}" — ${lines.length} item${lines.length === 1 ? "" : "s"}`,
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null };
+}
+
+/**
+ * What a take-out ORDER needs, once — the bag.
+ *
+ * Separate from per-dish packaging because it does not multiply. Pricing the
+ * bag into each dish charges four bags for a four-dish order, which is what
+ * the old duplicate menu quietly did.
+ */
+export async function saveOrderPackaging(input: {
+  lines: { refType: "inv" | "batch"; refId: string; qty: number }[];
+}): Promise<Result> {
+  const viewer = await getViewer();
+  if (viewer?.profile?.role !== "owner") {
+    return { error: "Only the owner can change this." };
+  }
+
+  const lines = input.lines.filter((l) => l.refId && l.qty > 0);
+  const supabase = createAdminClient();
+
+  const { error: clearError } = await supabase
+    .from("order_packaging")
+    .delete()
+    .neq("id", -1);
+  if (clearError) return { error: clearError.message };
+
+  if (lines.length > 0) {
+    const { error } = await supabase.from("order_packaging").insert(
+      lines.map((l) => ({ ref_type: l.refType, ref_id: l.refId, qty: l.qty }))
+    );
+    if (error) return { error: error.message };
+  }
+
+  await log(
+    "inventory",
+    `Changed what every take-out order includes — ${lines.length} item${lines.length === 1 ? "" : "s"}`,
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null };
+}

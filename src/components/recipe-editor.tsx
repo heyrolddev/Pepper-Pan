@@ -2,11 +2,14 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
+import { Combobox } from "@/components/combobox";
 import { peso } from "@/lib/costing";
 import {
   produceBatch,
   saveBatchRecipe,
   saveMealRecipe,
+  saveMealPackaging,
+  saveOrderPackaging,
 } from "@/app/admin/inventory/actions";
 
 /** Something a recipe line can point at. */
@@ -52,7 +55,11 @@ export function RecipeEditor({
   price: number | null;
   options: RecipeOption[];
   initial: RecipeLine[];
-  target: { kind: "meal"; mealId: string } | { kind: "batch"; batchId: string };
+  target:
+    | { kind: "meal"; mealId: string }
+    | { kind: "batch"; batchId: string }
+    | { kind: "packaging"; mealId: string }
+    | { kind: "order-packaging" };
   onClose: () => void;
 }) {
   const [lines, setLines] = useState<RecipeLine[]>(initial);
@@ -85,10 +92,14 @@ export function RecipeEditor({
       const r =
         target.kind === "meal"
           ? await saveMealRecipe({ mealId: target.mealId, lines })
-          : await saveBatchRecipe({
-              batchId: target.batchId,
-              lines: lines.map((l) => ({ ingredientId: l.refId, qty: l.qty })),
-            });
+          : target.kind === "packaging"
+            ? await saveMealPackaging({ mealId: target.mealId, lines })
+            : target.kind === "order-packaging"
+              ? await saveOrderPackaging({ lines })
+              : await saveBatchRecipe({
+                  batchId: target.batchId,
+                  lines: lines.map((l) => ({ ingredientId: l.refId, qty: l.qty })),
+                });
       if (r.error !== null) {
         setError(r.error);
         return;
@@ -113,13 +124,19 @@ export function RecipeEditor({
                 key={i}
                 className="rounded-2xl bg-ink-950/[0.03] p-2.5 ring-1 ring-ink-950/5"
               >
-                <select
+                <Combobox
                   value={o ? `${o.kind}:${o.id}` : ""}
-                  onChange={(e) => {
+                  ariaLabel="What goes in"
+                  placeholder="Type to search…"
+                  options={allowed.map((opt) => ({
+                    value: `${opt.kind}:${opt.id}`,
+                    label: opt.kind === "batch" ? `${opt.name} (batch)` : opt.name,
+                    hint: opt.unit,
+                  }))}
+                  onChange={(v) => {
                     // Split on the first colon only. An id is free-form text
                     // and a regex with a dot-all flag isn't available at this
                     // TS target anyway.
-                    const v = e.target.value;
                     const at = v.indexOf(":");
                     if (at < 0) return;
                     setLine(i, {
@@ -127,28 +144,30 @@ export function RecipeEditor({
                       refId: v.slice(at + 1),
                     });
                   }}
-                  className={`${inputClass} py-2`}
-                >
-                  <option value="">Pick one…</option>
-                  {allowed.map((opt) => (
-                    <option key={`${opt.kind}:${opt.id}`} value={`${opt.kind}:${opt.id}`}>
-                      {opt.kind === "batch" ? `${opt.name} (batch)` : opt.name}
-                    </option>
-                  ))}
-                </select>
+                />
 
                 <div className="mt-2 flex items-center gap-2">
-                  <input
-                    value={l.qty || ""}
-                    onChange={(e) => setLine(i, { qty: Number(e.target.value) || 0 })}
-                    type="number"
-                    step="0.0001"
-                    min="0"
-                    inputMode="decimal"
-                    placeholder="0"
-                    aria-label="How much"
-                    className={`${inputClass} w-24 shrink-0 py-1.5 text-right`}
-                  />
+                  {/* Wrapped rather than given a `w-24` alongside `inputClass`.
+                      That class already carries `w-full`, and which of two
+                      competing width utilities wins is decided by the order
+                      Tailwind emits them in, not by the order they're written
+                      here — `w-full` won, the quantity box ate the row, and
+                      the unit and the remove button were pushed off the edge
+                      of the dialog. A fixed-width parent has no such
+                      argument to lose. */}
+                  <div className="w-24 shrink-0">
+                    <input
+                      value={l.qty || ""}
+                      onChange={(e) => setLine(i, { qty: Number(e.target.value) || 0 })}
+                      type="number"
+                      step="0.0001"
+                      min="0"
+                      inputMode="decimal"
+                      placeholder="0"
+                      aria-label="How much"
+                      className={`${inputClass} py-1.5 text-right`}
+                    />
+                  </div>
                   <span className="shrink-0 text-xs text-ink-800/50">
                     {o?.unit ?? ""}
                   </span>
@@ -180,7 +199,13 @@ export function RecipeEditor({
         <div className="rounded-2xl bg-ink-950 px-5 py-4 text-cream-50">
           <div className="flex items-baseline justify-between">
             <span className="text-sm font-bold opacity-70">
-              {target.kind === "meal" ? "Costs to make" : "Costs per batch"}
+              {target.kind === "meal"
+                ? "Costs to make"
+                : target.kind === "batch"
+                  ? "Costs per batch"
+                  : target.kind === "packaging"
+                    ? "Adds to a take-out"
+                    : "Adds to every take-out order"}
             </span>
             <span className="font-display text-2xl font-black tabular-nums">
               {peso(total)}
@@ -216,7 +241,11 @@ export function RecipeEditor({
           disabled={busy}
           className="w-full rounded-2xl bg-ink-950 py-3.5 font-display text-lg font-black text-cream-50 transition-colors hover:bg-ink-800 disabled:bg-ink-950/15 disabled:text-ink-800/40"
         >
-          {busy ? "Saving…" : "Save the recipe"}
+          {busy
+            ? "Saving…"
+            : target.kind === "packaging" || target.kind === "order-packaging"
+              ? "Save the packaging"
+              : "Save the recipe"}
         </button>
       </form>
     </AdminDialog>

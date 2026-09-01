@@ -14,7 +14,7 @@ export type ShopSnapshot = {
   window: string;
   revenue: { last30: number; prior30: number; avgOrder: number; currency: "PHP" };
   orders: { last30: number; prior30: number; cancelRate: number };
-  fulfillment: { pickup: number; delivery: number; deliveryFees: number };
+  fulfillment: { pickup: number; delivery: number; dineIn: number; deliveryFees: number };
   payments: { cod: number; gcash: number; unpaidGcash: number };
   customers: { total: number; repeat: number; newLast30: number };
   bestSellers: { name: string; qty: number; revenue: number }[];
