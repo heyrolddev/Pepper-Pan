@@ -509,3 +509,80 @@ export function menuClassFor(
   if (earns) return "puzzle";
   return "dog";
 }
+
+// ---------------------------------------------------------------------------
+// How many can we actually make?
+// ---------------------------------------------------------------------------
+
+/**
+ * Servings the shelf can still produce.
+ *
+ * Worked out from live stock every time it is asked, and deliberately NOT
+ * written back to `meals.is_available`. That column is the owner's own switch
+ * — "we've 86'd it today" — and a background process overwriting it would
+ * destroy an intent the system can't tell apart from its own guess, then need
+ * undoing on every restock. Availability from stock is derived; availability
+ * by decision is stored. Two different facts, two different homes.
+ *
+ * A dish with no recipe returns Infinity rather than zero. We don't know what
+ * it takes, so we can't say it can't be made — and refusing to sell something
+ * because nobody has entered its recipe yet would be the software inventing a
+ * shortage.
+ */
+export function makeableServings(
+  mealId: string,
+  mealIngredients: MealIngredient[],
+  mealComponents: MealComponent[],
+  ingredients: Ingredient[],
+  batches: Batch[],
+  seen: Set<string> = new Set()
+): number {
+  if (seen.has(mealId)) return Infinity; // a combo containing itself
+  const next = new Set([...seen, mealId]);
+
+  const ingById = new Map(ingredients.map((i) => [i.id, i]));
+  const batchById = new Map(batches.map((b) => [b.id, b]));
+
+  const lines = mealIngredients.filter((mi) => mi.meal_id === mealId);
+  const parts = mealComponents.filter((mc) => mc.meal_id === mealId);
+  if (lines.length === 0 && parts.length === 0) return Infinity;
+
+  let limit = Infinity;
+
+  for (const line of lines) {
+    const need = Number(line.qty) || 0;
+    if (need <= 0) continue;
+    const have =
+      line.ref_type === "batch"
+        ? Number(batchById.get(line.ref_id)?.batch_stock ?? 0)
+        : Number(ingById.get(line.ref_id)?.stock ?? 0);
+    // A line pointing at something deleted is a broken recipe, not an empty
+    // shelf. The costing screens already name it; blocking sales over it
+    // would turn a data problem into lost trade.
+    const exists =
+      line.ref_type === "batch"
+        ? batchById.has(line.ref_id)
+        : ingById.has(line.ref_id);
+    if (!exists) continue;
+    limit = Math.min(limit, Math.floor(have / need));
+  }
+
+  for (const part of parts) {
+    const qty = Number(part.qty) || 0;
+    if (qty <= 0) continue;
+    const child = makeableServings(
+      part.component_meal_id,
+      mealIngredients,
+      mealComponents,
+      ingredients,
+      batches,
+      next
+    );
+    limit = Math.min(limit, Math.floor(child / qty));
+  }
+
+  return Math.max(0, limit);
+}
+
+/** Runs low before it runs out, so the shop gets a warning rather than a wall. */
+export const LOW_STOCK_SERVINGS = 3;

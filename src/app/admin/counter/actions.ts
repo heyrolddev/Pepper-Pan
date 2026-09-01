@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordOrderCost } from "@/lib/costing-server";
 import { syncStockForStatus } from "@/lib/stock-server";
 import { openShiftFor } from "@/lib/shifts-server";
+import { loadAvailability } from "@/lib/costing-server";
 import type { PaymentMethod } from "@/lib/payments";
 
 export type CounterLine = { mealId: string; qty: number };
@@ -70,6 +71,28 @@ export async function recordWalkInSale(input: {
   if (missing.length > 0) {
     return {
       error: "Something on this order is no longer on the menu. Clear it and start again.",
+    };
+  }
+
+  // Same check as the website. The till is the one place someone can insist —
+  // the customer is standing there — so it says what is short and by how
+  // much rather than just refusing.
+  const makeable = await loadAvailability();
+  const short = lines
+    .map((l) => ({ line: l, can: makeable.get(l.mealId) }))
+    .filter((x) => x.can !== undefined && x.can < x.line.qty);
+  if (short.length > 0) {
+    const nameById = new Map(
+      ((meals ?? []) as { id: string; name: string }[]).map((m) => [m.id, m.name])
+    );
+    const detail = short
+      .map(
+        (x) =>
+          `${nameById.get(x.line.mealId) ?? "an item"} (${x.can} left, ${x.line.qty} rung up)`
+      )
+      .join(", ");
+    return {
+      error: `Not enough stock for ${detail}. Record it anyway by fixing the count in Inventory first, or take it off the ticket.`,
     };
   }
 

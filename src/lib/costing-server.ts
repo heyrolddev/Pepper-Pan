@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   costBatches,
   costMeals,
+  makeableServings,
   type Batch,
   type BatchCost,
   type BatchIngredient,
@@ -170,6 +171,68 @@ export async function loadSalesVolume(
   const out = new Map<string, number>();
   for (const r of (data ?? []) as { meal_id: string; qty: number }[]) {
     out.set(r.meal_id, (out.get(r.meal_id) ?? 0) + (Number(r.qty) || 0));
+  }
+  return out;
+}
+
+/**
+ * How many of each dish the shelf can still produce.
+ *
+ * Four light queries rather than the full cost book: the customer menu is the
+ * busiest page on the site and has no use for prices, recipes or margins —
+ * only for whether a thing can still be made.
+ *
+ * Returns a map of meal id to servings. Absent means unconstrained (no recipe
+ * entered), which is not the same as zero.
+ */
+export async function loadAvailability(): Promise<Map<string, number>> {
+  const supabase = createAdminClient();
+  const [ing, bat, meaIng, meaComp] = await Promise.all([
+    supabase.from("ingredients").select("id, stock"),
+    supabase.from("batches").select("id, batch_stock"),
+    supabase.from("meal_ingredients").select("meal_id, ref_type, ref_id, qty"),
+    supabase.from("meal_components").select("meal_id, component_meal_id, qty"),
+  ]);
+
+  // A failed read must not close the shop. Returning an empty map leaves
+  // every dish unconstrained, which is how the menu behaved before any of
+  // this existed — the safe direction to fail in.
+  if (ing.error || bat.error || meaIng.error || meaComp.error) {
+    console.error(
+      `[availability] ${
+        ing.error?.message ??
+        bat.error?.message ??
+        meaIng.error?.message ??
+        meaComp.error?.message
+      }`
+    );
+    return new Map();
+  }
+
+  const ingredients = (ing.data ?? []).map((r) => ({
+    ...(r as { id: string; stock: number }),
+  })) as Ingredient[];
+  const batches = (bat.data ?? []).map((r) => ({
+    ...(r as { id: string; batch_stock: number }),
+  })) as Batch[];
+  const mealIngredients = (meaIng.data ?? []) as MealIngredient[];
+  const mealComponents = (meaComp.data ?? []) as MealComponent[];
+
+  const mealIds = new Set<string>([
+    ...mealIngredients.map((m) => m.meal_id),
+    ...mealComponents.map((m) => m.meal_id),
+  ]);
+
+  const out = new Map<string, number>();
+  for (const id of mealIds) {
+    const n = makeableServings(
+      id,
+      mealIngredients,
+      mealComponents,
+      ingredients,
+      batches
+    );
+    if (Number.isFinite(n)) out.set(id, n);
   }
   return out;
 }
