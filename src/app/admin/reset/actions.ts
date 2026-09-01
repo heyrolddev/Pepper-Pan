@@ -3,6 +3,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer } from "@/lib/auth";
+import { SHOP_ROLES } from "@/lib/permissions";
 
 /**
  * Clearing the practice data before the shop goes live for real.
@@ -62,7 +63,7 @@ async function staffAccountIds(
   const { data } = await db
     .from("profiles")
     .select("id")
-    .in("role", ["owner", "staff"]);
+    .in("role", SHOP_ROLES);
   return (data ?? []).map((r) => r.id as string);
 }
 

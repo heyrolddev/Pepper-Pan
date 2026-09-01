@@ -45,6 +45,13 @@ const TABLES = [
   "meals",
   "meal_ingredients",
   "meal_components",
+  // What a dish needs to travel, and what an order needs once. Same standing
+  // as a recipe: entered by hand, and the reason a take-out costs more than
+  // the same dish eaten at the stall.
+  "meal_packaging",
+  "order_packaging",
+  // The menu's own vocabulary — the names and colours behind the filter pills.
+  "menu_categories",
   // Trading history
   "orders",
   "order_lines",
@@ -55,6 +62,12 @@ const TABLES = [
   "receivables",
   "cycle_counts",
   "oe_templates",
+  // Who worked when, and what their shift took. This is payroll evidence.
+  "staff_shifts",
+  // What the shop pays out whether it opens or not, and what it bought to
+  // trade with — both are the break-even and payback numbers' only source.
+  "fixed_costs",
+  "assets",
   // People, and what they said
   "profiles",
   "reviews",
@@ -73,6 +86,13 @@ const TABLES = [
   // Deliberately not here: push_subscriptions. Those are browser tokens that
   // expire on their own and re-register the next time someone opens the site,
   // so restoring them would restore a list of dead addresses.
+  //
+  // Seven tables were missing from this list — everything added since the
+  // stock-movement work, including the shifts people are paid from. Which is
+  // the exact failure the note at the top of this list warns about: the list
+  // does not stop being a backup when it falls behind, it just stops being a
+  // complete one, and nothing says so. Worth re-reading whenever a migration
+  // adds a table.
 ] as const;
 
 export type BackupTable = (typeof TABLES)[number];

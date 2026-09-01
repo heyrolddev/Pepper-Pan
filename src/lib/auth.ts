@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ACTIVE_ORDER_STATUSES } from "@/lib/orders";
+import { isShopRole, roleCan, type Capability } from "@/lib/permissions";
 
 export type Profile = {
   id: string;
-  role: "owner" | "staff" | "customer";
+  role: "owner" | "manager" | "staff" | "customer";
   full_name: string | null;
   phone: string | null;
   address: string | null;
@@ -47,8 +48,34 @@ export async function getViewer(): Promise<Viewer> {
   }
 }
 
+/** Does this person work here at all? The door, not the permission. */
 export function isStaff(viewer: Viewer) {
-  return viewer?.profile?.role === "owner" || viewer?.profile?.role === "staff";
+  return isShopRole(viewer?.profile?.role);
+}
+
+/**
+ * The permission.
+ *
+ * Every server action and every page that guards something should ask this
+ * and name a capability, rather than comparing a role string. `isStaff` only
+ * answers "is this one of ours" — which is the right question for keeping the
+ * shop out of its own cart, and the wrong one for deciding whether they may
+ * see what the chicken cost.
+ */
+export function can(viewer: Viewer, what: Capability): boolean {
+  return roleCan(viewer?.profile?.role, what);
+}
+
+/**
+ * The signed-in person, but only if they may do this.
+ *
+ * Saves every action repeating the same three lines, and makes the common
+ * mistake — fetching the viewer and then forgetting to check — harder to
+ * write than the correct version.
+ */
+export async function viewerWho(what: Capability): Promise<Viewer> {
+  const viewer = await getViewer();
+  return can(viewer, what) ? viewer : null;
 }
 
 /** Statuses that mean "this order is still happening" for the customer. */

@@ -3,11 +3,13 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createMeal } from "@/app/admin/menu/actions";
+import { CategoryPicker } from "@/components/category-picker";
+import type { MenuCategory } from "@/lib/categories";
 
 const fieldClass =
   "w-full rounded-xl border-2 border-ink-950/15 bg-cream-50 px-4 py-2 text-sm text-ink-950 outline-none transition-colors focus:border-brand-600";
 
-export function NewMealForm() {
+export function NewMealForm({ categories }: { categories: MenuCategory[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -75,11 +77,10 @@ export function NewMealForm() {
           placeholder="Price"
           className={fieldClass}
         />
-        <input
+        <CategoryPicker
           value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="Category"
-          className={fieldClass}
+          onChange={setCategory}
+          categories={categories}
         />
       </div>
       {/* Asked for at the point the dish is created, not left until later.

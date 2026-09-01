@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
+import { Combobox } from "@/components/combobox";
 import { peso } from "@/lib/costing";
 import { recordWaste, type WasteCategory } from "@/app/admin/inventory/actions";
 import type { RecipeOption } from "@/components/recipe-editor";
@@ -112,18 +113,17 @@ export function WasteForm({
         </div>
 
         <Field label="What was it">
-          <select
+          <Combobox
             value={pick}
-            onChange={(e) => setPick(e.target.value)}
-            className={`${inputClass} py-2.5`}
-          >
-            <option value="">Pick one…</option>
-            {options.map((o) => (
-              <option key={`${o.kind}:${o.id}`} value={`${o.kind}:${o.id}`}>
-                {o.kind === "batch" ? `${o.name} (batch)` : o.name}
-              </option>
-            ))}
-          </select>
+            ariaLabel="What was it"
+            placeholder="Type to search…"
+            options={options.map((o) => ({
+              value: `${o.kind}:${o.id}`,
+              label: o.kind === "batch" ? `${o.name} (batch)` : o.name,
+              hint: `${o.stock.toLocaleString("en-PH")} ${o.unit}`,
+            }))}
+            onChange={setPick}
+          />
         </Field>
 
         <Field

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CounterTill, type CounterMeal } from "@/components/counter-till";
 import { shopToday } from "@/lib/format-date";
 import { loadAvailability } from "@/lib/costing-server";
+import type { MenuCategory } from "@/lib/categories";
 
 // The menu can be 86'd mid-service from the Menu screen; a cached till would
 // go on selling what the kitchen just ran out of.
@@ -13,7 +14,7 @@ export default async function AdminCounterPage() {
   if (!isStaff(viewer)) return null; // the layout already redirected
 
   const supabase = createAdminClient();
-  const [{ data: meals, error }, { data: today }] = await Promise.all([
+  const [{ data: meals, error }, { data: today }, { data: catRows }] = await Promise.all([
     supabase
       .from("meals")
       .select("id, name, price, categories, is_public, is_available")
@@ -27,7 +28,13 @@ export default async function AdminCounterPage() {
       .eq("tag", "walk-in")
       .eq("date", shopToday())
       .neq("status", "cancelled"),
+    supabase
+      .from("menu_categories")
+      .select("name, colour, sort_order")
+      .order("sort_order")
+      .order("name"),
   ]);
+  const categories = (catRows ?? []) as MenuCategory[];
 
   const makeable = await loadAvailability();
   const rows: CounterMeal[] = ((meals ?? []) as CounterMeal[])
@@ -47,6 +54,7 @@ export default async function AdminCounterPage() {
 
   return (
     <CounterTill
+      known={categories}
       meals={rows}
       loadError={error?.message ?? null}
       takenToday={takenToday}

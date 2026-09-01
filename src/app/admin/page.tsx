@@ -1,10 +1,17 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { can, getViewer } from "@/lib/auth";
+import { openShiftFor } from "@/lib/shifts-server";
+import { loadAvailability } from "@/lib/costing-server";
+import { StaffToday, type ServiceOrder, type ShortDish } from "@/components/staff-today";
+import { LOW_STOCK_SERVINGS } from "@/lib/costing";
 import { ColumnChart, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { formatDateTime, shopToday } from "@/lib/format-date";
 import { StatTile, Delta, pesoRound } from "@/components/stat-tile";
+import { hqTitle } from "@/lib/hq-theme";
 
 // Shop-timezone day labels, so a bar is filed under the day the shop had,
 // not the day the viewer's device thinks it was.
@@ -42,7 +49,20 @@ export default async function AdminDashboard({
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
   const params = await searchParams;
-  const supabase = await createClient();
+  const viewer = await getViewer();
+
+  // Two different screens behind one route. The owner's Today is a money
+  // screen; a shift's Today is a service screen. Splitting here rather than
+  // hiding tiles further down, because they don't share a question — and
+  // because everything below this line reads the margin.
+  if (!can(viewer, "business")) {
+    return <ServiceBoard viewer={viewer} />;
+  }
+
+  // The margin columns are revoked from every browser-side session in 0021,
+  // so `cogs` has to come through the service role. The check above is what
+  // stands in for the one RLS can no longer make here.
+  const supabase = createAdminClient();
 
   const now = new Date();
   const todayStr = shopToday(now);
@@ -140,8 +160,10 @@ export default async function AdminDashboard({
     };
   });
 
-  const pickup = live.filter((o) => o.fulfillment === "pickup").length;
   const delivery = live.filter((o) => o.fulfillment === "delivery").length;
+  const dineIn = live.filter((o) => o.fulfillment === "dine_in").length;
+  // Everything that isn't delivered or eaten here is collected at the stall.
+  const pickup = live.length - delivery - dineIn;
   // Delivery fees are tracked apart from food sales, so "sales" never
   // silently includes money that goes straight back out to the rider.
   const deliveryFeesMonth = monthly.reduce((s, o) => s + Number(o.delivery_fee || 0), 0);
@@ -223,8 +245,8 @@ export default async function AdminDashboard({
             detail="Registered accounts"
           />
           <StatTile
-            label="Pickup / delivery"
-            value={`${pickup} / ${delivery}`}
+            label={dineIn > 0 ? "Take-out / delivery / dine in" : "Take-out / delivery"}
+            value={dineIn > 0 ? `${pickup} / ${delivery} / ${dineIn}` : `${pickup} / ${delivery}`}
             detail={
               deliveryFeesMonth > 0
                 ? `${peso(deliveryFeesMonth)} in fees this month`
@@ -267,7 +289,7 @@ export default async function AdminDashboard({
 
       {/* Sales trend */}
       <section>
-        <h2 className="font-display text-2xl font-black text-ink-950">Sales trend</h2>
+        <h2 className={hqTitle}>Sales trend</h2>
         <p className="mt-1 text-sm text-ink-800/60">
           Revenue per day, last 14 days · hover a bar for the exact figure
         </p>
@@ -299,7 +321,7 @@ export default async function AdminDashboard({
       {/* Recent orders */}
       <section>
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl font-black text-ink-950">Recent orders</h2>
+          <h2 className={hqTitle}>Recent orders</h2>
           <Link href="/admin/orders" className="text-sm font-bold text-brand-600 hover:underline">
             View all →
           </Link>
@@ -338,5 +360,62 @@ export default async function AdminDashboard({
         )}
       </section>
     </div>
+  );
+}
+
+
+/**
+ * Today for a shift.
+ *
+ * Reads through the ordinary client on purpose: whatever comes back is what
+ * this person is allowed to see, so a mistake here shows up as a missing
+ * number rather than as a leak. `orders_for_staff` is the view without the
+ * margin columns.
+ */
+async function ServiceBoard({
+  viewer,
+}: {
+  viewer: Awaited<ReturnType<typeof getViewer>>;
+}) {
+  const supabase = await createClient();
+
+  const [ordersRes, leadsRes, makeable, shift] = await Promise.all([
+    supabase
+      .from("orders_for_staff")
+      .select("id, created_at, status, contact_name, scheduled_for")
+      .in("status", ["pending", "confirmed", "preparing", "ready"])
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("chat_threads")
+      .select("id", { count: "exact", head: true })
+      .eq("needs_human", true)
+      .eq("handled", false),
+    loadAvailability(),
+    viewer?.profile?.id ? openShiftFor(viewer.profile.id) : Promise.resolve(null),
+  ]);
+
+  // Names for the ids `loadAvailability` returns. Only the dishes actually on
+  // the menu — a hidden dish running out is nobody's problem this shift.
+  const { data: meals } = await supabase
+    .from("meals")
+    .select("id, name")
+    .eq("is_public", true);
+  const nameById = new Map(
+    ((meals ?? []) as { id: string; name: string }[]).map((m) => [m.id, m.name])
+  );
+
+  const shortDishes: ShortDish[] = [...makeable.entries()]
+    .filter(([id, n]) => nameById.has(id) && n <= LOW_STOCK_SERVINGS)
+    .map(([id, n]) => ({ name: nameById.get(id)!, makeable: n }))
+    .sort((a, b) => a.makeable - b.makeable || a.name.localeCompare(b.name));
+
+  return (
+    <StaffToday
+      orders={(ordersRes.data ?? []) as ServiceOrder[]}
+      waitingLeads={leadsRes.error ? 0 : (leadsRes.count ?? 0)}
+      shortDishes={shortDishes}
+      name={viewer?.profile?.full_name ?? viewer?.email ?? "there"}
+      onShift={shift !== null}
+    />
   );
 }

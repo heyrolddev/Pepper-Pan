@@ -1,8 +1,11 @@
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { MenuCategory } from "@/lib/categories";
 import { loadCostBook, loadSalesVolume } from "@/lib/costing-server";
 import { classifyMenu, marginFor, menuClassFor } from "@/lib/costing";
 import { DishCosts, type DishRow } from "@/components/dish-costs";
 import type { RecipeOption } from "@/components/recipe-editor";
+import { hqTitle } from "@/lib/hq-theme";
 
 // Recipes and prices change from the Menu screen; a cached cost is a wrong one.
 export const dynamic = "force-dynamic";
@@ -13,10 +16,10 @@ export default async function AdminCostingPage() {
   // What every dish earns is the owner's business, not a shift's. Hidden from
   // the sidebar for staff too, but checked here because hiding a link is not
   // a permission.
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "costs")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
-        <h2 className="font-display text-2xl font-black text-ink-950">Owner only</h2>
+        <h2 className={hqTitle}>Owner only</h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
           Costs and margins are the owner&apos;s to see. Staff can check what
           stock is left on the Inventory screen.
@@ -25,11 +28,34 @@ export default async function AdminCostingPage() {
     );
   }
 
-  const { mealCosts, batchCosts, ingredients, mealIngredients, failed } =
-    await loadCostBook();
+  const {
+    mealCosts,
+    batchCosts,
+    ingredients,
+    mealIngredients,
+    packagingCost,
+    mealPackaging,
+    orderPackaging,
+    orderPackagingCost,
+    failed,
+  } = await loadCostBook();
+
+  const packagingByMeal = new Map<string, typeof mealPackaging>();
+  for (const mp of mealPackaging) {
+    const list = packagingByMeal.get(mp.meal_id) ?? [];
+    list.push(mp);
+    packagingByMeal.set(mp.meal_id, list);
+  }
 
   // Menu engineering needs popularity as well as margin.
   const soldByMeal = await loadSalesVolume();
+
+  const supabase = createAdminClient();
+  const { data: catRows } = await supabase
+    .from("menu_categories")
+    .select("name, colour, sort_order")
+    .order("sort_order")
+    .order("name");
 
   // What a recipe line may point at: every ingredient, and every batch at its
   // cost per unit of yield — the same number the costing engine multiplies by.
@@ -94,6 +120,12 @@ export default async function AdminCostingPage() {
       foodCostPct: m.foodCostPct,
       verdict: m.verdict,
       problems: mc.problems,
+      packagingCost: packagingCost.get(mc.meal.id) ?? 0,
+      packaging: (packagingByMeal.get(mc.meal.id) ?? []).map((r) => ({
+        refType: r.ref_type as "inv" | "batch",
+        refId: r.ref_id,
+        qty: Number(r.qty) || 0,
+      })),
       recipe: (recipeByMeal.get(mc.meal.id) ?? []).map((r) => ({
         refType: r.ref_type as "inv" | "batch",
         refId: r.ref_id,
@@ -116,6 +148,13 @@ export default async function AdminCostingPage() {
       dishes={dishes}
       options={options}
       classified={anySales}
+      orderPackagingCost={orderPackagingCost}
+      orderPackaging={orderPackaging.map((l) => ({
+        refType: l.ref_type as "inv" | "batch",
+        refId: l.ref_id,
+        qty: Number(l.qty) || 0,
+      }))}
+      known={(catRows ?? []) as MenuCategory[]}
       failed={failed}
     />
   );

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordOrderCost } from "@/lib/costing-server";
 import { syncStockForStatus } from "@/lib/stock-server";
@@ -42,10 +42,12 @@ export async function recordWalkInSale(input: {
   reference?: string;
   /** Straight into the day's takings, or onto the kitchen board first. */
   toKitchen: boolean;
+  /** Eating at the stall — the one case where nothing is packed. */
+  dineIn?: boolean;
   note?: string;
 }): Promise<CounterResult> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Only shop staff can record a sale." };
+  if (!can(viewer, "till")) return { error: "Only shop staff can record a sale." };
 
   const lines = input.lines.filter((l) => l.qty > 0);
   if (lines.length === 0) return { error: "Add something to the order first." };
@@ -124,7 +126,10 @@ export async function recordWalkInSale(input: {
       // is a finished sale. Sending it to the kitchen is the busy-service
       // case, and then it's the board that says when it's done.
       status: input.toKitchen ? "confirmed" : "completed",
-      fulfillment: "pickup",
+      // Dine-in is a real third thing, not a label: it's the case where
+      // no container, no sauce cup and no bag leave the shelf, so the stock
+      // engine and the costing both charge this order for food only.
+      fulfillment: input.dineIn ? "dine_in" : "pickup",
       // "cod" is this system's word for cash — METHOD_LABEL already renders it
       // as "Cash", and the payments ledger looks the method up in that map with
       // no fallback. Storing the till's own word here would leave every

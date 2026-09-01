@@ -1,14 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
+import { ROLE_LABELS, type Role } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Result = { error: string | null };
 
 async function requireOwner() {
   const viewer = await getViewer();
-  return viewer?.profile?.role === "owner" ? viewer : null;
+  return can(viewer, "staff.manage") ? viewer : null;
 }
 
 /**
@@ -21,7 +22,13 @@ async function requireOwner() {
  */
 export async function setStaffRole(input: {
   profileId: string;
-  role: "staff" | "customer";
+  /**
+   * Manager sits between the two: runs a service, restocks, marks a dish sold
+   * out — and still cannot change a price or see what anything earns.
+   * "owner" is deliberately not offered. Handing over the whole business is
+   * not a button on a list of names.
+   */
+  role: "manager" | "staff" | "customer";
 }): Promise<Result> {
   const owner = await requireOwner();
   if (!owner) return { error: "Only the owner can change who works here." };
@@ -59,9 +66,11 @@ export async function setStaffRole(input: {
   await supabase.from("activity_log").insert({
     category: "staff",
     description:
-      input.role === "staff"
-        ? `Gave "${target.full_name ?? input.profileId}" staff access`
-        : `Removed staff access from "${target.full_name ?? input.profileId}"`,
+      input.role === "customer"
+        ? `Removed shop access from "${target.full_name ?? input.profileId}"`
+        : `Made "${target.full_name ?? input.profileId}" ${ROLE_LABELS[
+            input.role as Role
+          ].toLowerCase()}`,
     actor: owner.profile?.id ?? null,
   });
 

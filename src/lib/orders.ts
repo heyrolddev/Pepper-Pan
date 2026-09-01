@@ -124,3 +124,25 @@ export const STATUS_TONES: Record<OrderStatus, StatusTone> = {
     hint: "Called off. Open a row for the reason.",
   },
 };
+
+/**
+ * How the food leaves the shop.
+ *
+ * Dine-in is not a smaller kind of pickup: it's the one case where nothing is
+ * packed, which is what the packaging costing turns on. Everything else goes
+ * out in a box and is charged for it.
+ */
+export const FULFILLMENT_LABELS: Record<string, string> = {
+  pickup: "Take-out",
+  delivery: "Delivery",
+  dine_in: "Dine in",
+};
+
+export function fulfillmentLabel(fulfillment: string): string {
+  return FULFILLMENT_LABELS[fulfillment] ?? fulfillment;
+}
+
+/** Does this order leave in packaging? Dine-in is the only one that doesn't. */
+export function isPacked(fulfillment: string): boolean {
+  return fulfillment !== "dine_in";
+}

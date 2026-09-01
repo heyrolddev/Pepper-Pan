@@ -5,6 +5,8 @@ import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { deleteMeal, saveMeal, uploadMealImage } from "@/app/admin/menu/actions";
 import { TrashIcon } from "@/components/icons";
+import { CategoryPicker } from "@/components/category-picker";
+import type { MenuCategory } from "@/lib/categories";
 
 export type AdminMeal = {
   id: string;
@@ -43,7 +45,13 @@ function Toggle({
   );
 }
 
-export function MealEditor({ meal }: { meal: AdminMeal }) {
+export function MealEditor({
+  meal,
+  categories,
+}: {
+  meal: AdminMeal;
+  categories: MenuCategory[];
+}) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -190,11 +198,10 @@ export function MealEditor({ meal }: { meal: AdminMeal }) {
             placeholder="Price"
             className={fieldClass}
           />
-          <input
+          <CategoryPicker
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="Category"
-            className={fieldClass}
+            onChange={setCategory}
+            categories={categories}
           />
         </div>
 

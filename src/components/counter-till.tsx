@@ -3,6 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/costing";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
+import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
+import { hqTitle } from "@/lib/hq-theme";
 
 export type CounterMeal = {
   id: string;
@@ -36,36 +38,50 @@ export function CounterTill({
   takenToday,
   salesToday,
   staffName,
+  known = [],
 }: {
   meals: CounterMeal[];
   loadError: string | null;
   takenToday: number;
   salesToday: number;
   staffName: string;
+  /** Category colours, so the till reads the same way the menu does. */
+  known?: MenuCategory[];
 }) {
   const [ticket, setTicket] = useState<Ticket>({});
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
   const [method, setMethod] = useState<"cash" | "gcash">("cash");
+  const [dineIn, setDineIn] = useState(false);
   const [reference, setReference] = useState("");
   const [toKitchen, setToKitchen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ total: number } | null>(null);
+  const [done, setDone] = useState<{ total: number; dineIn: boolean } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const byId = useMemo(() => new Map(meals.map((m) => [m.id, m])), [meals]);
 
+  const colours = useMemo(
+    () => new Map(known.map((c) => [c.name, c.colour])),
+    [known]
+  );
+
   const categories = useMemo(() => {
-    const seen = new Set<string>();
-    for (const m of meals) for (const c of m.categories ?? []) seen.add(c);
-    return ["All", ...[...seen].sort()];
-  }, [meals]);
+    // Same order as the customer's menu, for the same reason the tiles are
+    // big: someone standing at the counter is finding things by position and
+    // colour, not by reading. Two screens that disagree about where Drinks
+    // sits cost a second every order.
+    const used = new Set(meals.map((m) => categoryOf(m.categories)));
+    const ordered = known.map((c) => c.name).filter((n) => used.has(n));
+    const rest = [...used].filter((n) => !ordered.includes(n)).sort();
+    return ["All", ...ordered, ...rest];
+  }, [meals, known]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return meals.filter((m) => {
-      if (category !== "All" && !(m.categories ?? []).includes(category)) return false;
+      if (category !== "All" && categoryOf(m.categories) !== category) return false;
       return !q || m.name.toLowerCase().includes(q);
     });
   }, [meals, query, category]);
@@ -100,11 +116,15 @@ export function CounterTill({
   function submit() {
     setError(null);
     startTransition(async () => {
+      // Captured before the reset below, so the confirmation names the sale
+      // that was actually recorded rather than the state of the next one.
+      const wasDineIn = dineIn;
       const result = await recordWalkInSale({
         lines: lines.map((l) => ({ mealId: l.meal.id, qty: l.qty })),
         method,
         reference,
         toKitchen,
+        dineIn,
         note,
       });
       // Checked against null rather than truthiness: an error type of
@@ -117,7 +137,12 @@ export function CounterTill({
       // Cleared straight away: the next customer is already at the counter,
       // and a till that needs dismissing before it can take the next order is
       // a till that gets left on the last one.
-      setDone({ total: result.total });
+      setDone({ total: result.total, dineIn: wasDineIn });
+      // Back to take-out for the next customer. A payment method left on the
+      // last choice is harmless; a "dine in" left on is a box, a cup and a bag
+      // that quietly never come off the count, every sale, until somebody
+      // notices the shelf disagreeing with the system.
+      setDineIn(false);
       clear();
     });
   }
@@ -126,7 +151,7 @@ export function CounterTill({
     <div className="flex flex-col gap-6 pb-24 lg:pb-0">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="font-display text-2xl font-black text-ink-950">Counter</h2>
+          <h2 className={hqTitle}>Counter</h2>
           <p className="mt-1 max-w-xl text-sm text-ink-800/60">
             Ring up someone at the stall. It lands in the same books as an
             online order, so the day&apos;s takings finally mean the whole day.
@@ -155,7 +180,7 @@ export function CounterTill({
       {done && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-jade-600 px-5 py-4 text-cream-50">
           <p className="font-display text-lg font-black">
-            Recorded {peso(done.total, 0)}
+            Recorded {peso(done.total, 0)} {done.dineIn ? "dine in" : "take out"}
             {toKitchen ? " — it's on the kitchen board." : " — in the day's takings."}
           </p>
           <button
@@ -177,20 +202,29 @@ export function CounterTill({
             className="rounded-xl bg-cream-100 px-4 py-3 text-base text-ink-950 ring-1 ring-ink-950/10 placeholder:text-ink-800/40 focus:outline-none focus:ring-2 focus:ring-gold-400"
           />
           <div className="flex flex-wrap gap-1.5">
-            {categories.map((c) => (
-              <button
-                key={c}
-                onClick={() => setCategory(c)}
-                aria-pressed={category === c}
-                className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
-                  category === c
-                    ? "bg-ink-950 text-cream-50"
-                    : "bg-cream-100 text-ink-800/60 ring-1 ring-ink-950/10 hover:bg-cream-200"
-                }`}
-              >
-                {c}
-              </button>
-            ))}
+            {categories.map((c) => {
+              const on = category === c;
+              const tone = colourOf(c, colours);
+              return (
+                <button
+                  key={c}
+                  onClick={() => setCategory(c)}
+                  aria-pressed={on}
+                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition-colors ${
+                    on
+                      ? c === "All"
+                        ? "bg-ink-950 text-cream-50"
+                        : tone.chip
+                      : "bg-cream-100 text-ink-800/60 ring-1 ring-ink-950/10 hover:bg-cream-200"
+                  }`}
+                >
+                  {!on && c !== "All" && (
+                    <span aria-hidden className={`h-2 w-2 rounded-full ${tone.dot}`} />
+                  )}
+                  {c}
+                </button>
+              );
+            })}
           </div>
 
           {shown.length === 0 ? (
@@ -317,6 +351,45 @@ export function CounterTill({
                 <span className="font-display text-3xl font-black tabular-nums text-ink-950">
                   {peso(total, 0)}
                 </span>
+              </div>
+
+              {/* Where the food is going, asked before how it's paid for —
+                  because this is the answer the person at the counter has
+                  already given out loud, and because it is what decides
+                  whether a box, a sauce cup and a bag come off the shelf.
+                  It replaces a second copy of the whole menu. */}
+              <div>
+                <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-ink-800/40">
+                  Serving
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([false, true] as const).map((d) => (
+                    <button
+                      key={String(d)}
+                      onClick={() => setDineIn(d)}
+                      aria-pressed={dineIn === d}
+                      className={`rounded-xl py-2.5 text-sm font-black uppercase tracking-wide transition-colors ${
+                        dineIn !== d
+                          ? "bg-ink-950/5 text-ink-800/50 hover:bg-ink-950/10"
+                          : d
+                            // Red only on dine-in. Take-out is nearly every
+                            // sale, and a till that shouts on the ordinary
+                            // case teaches the eye to stop reading it — so
+                            // the loud colour is saved for the setting that
+                            // changes what comes off the shelf.
+                            ? "bg-brand-600 text-cream-50"
+                            : "bg-ink-950 text-cream-50"
+                      }`}
+                    >
+                      {d ? "Dine in" : "Take out"}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] leading-snug text-ink-800/40">
+                  {dineIn
+                    ? "Eating here — no packaging comes off the shelf."
+                    : "Boxes, cups and a bag come off the shelf with it."}
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">

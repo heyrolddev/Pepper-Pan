@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
 
@@ -9,7 +9,7 @@ type Result = { error: string | null };
 
 async function requireOwner() {
   const viewer = await getViewer();
-  return viewer?.profile?.role === "owner" ? viewer : null;
+  return can(viewer, "business") ? viewer : null;
 }
 
 function done() {
@@ -116,7 +116,7 @@ export async function addCashEntry(input: {
   note?: string;
 }): Promise<Result> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Only shop staff can record cash." };
+  if (!can(viewer, "business")) return { error: "Only the owner can record cash." };
   if (!(input.amount > 0)) return { error: "How much?" };
 
   const supabase = createAdminClient();
@@ -149,7 +149,7 @@ export async function addReceivable(input: {
   note?: string;
 }): Promise<Result> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Only shop staff can record utang." };
+  if (!can(viewer, "business")) return { error: "Only the owner can record utang." };
   if (!input.customer.trim()) return { error: "Whose is it?" };
   if (!(input.amount > 0)) return { error: "How much?" };
 
@@ -184,7 +184,7 @@ export async function collectReceivable(input: {
   toDrawer: boolean;
 }): Promise<Result> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Only shop staff can collect." };
+  if (!can(viewer, "business")) return { error: "Only the owner can collect." };
   if (!(input.amount > 0)) return { error: "How much did they pay?" };
 
   const supabase = createAdminClient();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { collectSnapshot, snapshotToJson, toCsv } from "@/lib/backup";
 import {
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
   const viewer = await getViewer();
   // Owner only, not staff. The full export is every customer's name, phone and
   // address in one file — that is the owner's to carry, not a shift's.
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "settings")) {
     return new NextResponse("Not found", { status: 404 });
   }
 

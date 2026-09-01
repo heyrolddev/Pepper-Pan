@@ -17,6 +17,7 @@ import {
   setPaybackFrom,
   startCashTracking,
 } from "@/app/admin/money/actions";
+import { hqTitle } from "@/lib/hq-theme";
 
 /**
  * The money the costing screens can't see.
@@ -120,7 +121,7 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Money</h2>
+        <h2 className={hqTitle}>Money</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           The costs that arrive whether or not anyone buys anything — and what
           the shop has to take in a day to cover them.

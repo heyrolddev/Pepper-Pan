@@ -335,3 +335,49 @@ html.intro-lock body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ------------------------------------------------------------------
+   Press feedback, everywhere
+
+   There were 199 hover states in this codebase and four active ones. Hover
+   does not exist on the counter tablet or on anyone's phone, which is where
+   most of this software is actually used — so on the devices that matter,
+   nearly every control gave no sign it had been pressed. During a service
+   that is not a polish problem: a button that looks inert gets pressed twice,
+   and two of some of these are two orders.
+
+   One rule instead of 199 edits, and it lands on real interactive elements
+   only — never on a disabled button, which must go on looking unavailable.
+
+   `scale` rather than a colour change because it reads instantly at any
+   contrast and needs no per-element decision about which colour. It is
+   compositor-only, so it costs nothing: no layout, no paint.
+
+   Every button in this app that holds an absolutely-positioned badge is
+   already `relative`, so it is the badge's containing block whether it is
+   being scaled or not — the badge shrinks with its button and stays put. That
+   was verified by measuring during a held press, not assumed; it is the exact
+   class of bug that put a "sold out" badge in the page corner once already.
+
+   Plain text links inside a paragraph are left alone, and by the rules of CSS
+   rather than by a selector: a transform does not apply to a non-replaced
+   inline element. So a link in a sentence keeps its underline and stays
+   still, while every button, pill and card gets the press.
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled):active,
+  a[href]:active,
+  summary:active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: scale(0.97);
+  }
+}
+
+/* Keyboard users get the same affordance the mouse gets. The ring is gold
+   against every ground this app uses — cream, ink and brand red — which a
+   browser default outline is not. */
+:where(button, a[href], summary, [role="button"], input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-gold-400);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}

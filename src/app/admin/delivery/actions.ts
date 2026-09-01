@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 
 export async function saveDeliverySettings(input: {
   isEnabled: boolean;
@@ -17,7 +17,7 @@ export async function saveDeliverySettings(input: {
   notice: string;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "settings")) return { error: "Only the owner can change delivery." };
 
   const nums = {
     shop_lat: input.shopLat,

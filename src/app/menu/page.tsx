@@ -3,10 +3,15 @@ import { getViewer, isStaff } from "@/lib/auth";
 import { MenuList, type Meal } from "@/components/menu-list";
 import { PageHeader } from "@/components/page-header";
 import { loadAvailability } from "@/lib/costing-server";
+import type { MenuCategory } from "@/lib/categories";
 
-async function getMenu(): Promise<{ menu: Meal[] | null; configured: boolean }> {
+async function getMenu(): Promise<{
+  menu: Meal[] | null;
+  categories: MenuCategory[];
+  configured: boolean;
+}> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return { menu: null, configured: false };
+    return { menu: null, categories: [], configured: false };
   }
 
   try {
@@ -38,6 +43,16 @@ async function getMenu(): Promise<{ menu: Meal[] | null; configured: boolean }> 
     // system can't tell apart from its own guess.
     const makeable = await loadAvailability();
 
+    // The shop's categories and their colours. A failure here is not a reason
+    // to fail the menu: `colourOf` works out a stable colour from the name
+    // when there's no row, so the worst case is the owner's chosen colours
+    // being replaced by sensible ones rather than a page that won't load.
+    const { data: catRows } = await supabase
+      .from("menu_categories")
+      .select("name, colour, sort_order")
+      .order("sort_order")
+      .order("name");
+
     const menu = (data as Meal[]).map((m) => ({
       ...m,
       avg_rating: byMeal.get(m.id) ? Number(byMeal.get(m.id)!.avg_rating) : null,
@@ -45,10 +60,10 @@ async function getMenu(): Promise<{ menu: Meal[] | null; configured: boolean }> 
       makeable: makeable.get(m.id) ?? null,
     }));
 
-    return { menu, configured: true };
+    return { menu, categories: (catRows ?? []) as MenuCategory[], configured: true };
   } catch (err) {
     console.error("Failed to load menu:", err);
-    return { menu: null, configured: true };
+    return { menu: null, categories: [], configured: true };
   }
 }
 
@@ -56,7 +71,7 @@ const emptyStateClass =
   "rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80";
 
 export default async function MenuPage() {
-  const [{ menu, configured }, viewer] = await Promise.all([
+  const [{ menu, categories, configured }, viewer] = await Promise.all([
     getMenu(),
     getViewer(),
   ]);
@@ -89,7 +104,7 @@ export default async function MenuPage() {
             up here.
           </p>
         )}
-        {configured && menu && menu.length > 0 && <MenuList meals={menu} staff={staff} />}
+        {configured && menu && menu.length > 0 && <MenuList meals={menu} staff={staff} known={categories} />}
       </section>
     </main>
   );

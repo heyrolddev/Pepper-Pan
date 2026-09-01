@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getViewer, isStaff } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { CATEGORY_COLOURS, fallbackColour } from "@/lib/categories";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 
 const BLOCKED_MESSAGE =
@@ -12,6 +14,48 @@ function revalidateMenu() {
   revalidatePath("/admin/menu");
   revalidatePath("/menu");
   revalidatePath("/");
+}
+
+
+/**
+ * Remember a category the moment a dish uses it.
+ *
+ * Typing a new name on a dish form is allowed — refusing it would mean going
+ * somewhere else to create the category before you can finish adding the dish
+ * — so the row has to appear by itself, or the name would exist on the dish
+ * and nowhere else, and show up uncoloured with no way to colour it.
+ *
+ * It gets a colour worked out from its name rather than a placeholder grey, so
+ * a new category looks like the others straight away. `fallbackColour` is the
+ * same function the screens use when a row is missing, so the colour does not
+ * change the instant this row is written.
+ */
+async function rememberCategory(name: string): Promise<void> {
+  const clean = name.trim();
+  if (!clean) return;
+  const supabase = createAdminClient();
+  // Case-insensitive: a dish saved as "chicken" should join "Chicken", not
+  // start a second category beside it. That is the exact thing this table
+  // exists to stop happening.
+  const { data: existing } = await supabase
+    .from("menu_categories")
+    .select("name")
+    .ilike("name", clean)
+    .maybeSingle();
+  if (existing) return;
+
+  const { data: last } = await supabase
+    .from("menu_categories")
+    .select("sort_order")
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  await supabase.from("menu_categories").insert({
+    name: clean,
+    colour: fallbackColour(clean),
+    sort_order: (last?.sort_order ?? 0) + 10,
+  });
 }
 
 export async function saveMeal(input: {
@@ -24,7 +68,9 @@ export async function saveMeal(input: {
   isAvailable: boolean;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what a dish is or costs." };
+  }
   if (!input.name.trim()) return { error: "Name is required." };
   if (!Number.isFinite(input.price) || input.price < 0) {
     return { error: "Enter a valid price." };
@@ -50,6 +96,7 @@ export async function saveMeal(input: {
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
+  await rememberCategory(input.category);
   revalidateMenu();
   return { error: null };
 }
@@ -61,7 +108,9 @@ export async function createMeal(input: {
   description?: string;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what a dish is or costs." };
+  }
   if (!input.name.trim()) return { error: "Name is required." };
   if (!Number.isFinite(input.price) || input.price < 0) {
     return { error: "Enter a valid price." };
@@ -83,6 +132,7 @@ export async function createMeal(input: {
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
+  await rememberCategory(input.category);
   revalidateMenu();
   return { error: null };
 }
@@ -95,7 +145,9 @@ export async function createMeal(input: {
  */
 export async function deleteMeal(id: string): Promise<{ error: string | null }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what a dish is or costs." };
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.from("meals").delete().eq("id", id).select("id");
@@ -124,7 +176,9 @@ export async function uploadMealImage(
   formData: FormData
 ): Promise<{ error: string | null; url?: string }> {
   const viewer = await getViewer();
-  if (!isStaff(viewer)) return { error: "Not allowed." };
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what a dish is or costs." };
+  }
 
   const mealId = String(formData.get("mealId") ?? "");
   if (!mealId) return { error: "Missing meal." };
@@ -150,4 +204,150 @@ export async function uploadMealImage(
 
   revalidateMenu();
   return { error: null, url: uploaded.url };
+}
+
+
+/**
+ * Sold out, and back on again.
+ *
+ * Split from `saveMeal` because they are two different powers that happened to
+ * be the same UPDATE. "We've run out of chicken" has to be sayable mid-service
+ * by whoever notices; "this now costs ₱149" is the owner's alone. Rolled into
+ * one action, the only way to let a manager do the first was to let them do
+ * the second.
+ *
+ * Written through the caller's own session rather than the service role, so
+ * the column guard in migration 0021 gets a say too: if this ever grew a
+ * second field by accident, the database would put it back.
+ */
+export async function setMealAvailability(
+  id: string,
+  isAvailable: boolean
+): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.availability")) return { error: "Not allowed." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("meals")
+    .update({ is_available: isAvailable })
+    .eq("id", id)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  revalidateMenu();
+  return { error: null };
+}
+
+/* ------------------------------------------------------------------ */
+/* Categories                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Name and colour a category.
+ *
+ * Renaming is the reason this exists at all. A category has always been free
+ * text on each dish, so "Chicken" became "chicken" the day somebody typed it
+ * in a hurry, and fixing that meant opening every dish. Here it is one edit,
+ * and the dishes are carried across with it.
+ */
+export async function saveCategory(input: {
+  /** The name as it is now. Empty when creating one. */
+  was: string;
+  name: string;
+  colour: string;
+}): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change the menu's categories." };
+  }
+
+  const name = input.name.trim();
+  if (!name) return { error: "Give the category a name." };
+  if (name.length > 40) return { error: "That name is too long for a filter pill." };
+  if (!CATEGORY_COLOURS.includes(input.colour)) {
+    return { error: "That isn't one of the colours." };
+  }
+
+  // The service role, not the caller's session: renaming rewrites the
+  // `categories` array on every dish that used the old name, and doing that
+  // one dish at a time through RLS would leave the menu half-renamed if any
+  // single row were refused.
+  const supabase = createAdminClient();
+  const was = input.was.trim();
+
+  if (was && was !== name) {
+    const { data: clash } = await supabase
+      .from("menu_categories")
+      .select("name")
+      .ilike("name", name)
+      .maybeSingle();
+    if (clash && clash.name !== was) {
+      return {
+        error: `There's already a category called "${clash.name}". Move the dishes into it instead.`,
+      };
+    }
+  }
+
+  const { error } = await supabase
+    .from("menu_categories")
+    .upsert({ name, colour: input.colour }, { onConflict: "name" });
+  if (error) return { error: error.message };
+
+  if (was && was !== name) {
+    // Carry the dishes over, then drop the old row. In that order: a dish
+    // left pointing at a name that no longer exists still renders, but it
+    // renders under the old name, which looks like the rename silently failed.
+    const { data: affected, error: readError } = await supabase
+      .from("meals")
+      .select("id, categories")
+      .contains("categories", [was]);
+    if (readError) return { error: readError.message };
+
+    for (const m of (affected ?? []) as { id: string; categories: string[] }[]) {
+      const next = (m.categories ?? []).map((c) => (c === was ? name : c));
+      const { error: moveError } = await supabase
+        .from("meals")
+        .update({ categories: next })
+        .eq("id", m.id);
+      if (moveError) return { error: moveError.message };
+    }
+    await supabase.from("menu_categories").delete().eq("name", was);
+  }
+
+  revalidateMenu();
+  return { error: null };
+}
+
+/**
+ * Forget a category.
+ *
+ * Refuses while dishes are still in it, rather than cascading. Deleting the
+ * row would not delete the dishes — they would simply reappear as an
+ * uncoloured category with the same name, which looks exactly like the delete
+ * silently failed. Better to say what is in the way.
+ */
+export async function deleteCategory(name: string): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) return { error: "Not allowed." };
+
+  const supabase = createAdminClient();
+  const { count } = await supabase
+    .from("meals")
+    .select("id", { count: "exact", head: true })
+    .contains("categories", [name]);
+
+  if ((count ?? 0) > 0) {
+    return {
+      error: `${count} dish${count === 1 ? " is" : "es are"} still in "${name}". Move them first, or rename this category instead.`,
+    };
+  }
+
+  const { error } = await supabase.from("menu_categories").delete().eq("name", name);
+  if (error) return { error: error.message };
+
+  revalidateMenu();
+  return { error: null };
 }

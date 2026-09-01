@@ -3,8 +3,15 @@
 import { useCallback } from "react";
 import { AdminSearch } from "@/components/admin-search";
 import { MealEditor, type AdminMeal } from "@/components/meal-editor";
+import type { MenuCategory } from "@/lib/categories";
 
-export function AdminMenuList({ meals }: { meals: AdminMeal[] }) {
+export function AdminMenuList({
+  meals,
+  categories,
+}: {
+  meals: AdminMeal[];
+  categories: MenuCategory[];
+}) {
   const searchText = useCallback(
     (m: AdminMeal) =>
       [
@@ -36,7 +43,7 @@ export function AdminMenuList({ meals }: { meals: AdminMeal[] }) {
           <ul className="flex flex-col gap-4">
             {filtered.map((meal) => (
               <li key={meal.id}>
-                <MealEditor meal={meal} />
+                <MealEditor meal={meal} categories={categories} />
               </li>
             ))}
           </ul>

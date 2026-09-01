@@ -151,6 +151,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             <Nav
               signedIn={!!viewer}
               staff={isStaff(viewer)}
+              role={viewer?.profile?.role ?? null}
               name={viewer?.profile?.full_name ?? null}
               activeOrders={activeOrders}
             />

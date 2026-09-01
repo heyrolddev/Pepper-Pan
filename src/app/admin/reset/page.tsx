@@ -1,6 +1,7 @@
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
 import { countResettable } from "./actions";
 import { ResetPanel } from "@/components/reset-panel";
+import { hqTitle } from "@/lib/hq-theme";
 
 // The counts have to be current — deciding what to delete against a cached
 // number from an hour ago is the one thing this screen must never do.
@@ -9,10 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function AdminResetPage() {
   const viewer = await getViewer();
 
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "settings")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
-        <h2 className="font-display text-2xl font-black text-ink-950">
+        <h2 className={hqTitle}>
           Owner only
         </h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
@@ -29,7 +30,7 @@ export default async function AdminResetPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">
+        <h2 className={hqTitle}>
           Start fresh
         </h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AdminReviewList, type AdminReview } from "@/components/admin-review-list";
 import { Stars } from "@/components/stars";
 import { displayName } from "@/components/review-list";
+import { hqTitle } from "@/lib/hq-theme";
 
 type Row = {
   id: string;
@@ -81,7 +82,7 @@ export default async function AdminReviewsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Reviews</h2>
+        <h2 className={hqTitle}>Reviews</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           Only customers who&apos;ve received a completed order can review, and
           only the dishes they actually bought — so these are real.

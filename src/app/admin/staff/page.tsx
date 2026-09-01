@@ -1,7 +1,9 @@
-import { getViewer } from "@/lib/auth";
+import { can, getViewer } from "@/lib/auth";
+import { SHOP_ROLES } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shiftLength } from "@/lib/shifts-server";
 import { StaffView, type Person, type ShiftReport } from "@/components/staff-view";
+import { hqTitle } from "@/lib/hq-theme";
 
 // Who is on shift right now is the first thing this page answers.
 export const dynamic = "force-dynamic";
@@ -16,10 +18,10 @@ type ProfileRow = {
 
 export default async function AdminStaffPage() {
   const viewer = await getViewer();
-  if (viewer?.profile?.role !== "owner") {
+  if (!can(viewer, "staff.manage")) {
     return (
       <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
-        <h2 className="font-display text-2xl font-black text-ink-950">Owner only</h2>
+        <h2 className={hqTitle}>Owner only</h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
           Who works here, what hours they kept and what they rang up is the
           owner&apos;s to see.
@@ -33,7 +35,7 @@ export default async function AdminStaffPage() {
     supabase
       .from("profiles")
       .select("id, full_name, phone, role, created_at")
-      .in("role", ["owner", "staff", "customer"])
+      .in("role", [...SHOP_ROLES, "customer"])
       .order("created_at", { ascending: false }),
     supabase
       .from("staff_shifts")
@@ -149,7 +151,7 @@ export default async function AdminStaffPage() {
       people={people}
       candidates={candidates}
       reports={reports}
-      ownerId={viewer.profile?.id ?? ""}
+      ownerId={viewer?.profile?.id ?? ""}
     />
   );
 }

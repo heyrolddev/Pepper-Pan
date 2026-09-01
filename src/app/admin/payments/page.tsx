@@ -1,9 +1,12 @@
+import { NotAllowed } from "@/components/not-allowed";
+import { can, getViewer } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getPaymentSettings } from "@/lib/payments-server";
 import { PaymentSettingsForm } from "@/components/payment-settings-form";
 import { PaymentLedger, type LedgerRow } from "@/components/payment-ledger";
 import { PaymentsTabs } from "@/components/payments-tabs";
 import { isOutstanding, moneyState } from "@/lib/payments";
+import { hqTitle } from "@/lib/hq-theme";
 
 const COLUMNS =
   "id, created_at, status, contact_name, contact_phone, revenue, delivery_fee, payment_method, payment_status, payment_plan, payment_reference, payment_receipt_url, downpayment_amount, downpayment_confirmed_at";
@@ -27,6 +30,13 @@ async function getLedger(): Promise<{ rows: LedgerRow[]; error: string | null }>
 }
 
 export default async function AdminPaymentsPage() {
+  const viewer = await getViewer();
+  // Hidden from the sidebar too, but hiding a link is not a permission:
+  // a bookmark reaches this page all the same.
+  if (!can(viewer, "settings")) {
+    return <NotAllowed>Payment settings are the owner&apos;s. Confirming a customer&apos;s GCash reference is on the order board.</NotAllowed>;
+  }
+
   const [settings, { rows, error }] = await Promise.all([
     getPaymentSettings(),
     getLedger(),
@@ -44,7 +54,7 @@ export default async function AdminPaymentsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Payments</h2>
+        <h2 className={hqTitle}>Payments</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           GCash here is manual — customers send the money in the GCash app and
           give you the reference number, and you confirm it against your own

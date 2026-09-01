@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { hqTitle } from "@/lib/hq-theme";
 
 export type BackupFile = {
   kind: string;
@@ -149,7 +150,7 @@ export function BackupPanel({
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Backup</h2>
+        <h2 className={hqTitle}>Backup</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           Your own copy of everything the shop knows, saved to this device.
         </p>

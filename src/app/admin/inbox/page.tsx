@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AdminInbox, type InboxThread } from "@/components/admin-inbox";
 import { ChatSettingsForm } from "@/components/chat-settings-form";
+import { hqTitle } from "@/lib/hq-theme";
 
 type ThreadRow = {
   id: string;
@@ -40,7 +41,7 @@ export default async function AdminInboxPage() {
   if (threadsRes.error) {
     return (
       <div className="rounded-3xl bg-gold-50 p-8 ring-1 ring-gold-400/40">
-        <h2 className="font-display text-2xl font-black text-ink-950">Inbox</h2>
+        <h2 className={hqTitle}>Inbox</h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
           Run <strong>migration 0011</strong> in the Supabase SQL Editor to
           switch on &ldquo;Ask Pepper Pan&rdquo;. Every chat a customer has with
@@ -111,7 +112,7 @@ export default async function AdminInboxPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-display text-2xl font-black text-ink-950">Inbox</h2>
+        <h2 className={hqTitle}>Inbox</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           Every &ldquo;Ask Pepper Pan&rdquo; conversation. The assistant answers
           menu, delivery and payment questions on its own, and raises a

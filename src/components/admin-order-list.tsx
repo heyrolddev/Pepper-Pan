@@ -6,7 +6,7 @@ import { OrderStatusPicker } from "@/components/order-status-picker";
 import { EtaPicker } from "@/components/eta-picker";
 import { AdminSearch } from "@/components/admin-search";
 import { PaymentVerifier } from "@/components/payment-verifier";
-import { ACTIVE_ORDER_STATUSES, STATUS_LABELS, STATUS_TONES, ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
+import { ACTIVE_ORDER_STATUSES, STATUS_LABELS, STATUS_TONES, ORDER_STATUSES, type OrderStatus, fulfillmentLabel } from "@/lib/orders";
 import { OrderBoard, type View } from "@/components/order-board";
 import { Foldable } from "@/components/foldable";
 import { moneyLine, moneyState, type PaymentMethod, type PaymentPlan, type PaymentStatus } from "@/lib/payments";
@@ -104,7 +104,8 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
             )}
           </div>
           <p className="mt-1 text-sm text-ink-800/70">
-            {o.contact_phone || p?.phone || "no number"} · {o.fulfillment} ·{" "}
+            {o.contact_phone || p?.phone || "no number"} ·{" "}
+            {fulfillmentLabel(o.fulfillment)} ·{" "}
             {formatDateTimeFull(o.created_at)}
           </p>
 
