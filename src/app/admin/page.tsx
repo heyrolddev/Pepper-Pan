@@ -10,7 +10,8 @@ import { ColumnChart, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { formatDateTime, shopToday } from "@/lib/format-date";
-import { StatTile, Delta, pesoRound } from "@/components/stat-tile";
+import { StatTile, Delta } from "@/components/stat-tile";
+import { pesoRound } from "@/lib/costing";
 import { hqTitle } from "@/lib/hq-theme";
 
 // Shop-timezone day labels, so a bar is filed under the day the shop had,
