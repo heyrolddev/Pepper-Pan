@@ -21,6 +21,8 @@ import {
   ChatSteam,
 } from "@/components/spot-art";
 import { getPublicReviews } from "@/lib/reviews-server";
+import { getLiveAnnouncements } from "@/lib/announcements-server";
+import { stripItems } from "@/lib/announcements";
 import { getSchedule } from "@/lib/hours-server";
 import { DAY_NAMES, formatClock } from "@/lib/hours";
 import { isConfigured } from "@/lib/auth";
@@ -33,6 +35,15 @@ const PHONE_HREF = "+639473533060";
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
   `Pepper Pan, ${ADDRESS}`
 )}`;
+
+/** A date the way the stall says it, in the stall's own timezone. */
+function manilaDate(iso: string) {
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(iso));
+}
 
 const IMG_BASE =
   "https://djxcwbxahmtoglinsaaz.supabase.co/storage/v1/object/public/PepperPan";
@@ -91,10 +102,22 @@ const faqs = [
   },
 ];
 
+/**
+ * Rebuilt on a timer as well as on demand.
+ *
+ * Saving a promo in HQ busts this page immediately, which covers a promo going
+ * up. It cannot cover one coming down: a promo that ends tonight has nobody
+ * saving anything at midnight, and the whole reason for the end date is that
+ * nobody has to. So the page also re-renders on its own, and the window is
+ * re-checked by the database on each of those reads.
+ */
+export const revalidate = 60;
+
 export default async function Home() {
-  const [menuCount, schedule] = await Promise.all([
+  const [menuCount, schedule, announcements] = await Promise.all([
     getMenuCount(),
     getSchedule(),
+    getLiveAnnouncements(),
   ]);
   // Real reviews when there are any; the original invitation copy otherwise,
   // so a new shop never shows an empty or invented testimonial.
@@ -104,6 +127,12 @@ export default async function Home() {
   // Enough to keep the carousel from repeating within one visit, without
   // shipping the whole review history to every homepage.
   const featured = reviews.filter((r) => r.comment && r.rating >= 4).slice(0, 8);
+
+  // A promo earns a card by having something to explain. "Giant Ji Pai" is a
+  // strip line, not an offer; "Free coffee with any rice meal, dine-in only"
+  // is the one a customer needs to read twice. Two at most — a homepage that
+  // leads with six promos is not leading with anything.
+  const featuredPromos = announcements.promos.filter((p) => p.body).slice(0, 2);
 
   const whyUsTiles = [
     {
@@ -230,18 +259,100 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Marquee ticker */}
+      {/* Marquee ticker — the shop's own words, set in HQ. Falls back to the
+          five lines it has always shown when no promo is running, because an
+          empty red band reads as a page that failed to load. */}
       <Marquee
         className="border-y-4 border-ink-950 bg-brand-600 py-4 font-display text-xl font-black uppercase tracking-tight text-cream-50 sm:text-2xl"
-        items={[
-          "Black Pepper Noodles",
-          "Made Fresh Daily",
-          "Free Coffee Dine-In",
-          "Giant Ji Pai",
-          "Taiwan Milktea",
-        ]}
+        items={stripItems(announcements.promos)}
         separator="🌶"
       />
+
+      {/* ---------------------------------------------------------- */}
+      {/* What's on — promos with something to explain, and news      */}
+      {/*                                                             */}
+      {/* Only promos that carry a description appear here. A promo   */}
+      {/* whose whole content is its title has already been read in   */}
+      {/* the strip above, and repeating it as a card would turn the  */}
+      {/* shop's standing lines into five empty boxes. The section    */}
+      {/* disappears entirely when there is nothing to say.           */}
+      {/* ---------------------------------------------------------- */}
+      {(featuredPromos.length > 0 || announcements.news.length > 0) && (
+        <section className="mx-auto max-w-6xl px-6 py-16">
+          <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
+            {featuredPromos.length > 0 && (
+              <div>
+                <Reveal className="mb-6">
+                  <SectionMark
+                    art={<Chili className="h-full w-full" />}
+                    className="text-brand-600"
+                  >
+                    On right now
+                  </SectionMark>
+                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-ink-950">
+                    What&apos;s on
+                  </h2>
+                </Reveal>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {featuredPromos.map((p, i) => (
+                    <Reveal key={p.id} delay={i * 0.06}>
+                      <article className="h-full rounded-3xl border-4 border-ink-950 bg-gold-400 p-6 shadow-[6px_6px_0_0_theme(colors.ink.950)]">
+                        <h3 className="font-display text-2xl font-black uppercase leading-tight tracking-tight text-ink-950">
+                          {p.title}
+                        </h3>
+                        <p className="mt-2 text-sm font-medium text-ink-950/75">
+                          {p.body}
+                        </p>
+                        {p.ends_at && (
+                          <p className="mt-4 text-xs font-black uppercase tracking-widest text-brand-700">
+                            Until {manilaDate(p.ends_at)}
+                          </p>
+                        )}
+                      </article>
+                    </Reveal>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {announcements.news.length > 0 && (
+              <div>
+                <Reveal className="mb-6">
+                  <SectionMark
+                    art={<ChatSteam className="h-full w-full" />}
+                    className="text-jade-600"
+                  >
+                    From the stall
+                  </SectionMark>
+                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-ink-950">
+                    News
+                  </h2>
+                </Reveal>
+                <ul className="flex flex-col gap-3">
+                  {announcements.news.map((n, i) => (
+                    <li key={n.id}>
+                      <Reveal
+                        delay={i * 0.06}
+                        className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10"
+                      >
+                        <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/40">
+                          {manilaDate(n.starts_at ?? n.created_at)}
+                        </p>
+                        <h3 className="mt-1 font-display text-lg font-black text-ink-950">
+                          {n.title}
+                        </h3>
+                        {n.body && (
+                          <p className="mt-1 text-sm text-ink-800/70">{n.body}</p>
+                        )}
+                      </Reveal>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ---------------------------------------------------------- */}
       {/* Why us                                                      */}

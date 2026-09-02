@@ -62,6 +62,8 @@ const ORDER = [
   'fixed_costs', 'assets',
   'reviews', 'chat_threads', 'chat_messages', 'faq_entries',
   'activity_log',
+  // Stands alone — nothing references it, and it references nothing.
+  'announcements',
 ];
 
 // Big tables in one statement can exceed the request size, so they go in

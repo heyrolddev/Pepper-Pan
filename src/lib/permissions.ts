@@ -35,7 +35,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_BLURBS: Record<Role, string> = {
   owner: "Everything. Prices, money, the books, and who works here.",
   manager:
-    "Runs a service without seeing the books. Can restock, cook batches, log waste and mark a dish sold out — but not change a price or see what anything earns.",
+    "Runs a service without seeing the books. Can restock, cook batches, log waste, mark a dish sold out and post promos — but not change a price or see what anything earns.",
   staff:
     "The counter and the orders. Sees what stock is left and can log waste. No prices, no costs, no takings.",
   customer: "Not shop staff — an ordinary customer account.",
@@ -71,6 +71,15 @@ export const CAPABILITIES = [
   "stock.manage",
   /** Mark a dish sold out or back on, without touching what it is or costs. */
   "menu.availability",
+  /**
+   * Write the promos and news the customers see on the homepage.
+   *
+   * A step above a shift's business — it is the shop talking in public — but
+   * it is also the kind of thing decided on the day, by whoever is running
+   * the service. Keeping it with the owner alone means the promo goes up on
+   * Thursday when it was decided on Tuesday.
+   */
+  "announcements",
   /** Add a dish, change its name, price, photo or description. */
   "menu.edit",
   /** What each DISH costs and earns — the margin. The owner's alone. */
@@ -93,7 +102,12 @@ export type Capability = (typeof CAPABILITIES)[number];
  */
 const STAFF: Capability[] = ["orders", "till", "chat", "stock.view", "waste"];
 
-const MANAGER: Capability[] = [...STAFF, "stock.manage", "menu.availability"];
+const MANAGER: Capability[] = [
+  ...STAFF,
+  "stock.manage",
+  "menu.availability",
+  "announcements",
+];
 
 // Everything. Listed by spreading the constant rather than by name, so a new
 // capability is the owner's the moment it is added — the failure that matters
