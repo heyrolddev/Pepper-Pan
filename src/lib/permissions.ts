@@ -99,6 +99,17 @@ export const CAPABILITIES = [
   "staff.manage",
   /** Hours, delivery, payment settings, alerts, backup, starting fresh. */
   "settings",
+  /**
+   * Ask HQ — the assistant that explains the system and shows the working
+   * behind any figure.
+   *
+   * Owner only, and not because the explanations are secret. To show how net
+   * profit was arrived at it has to read net profit, and to explain a dish's
+   * margin it has to read what the dish costs. Handing that to a manager
+   * would hand them the books through the back door, which is exactly what
+   * the manager role exists to avoid.
+   */
+  "assistant",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 

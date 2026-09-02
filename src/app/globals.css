@@ -69,7 +69,13 @@
 @theme inline {
   --font-display: var(--font-fraunces);
   --font-sans: var(--font-jakarta);
-  --font-mono: var(--font-geist-mono);
+  /* Geist Mono is never actually loaded. The fallback has to sit INSIDE the
+     var(), not after it: an unresolved var() invalidates the whole
+     declaration, so `var(--x), monospace` is not a fallback at all — which is
+     why every `font-mono` in the app was quietly rendering in the sans face
+     and columns of figures refused to line up. */
+  --font-mono: var(--font-geist-mono, ui-monospace), SFMono-Regular, Menlo,
+    Consolas, "Liberation Mono", monospace;
 }
 
 :root {

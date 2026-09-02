@@ -53,6 +53,10 @@ const GROUPS: Group[] = [
     title: "Every day",
     items: [
       { href: "/admin", label: "Today", icon: "◉" },
+      // First row after Today, because the moment somebody needs it is the
+      // moment they are looking at a number they don't recognise — and that
+      // happens on the screen they open first.
+      { href: "/admin/ask", label: "Ask HQ", icon: "✽", needs: "assistant" },
       { href: "/admin/counter", label: "Counter", icon: "◫", needs: "till" },
       { href: "/admin/orders", label: "Orders", icon: "▤", badge: "orders", needs: "orders" },
       // Staff lose this one: it is where prices, photos and descriptions are
