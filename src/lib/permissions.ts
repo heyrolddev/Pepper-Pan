@@ -80,6 +80,15 @@ export const CAPABILITIES = [
    * Thursday when it was decided on Tuesday.
    */
   "announcements",
+  /**
+   * Write the answers — the ones Ask Pepper Pan gives, and the ones printed
+   * on the homepage, which since migration 0026 are the same answers.
+   *
+   * Split out of `chat` rather than sharing it. Replying to one customer in
+   * the inbox is a shift's work and stays with staff; writing the answer the
+   * shop gives everybody, forever, in public, is not.
+   */
+  "faq",
   /** Add a dish, change its name, price, photo or description. */
   "menu.edit",
   /** What each DISH costs and earns — the margin. The owner's alone. */
@@ -107,6 +116,7 @@ const MANAGER: Capability[] = [
   "stock.manage",
   "menu.availability",
   "announcements",
+  "faq",
 ];
 
 // Everything. Listed by spreading the constant rather than by name, so a new

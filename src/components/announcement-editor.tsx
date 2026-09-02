@@ -9,16 +9,19 @@ import {
   reorderAnnouncement,
 } from "@/app/admin/promos/actions";
 import {
+  isSlotKind,
   KIND_ADD,
   KIND_BLURB,
   KIND_NEW_TITLE,
   KIND_PLURAL,
   liveStateOf,
+  queuedBehind,
   STATE_TONE,
   stripItems,
   type Announcement,
   type AnnouncementKind,
 } from "@/lib/announcements";
+import { MediaField } from "@/components/media-field";
 
 /**
  * Promos and news, from the shop's own account.
@@ -35,11 +38,13 @@ import {
  * how you end up with seven promos scrolling past nobody can read.
  */
 export function AnnouncementEditor({ rows }: { rows: Announcement[] }) {
-  const [editing, setEditing] = useState<Announcement | "new-promo" | "new-news" | null>(
+  const [editing, setEditing] = useState<Announcement | `new-${AnnouncementKind}` | null>(
     null
   );
   const promos = rows.filter((r) => r.kind === "promo");
   const news = rows.filter((r) => r.kind === "news");
+  const dineIn = rows.filter((r) => r.kind === "dine_in");
+  const comingSoon = rows.filter((r) => r.kind === "coming_soon");
   const livePromos = promos.filter((p) => liveStateOf(p) === "live");
 
   return (
@@ -65,13 +70,29 @@ export function AnnouncementEditor({ rows }: { rows: Announcement[] }) {
       <Section
         kind="promo"
         rows={promos}
+        all={rows}
         onAdd={() => setEditing("new-promo")}
         onEdit={setEditing}
       />
       <Section
         kind="news"
         rows={news}
+        all={rows}
         onAdd={() => setEditing("new-news")}
+        onEdit={setEditing}
+      />
+      <Section
+        kind="dine_in"
+        rows={dineIn}
+        all={rows}
+        onAdd={() => setEditing("new-dine_in")}
+        onEdit={setEditing}
+      />
+      <Section
+        kind="coming_soon"
+        rows={comingSoon}
+        all={rows}
+        onAdd={() => setEditing("new-coming_soon")}
         onEdit={setEditing}
       />
 
@@ -81,9 +102,7 @@ export function AnnouncementEditor({ rows }: { rows: Announcement[] }) {
           existing={typeof editing === "string" ? null : editing}
           kind={
             typeof editing === "string"
-              ? editing === "new-promo"
-                ? "promo"
-                : "news"
+              ? (editing.slice(4) as AnnouncementKind)
               : editing.kind
           }
           onDone={() => setEditing(null)}
@@ -96,11 +115,13 @@ export function AnnouncementEditor({ rows }: { rows: Announcement[] }) {
 function Section({
   kind,
   rows,
+  all,
   onAdd,
   onEdit,
 }: {
   kind: AnnouncementKind;
   rows: Announcement[];
+  all: Announcement[];
   onAdd: () => void;
   onEdit: (a: Announcement) => void;
 }) {
@@ -131,6 +152,7 @@ function Section({
             <Row
               key={a.id}
               row={a}
+              queued={queuedBehind(a, all)}
               first={i === 0}
               last={i === rows.length - 1}
               onEdit={() => onEdit(a)}
@@ -144,11 +166,13 @@ function Section({
 
 function Row({
   row,
+  queued,
   first,
   last,
   onEdit,
 }: {
   row: Announcement;
+  queued: boolean;
   first: boolean;
   last: boolean;
   onEdit: () => void;
@@ -178,13 +202,27 @@ function Row({
           word per line and made the list unreadable on the device the owner
           actually runs the shop from. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        {(row.image_url || row.video_url) && (
+          <div className="h-16 w-24 shrink-0 overflow-hidden rounded-xl bg-ink-950/5 ring-1 ring-ink-950/10">
+            {row.video_url ? (
+              <video src={row.video_url} className="h-full w-full object-cover" muted preload="metadata" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={row.image_url!} alt="" className="h-full w-full object-cover" />
+            )}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-ink-950">{row.title}</span>
             <span
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide ${tone.chip}`}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide ${
+                queued ? "bg-ink-950/10 text-ink-800/60" : tone.chip
+              }`}
             >
-              {tone.label}
+              {/* The band has room for one. Saying "on the homepage" about the
+                  second one would be a lie the owner only catches by looking. */}
+              {queued ? "Next up" : tone.label}
             </span>
           </p>
           {row.body && (
@@ -197,9 +235,10 @@ function Row({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:justify-end">
-          {/* Order only matters for the strip, where it decides what scrolls
-              past first. News is shown newest-first and has no order to set. */}
-          {row.kind === "promo" && (
+          {/* Order matters for the strip, where it decides what scrolls past
+              first, and for the band, where it decides which one of these is
+              the one shown. News is newest-first and has no order to set. */}
+          {(row.kind === "promo" || isSlotKind(row.kind)) && (
             <>
               <button
                 onClick={() => run(() => reorderAnnouncement(row.id, -1))}
@@ -264,6 +303,20 @@ function Window({ row }: { row: Announcement }) {
   );
 }
 
+const PLACEHOLDER_TITLE: Record<AnnouncementKind, string> = {
+  promo: "e.g. Free coffee when you dine in",
+  news: "e.g. Closed 5 Sept",
+  dine_in: "e.g. Free coffee when you dine in ☕",
+  coming_soon: "e.g. Chicken Wings & Chicken Pops 🔥",
+};
+
+const PLACEHOLDER_BODY: Record<AnnouncementKind, string> = {
+  promo: "e.g. One free hot coffee with any rice meal, eaten at the stall.",
+  news: "e.g. We're closed on the 5th for a private event. Back on the 6th.",
+  dine_in: "e.g. Any hot coffee, with any rice meal, eaten at the stall.",
+  coming_soon: "e.g. Both landing before the end of the month.",
+};
+
 const field =
   "w-full rounded-xl border-2 border-ink-950/10 bg-cream-100 px-4 py-2.5 text-ink-950 outline-none transition-colors focus:border-gold-400";
 
@@ -289,6 +342,10 @@ function Editor({
   const [startsOn, setStartsOn] = useState(asDate(existing?.starts_at ?? null));
   const [endsOn, setEndsOn] = useState(asDate(existing?.ends_at ?? null));
   const [isActive, setIsActive] = useState(existing?.is_active ?? true);
+  const [media, setMedia] = useState({
+    imageUrl: existing?.image_url ?? "",
+    videoUrl: existing?.video_url ?? "",
+  });
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -303,6 +360,8 @@ function Editor({
         startsOn,
         endsOn,
         isActive,
+        imageUrl: media.imageUrl,
+        videoUrl: media.videoUrl,
       });
       if (r.error) return setError(r.error);
       router.refresh();
@@ -332,42 +391,45 @@ function Editor({
         <div className="mt-5 flex flex-col gap-4">
           <label>
             <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-ink-800/40">
-              {kind === "promo" ? "The line customers read" : "Headline"}
+              {kind === "news" ? "Headline" : "The line customers read"}
             </span>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               autoFocus
-              maxLength={kind === "promo" ? 60 : 200}
-              placeholder={
-                kind === "promo" ? "e.g. Free coffee when you dine in" : "e.g. Closed 5 Sept"
-              }
+              maxLength={kind === "news" ? 200 : 60}
+              placeholder={PLACEHOLDER_TITLE[kind]}
               className={field}
             />
-            {kind === "promo" && (
+            {kind !== "news" && (
               <span className="mt-1 block text-xs text-ink-800/45">
-                {title.length}/60 — it scrolls past, so shorter reads better.
+                {title.length}/60 —{" "}
+                {kind === "promo"
+                  ? "it scrolls past, so shorter reads better."
+                  : "it is set large on the page, so shorter reads better."}
               </span>
             )}
           </label>
 
           <label>
             <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-ink-800/40">
-              {kind === "promo" ? "The detail (optional)" : "What happened"}
+              {kind === "news" ? "What happened" : "The detail (optional)"}
             </span>
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={3}
               maxLength={500}
-              placeholder={
-                kind === "promo"
-                  ? "e.g. One free hot coffee with any rice meal, eaten at the stall."
-                  : "e.g. We're closed on the 5th for a private event. Back on the 6th."
-              }
+              placeholder={PLACEHOLDER_BODY[kind]}
               className={field}
             />
           </label>
+
+          <MediaField
+            imageUrl={media.imageUrl}
+            videoUrl={media.videoUrl}
+            onChange={setMedia}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <label>

@@ -153,8 +153,13 @@ export async function teachAnswer(input: {
   answer: string;
   triggers: string;
   threadId?: string;
+  /** Also print it in the homepage's FAQ. */
+  showOnSite?: boolean;
 }): Promise<{ error: string | null }> {
-  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
+  // "faq", not "chat": replying to one customer in the inbox is a shift's
+  // work; writing the answer the shop gives everybody, in public and on its
+  // own homepage, is the owner's and the manager's.
+  if (!can(await getViewer(), "faq")) return { error: "Not allowed." };
   const question = input.question.trim().slice(0, 300);
   const answer = input.answer.trim().slice(0, 2000);
   if (!question) return { error: "What was the question?" };
@@ -171,7 +176,7 @@ export async function teachAnswer(input: {
   const supabase = await createClient();
   const { error } = await supabase
     .from("faq_entries")
-    .insert({ question, answer, triggers });
+    .insert({ question, answer, triggers, show_on_site: input.showOnSite ?? false });
 
   if (error) {
     return {
@@ -187,6 +192,7 @@ export async function teachAnswer(input: {
   }
 
   revalidatePath("/admin/faq");
+  revalidatePath("/");
   revalidatePath("/admin/inbox");
   return { error: null };
 }
@@ -199,8 +205,10 @@ export async function updateFaqEntry(input: {
   triggers: string;
   isActive: boolean;
   priority: number;
+  showOnSite: boolean;
+  siteOrder: number;
 }): Promise<{ error: string | null }> {
-  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
+  if (!can(await getViewer(), "faq")) return { error: "Not allowed." };
   const question = input.question.trim().slice(0, 300);
   const answer = input.answer.trim().slice(0, 2000);
   if (!question || !answer) return { error: "A question and an answer are both needed." };
@@ -219,6 +227,8 @@ export async function updateFaqEntry(input: {
       triggers,
       is_active: input.isActive,
       priority: Math.max(0, Math.min(99, Math.round(input.priority) || 0)),
+      show_on_site: input.showOnSite,
+      site_order: Math.max(0, Math.min(999, Math.round(input.siteOrder) || 0)),
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.id)
@@ -228,14 +238,18 @@ export async function updateFaqEntry(input: {
   if (!data || data.length === 0) return { error: "That answer couldn't be updated." };
 
   revalidatePath("/admin/faq");
+  // The homepage prints these too, and it is statically rendered — without
+  // this a corrected answer is live in the chatbot and still wrong on the page.
+  revalidatePath("/");
   return { error: null };
 }
 
 export async function deleteFaqEntry(id: string): Promise<{ error: string | null }> {
-  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
+  if (!can(await getViewer(), "faq")) return { error: "Not allowed." };
   const supabase = await createClient();
   const { error } = await supabase.from("faq_entries").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/admin/faq");
+  revalidatePath("/");
   return { error: null };
 }

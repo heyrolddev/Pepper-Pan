@@ -23,6 +23,9 @@ import {
 } from "@/components/spot-art";
 import { getPublicReviews } from "@/lib/reviews-server";
 import { getLiveAnnouncements } from "@/lib/announcements-server";
+import { getSiteFaqs } from "@/lib/faq-site-server";
+import { AnnouncementMedia } from "@/components/announcement-media";
+import { hasDetail, hasMedia } from "@/lib/announcements";
 import { stripItems } from "@/lib/announcements";
 import { getSchedule } from "@/lib/hours-server";
 import { DAY_NAMES, formatClock } from "@/lib/hours";
@@ -77,31 +80,6 @@ async function getMenuCount(): Promise<number | null> {
   }
 }
 
-const faqs = [
-  {
-    question: "How do I place an order?",
-    answer:
-      "Browse the menu, add items to your cart, sign in with your email (we send a one-time link — no password needed), then check out.",
-  },
-  {
-    question: "What payment methods do you accept?",
-    answer: "Cash on pickup or delivery for now — online payment is coming soon.",
-  },
-  {
-    question: "Do you offer delivery?",
-    answer:
-      "Yes — choose delivery at checkout and leave your address in the notes. Ask us about delivery areas and fees.",
-  },
-  {
-    question: "Can I customize my order?",
-    answer: "Leave a note at checkout and we'll do our best to accommodate.",
-  },
-  {
-    question: "Do I need to create an account?",
-    answer:
-      "Just an email address — we'll send you a one-time sign-in link, no password to remember.",
-  },
-];
 
 /**
  * Rebuilt on a timer as well as on demand.
@@ -115,10 +93,11 @@ const faqs = [
 export const revalidate = 60;
 
 export default async function Home() {
-  const [menuCount, schedule, announcements] = await Promise.all([
+  const [menuCount, schedule, announcements, siteFaqs] = await Promise.all([
     getMenuCount(),
     getSchedule(),
     getLiveAnnouncements(),
+    getSiteFaqs(),
   ]);
   // Real reviews when there are any; the original invitation copy otherwise,
   // so a new shop never shows an empty or invented testimonial.
@@ -129,11 +108,12 @@ export default async function Home() {
   // shipping the whole review history to every homepage.
   const featured = reviews.filter((r) => r.comment && r.rating >= 4).slice(0, 8);
 
-  // A promo earns a card by having something to explain. "Giant Ji Pai" is a
-  // strip line, not an offer; "Free coffee with any rice meal, dine-in only"
-  // is the one a customer needs to read twice. Two at most — a homepage that
-  // leads with six promos is not leading with anything.
-  const featuredPromos = announcements.promos.filter((p) => p.body).slice(0, 2);
+  // A promo earns a card by having something to show beyond its title — a
+  // description or a picture. "Giant Ji Pai" is a strip line, not an offer;
+  // "Free coffee with any rice meal, dine-in only" is the one a customer needs
+  // to read twice. Two at most — a homepage that leads with six promos is not
+  // leading with anything.
+  const featuredPromos = announcements.promos.filter(hasDetail).slice(0, 2);
 
   const whyUsTiles = [
     {
@@ -285,11 +265,12 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {/* What's on — promos with something to explain, and news      */}
       {/*                                                             */}
-      {/* Only promos that carry a description appear here. A promo   */}
-      {/* whose whole content is its title has already been read in   */}
-      {/* the strip above, and repeating it as a card would turn the  */}
-      {/* shop's standing lines into five empty boxes. The section    */}
-      {/* disappears entirely when there is nothing to say.           */}
+      {/* Only promos with something more to say than their title —   */}
+      {/* a description or a picture. A promo whose whole content is  */}
+      {/* its title has already been read in the strip above, and     */}
+      {/* repeating it as a card would turn the shop's standing lines */}
+      {/* into five empty boxes. The section disappears entirely when */}
+      {/* there is nothing to show.                                   */}
       {/* ---------------------------------------------------------- */}
       {(featuredPromos.length > 0 || announcements.news.length > 0) && (
         <section className="mx-auto max-w-6xl px-6 py-16">
@@ -309,20 +290,34 @@ export default async function Home() {
                 </Reveal>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {featuredPromos.map((p, i) => (
-                    <Reveal key={p.id} delay={i * 0.06}>
-                      <article className="h-full rounded-3xl border-4 border-ink-950 bg-gold-400 p-6 shadow-[6px_6px_0_0_theme(colors.ink.950)]">
-                        <h3 className="font-display text-2xl font-black uppercase leading-tight tracking-tight text-ink-950">
-                          {p.title}
-                        </h3>
-                        <p className="mt-2 text-sm font-medium text-ink-950/75">
-                          {p.body}
-                        </p>
-                        {p.ends_at && (
-                          <p className="mt-4 text-xs font-black uppercase tracking-widest text-brand-700">
-                            Until {manilaDate(p.ends_at)}
-                          </p>
+                    <Reveal key={p.id} delay={i * 0.06} className="h-full">
+                      {/* The whole card is the link. A "read more" the size of
+                          two words, inside a card that is itself the thing
+                          under the thumb, is a link most people never hit. */}
+                      <Link
+                        href={`/news/${p.id}`}
+                        className="group flex h-full flex-col overflow-hidden rounded-3xl border-4 border-ink-950 bg-gold-400 shadow-[6px_6px_0_0_theme(colors.ink.950)] transition-transform hover:-translate-y-1"
+                      >
+                        {hasMedia(p) && (
+                          <AnnouncementMedia
+                            row={p}
+                            className="h-40 w-full bg-ink-950 object-cover"
+                          />
                         )}
-                      </article>
+                        <div className="flex flex-1 flex-col p-6">
+                          <h3 className="font-display text-2xl font-black uppercase leading-tight tracking-tight text-ink-950">
+                            {p.title}
+                          </h3>
+                          {p.body && (
+                            <p className="mt-2 line-clamp-3 text-sm font-medium text-ink-950/75">
+                              {p.body}
+                            </p>
+                          )}
+                          <p className="mt-auto pt-4 text-xs font-black uppercase tracking-widest text-brand-700 group-hover:underline">
+                            {p.ends_at ? `Until ${manilaDate(p.ends_at)} · ` : ""}Read more →
+                          </p>
+                        </div>
+                      </Link>
                     </Reveal>
                   ))}
                 </div>
@@ -345,23 +340,41 @@ export default async function Home() {
                 <ul className="flex flex-col gap-3">
                   {announcements.news.map((n, i) => (
                     <li key={n.id}>
-                      <Reveal
-                        delay={i * 0.06}
-                        className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10"
-                      >
-                        <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/40">
-                          {manilaDate(n.starts_at ?? n.created_at)}
-                        </p>
-                        <h3 className="mt-1 font-display text-lg font-black text-ink-950">
-                          {n.title}
-                        </h3>
-                        {n.body && (
-                          <p className="mt-1 text-sm text-ink-800/70">{n.body}</p>
-                        )}
+                      <Reveal delay={i * 0.06}>
+                        <Link
+                          href={`/news/${n.id}`}
+                          className="group flex gap-4 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10 transition-colors hover:bg-gold-50 hover:ring-gold-400"
+                        >
+                          {hasMedia(n) && (
+                            <AnnouncementMedia
+                              row={n}
+                              className="h-16 w-16 shrink-0 rounded-xl bg-ink-950 object-cover"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/40">
+                              {manilaDate(n.starts_at ?? n.created_at)}
+                            </p>
+                            <h3 className="mt-1 font-display text-lg font-black text-ink-950 group-hover:underline">
+                              {n.title}
+                            </h3>
+                            {n.body && (
+                              <p className="mt-1 line-clamp-2 text-sm text-ink-800/70">
+                                {n.body}
+                              </p>
+                            )}
+                          </div>
+                        </Link>
                       </Reveal>
                     </li>
                   ))}
                 </ul>
+                <Link
+                  href="/news"
+                  className="mt-4 inline-block text-sm font-black uppercase tracking-widest text-brand-600 hover:underline"
+                >
+                  All news &amp; promos →
+                </Link>
               </div>
             )}
           </div>
@@ -413,31 +426,74 @@ export default async function Home() {
       </section>
 
       {/* ---------------------------------------------------------- */}
-      {/* Promo                                                       */}
+      {/* The gold band: dine-in special, and what's coming           */}
+      {/*                                                             */}
+      {/* Both lines were hardcoded here for months, which meant the  */}
+      {/* free coffee could not be ended and the chicken wings could  */}
+      {/* not arrive without a deploy. Both are rows now, written in  */}
+      {/* HQ, and the band disappears when the shop has neither to    */}
+      {/* say — an empty gold stripe is worse than no stripe.         */}
       {/* ---------------------------------------------------------- */}
-      <section className="grain relative overflow-hidden bg-gold-400 py-16">
-        <div className="relative mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 sm:flex-row sm:items-center">
-          <Reveal direction="right">
-            <span className="text-xs font-bold uppercase tracking-widest text-brand-700">
-              Dine-in special
-            </span>
-            <p className="mt-2 font-display text-3xl font-black leading-tight text-ink-950 sm:text-4xl">
-              Free coffee when you dine in ☕
-            </p>
-            <p className="mt-2 font-semibold text-ink-800">
-              Coming soon: Chicken Wings &amp; Chicken Pops 🔥
-            </p>
-          </Reveal>
-          <Reveal direction="left" delay={0.1}>
-            <Link
-              href="/menu"
-              className="inline-block whitespace-nowrap rounded-full bg-ink-950 px-8 py-4 font-bold text-gold-400 transition-transform hover:scale-105"
-            >
-              Order now →
-            </Link>
-          </Reveal>
-        </div>
-      </section>
+      {(announcements.dineIn || announcements.comingSoon) && (
+        <section className="grain relative overflow-hidden bg-gold-400 py-16">
+          <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 px-6 sm:flex-row sm:items-center sm:justify-between">
+            <Reveal direction="right" className="min-w-0 flex-1">
+              {announcements.dineIn && (
+                <>
+                  <span className="text-xs font-bold uppercase tracking-widest text-brand-700">
+                    Dine-in special
+                  </span>
+                  <p className="mt-2 font-display text-3xl font-black leading-tight text-ink-950 sm:text-4xl">
+                    {announcements.dineIn.title}
+                  </p>
+                  {announcements.dineIn.body && (
+                    <p className="mt-2 max-w-xl text-ink-800/80">
+                      {announcements.dineIn.body}
+                    </p>
+                  )}
+                </>
+              )}
+
+              {announcements.comingSoon && (
+                <div className="mt-3 flex items-center gap-3">
+                  {hasMedia(announcements.comingSoon) && (
+                    <AnnouncementMedia
+                      row={announcements.comingSoon}
+                      className="h-12 w-12 shrink-0 rounded-xl border-2 border-ink-950 bg-ink-950 object-cover"
+                    />
+                  )}
+                  <p className="font-semibold text-ink-800">
+                    Coming soon: {announcements.comingSoon.title}
+                    {announcements.comingSoon.body && (
+                      <span className="block text-sm font-medium text-ink-800/70">
+                        {announcements.comingSoon.body}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
+            </Reveal>
+
+            {announcements.dineIn && hasMedia(announcements.dineIn) && (
+              <Reveal delay={0.05} className="w-full sm:w-56 lg:w-64">
+                <AnnouncementMedia
+                  row={announcements.dineIn}
+                  className="aspect-[4/3] w-full rounded-3xl border-4 border-ink-950 bg-ink-950 object-cover shadow-[6px_6px_0_0_theme(colors.ink.950)]"
+                />
+              </Reveal>
+            )}
+
+            <Reveal direction="left" delay={0.1} className="shrink-0">
+              <Link
+                href="/menu"
+                className="inline-block whitespace-nowrap rounded-full bg-ink-950 px-8 py-4 font-bold text-gold-400 transition-transform hover:scale-105"
+              >
+                Order now →
+              </Link>
+            </Reveal>
+          </div>
+        </section>
+      )}
 
       {/* ---------------------------------------------------------- */}
       {/* Story                                                       */}
@@ -727,7 +783,7 @@ export default async function Home() {
           </h2>
         </Reveal>
         <Reveal delay={0.1}>
-          <FaqAccordion items={faqs} />
+          <FaqAccordion items={siteFaqs} />
         </Reveal>
       </section>
 

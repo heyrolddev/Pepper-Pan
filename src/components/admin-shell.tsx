@@ -90,7 +90,7 @@ const GROUPS: Group[] = [
       { href: "/admin/reviews", label: "Reviews", icon: "★", needs: "chat" },
       { href: "/admin/customers", label: "Customers", icon: "◑", needs: "business" },
       { href: "/admin/staff", label: "Staff", icon: "◔", needs: "staff.manage" },
-      { href: "/admin/faq", label: "Answers", icon: "?", needs: "chat" },
+      { href: "/admin/faq", label: "Answers", icon: "?", needs: "faq" },
     ],
   },
   {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AnnouncementKind } from "@/lib/announcements";
+import { MEDIA_BUCKET, MEDIA_PREFIX, checkMedia, storagePathOf, type MediaKind } from "@/lib/media";
 
 type Result = { error: string | null };
 
@@ -19,6 +20,9 @@ type Result = { error: string | null };
  */
 function revalidatePublic() {
   revalidatePath("/");
+  // The index is statically rendered too. Missing it here meant a promo went
+  // up on the homepage and was absent from the page the homepage links to.
+  revalidatePath("/news");
   revalidatePath("/admin/promos");
 }
 
@@ -37,13 +41,16 @@ export async function saveAnnouncement(input: {
   startsOn: string;
   endsOn: string;
   isActive: boolean;
+  /** Already uploaded, or empty for none. */
+  imageUrl: string;
+  videoUrl: string;
 }): Promise<Result> {
   const viewer = await mayPost();
   if (!viewer) return { error: "Only the owner or a manager can post these." };
 
   const title = input.title.trim();
   if (!title) return { error: "Give it a title — that's the line customers read." };
-  if (input.kind === "promo" && title.length > 60) {
+  if ((input.kind === "promo" || input.kind === "coming_soon") && title.length > 60) {
     return {
       error: "That's long for the scrolling strip. Keep a promo under about 60 characters, and put the detail in the description.",
     };
@@ -69,7 +76,26 @@ export async function saveAnnouncement(input: {
     starts_at: startsAt,
     ends_at: endsAt,
     is_active: input.isActive,
+    image_url: input.imageUrl || null,
+    video_url: input.videoUrl || null,
   };
+
+  // A file the row no longer points at is a file nobody can ever reach again.
+  // Cleared here rather than by a sweep later, because "later" is a job
+  // nobody scheduled and storage is billed by the gigabyte.
+  if (input.id) {
+    const { data: before } = await supabase
+      .from("announcements")
+      .select("image_url, video_url")
+      .eq("id", input.id)
+      .maybeSingle();
+    for (const [was, now] of [
+      [before?.image_url, row.image_url],
+      [before?.video_url, row.video_url],
+    ] as const) {
+      if (was && was !== now) await removeStored(supabase, was);
+    }
+  }
 
   const { error } = input.id
     ? await supabase.from("announcements").update(row).eq("id", input.id)
@@ -116,8 +142,21 @@ export async function toggleAnnouncement(id: number, isActive: boolean): Promise
  */
 export async function deleteAnnouncement(id: number): Promise<Result> {
   if (!(await mayPost())) return { error: "Not allowed." };
-  const { error } = await createAdminClient().from("announcements").delete().eq("id", id);
+  const supabase = createAdminClient();
+
+  // Read the media before the row goes, or the only pointer to those files
+  // goes with it.
+  const { data: row } = await supabase
+    .from("announcements")
+    .select("image_url, video_url")
+    .eq("id", id)
+    .maybeSingle();
+
+  const { error } = await supabase.from("announcements").delete().eq("id", id);
   if (error) return { error: error.message };
+  for (const url of [row?.image_url, row?.video_url]) {
+    if (url) await removeStored(supabase, url);
+  }
   revalidatePublic();
   return { error: null };
 }
@@ -158,5 +197,79 @@ export async function reorderAnnouncement(id: number, direction: -1 | 1): Promis
     .eq("id", neighbour.id);
 
   revalidatePublic();
+  return { error: null };
+}
+
+type Supabase = ReturnType<typeof createAdminClient>;
+
+/**
+ * Delete one uploaded file, if it is one of ours.
+ *
+ * Never throws and never reports. A file left behind costs a few kilobytes; a
+ * save that fails because the tidy-up failed costs the owner their copy.
+ */
+async function removeStored(supabase: Supabase, publicUrl: string) {
+  const path = storagePathOf(publicUrl);
+  if (!path) return;
+  try {
+    await supabase.storage.from(MEDIA_BUCKET).remove([path]);
+  } catch {
+    // Nothing to tell the owner. The row is already right.
+  }
+}
+
+/**
+ * Take a photo or a video and give back a URL the page can use.
+ *
+ * Uploaded through the service role, so the storage bucket never has to be
+ * opened to browsers — a public write policy on the shop's only image bucket
+ * would let anyone fill it.
+ *
+ * The type and size are checked here as well as in the browser. The browser
+ * check is there so nobody waits two minutes to be told no; this one is the
+ * one that actually holds, because a request does not have to come from our
+ * own form.
+ */
+export async function uploadMedia(
+  formData: FormData
+): Promise<{ ok: true; url: string; kind: MediaKind } | { ok: false; error: string }> {
+  if (!(await mayPost())) {
+    return { ok: false, error: "Only the owner or a manager can add photos here." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "No file came through. Try picking it again." };
+  }
+
+  const checked = checkMedia(file.type, file.size);
+  if (!checked.ok) return { ok: false, error: checked.error };
+
+  const supabase = createAdminClient();
+  const path = `${MEDIA_PREFIX}/${crypto.randomUUID()}.${checked.ext}`;
+
+  try {
+    const { error } = await supabase.storage
+      .from(MEDIA_BUCKET)
+      .upload(path, await file.arrayBuffer(), { contentType: file.type, upsert: false });
+
+    if (error) {
+      // Named, because the two likely causes have completely different fixes:
+      // a bucket that does not exist is a setup problem, and a file over the
+      // project's own limit is a "make it smaller" problem.
+      return { ok: false, error: `Upload failed: ${error.message}` };
+    }
+
+    const { data } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+    return { ok: true, url: data.publicUrl, kind: checked.kind };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Drop a file that was uploaded but never saved onto a row. */
+export async function discardUpload(publicUrl: string): Promise<Result> {
+  if (!(await mayPost())) return { error: "Not allowed." };
+  await removeStored(createAdminClient(), publicUrl);
   return { error: null };
 }
