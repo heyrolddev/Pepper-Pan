@@ -83,6 +83,10 @@ const TABLES = [
   "delivery_settings",
   "payment_settings",
   "chat_settings",
+  // The shop's own copy — promos and news. Not a record of anything that
+  // happened, but it is writing the owner did, and losing it means writing
+  // it again.
+  "announcements",
   // Deliberately not here: push_subscriptions. Those are browser tokens that
   // expire on their own and re-register the next time someone opens the site,
   // so restoring them would restore a list of dead addresses.

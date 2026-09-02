@@ -60,6 +60,10 @@ const GROUPS: Group[] = [
       // screen itself is what hides the price fields from them.
       { href: "/admin/menu", label: "Menu", icon: "☰", needs: "menu.availability" },
       { href: "/admin/inbox", label: "Inbox", icon: "✉", badge: "inbox", needs: "chat" },
+      // Sits beside Menu because it is the same job seen from outside: what
+      // the shopfront says. A manager running a service is exactly who decides
+      // a promo goes up today, so it is not held back to the owner.
+      { href: "/admin/promos", label: "Promos & news", icon: "✦", needs: "announcements" },
     ],
   },
   {
