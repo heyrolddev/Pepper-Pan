@@ -6,6 +6,8 @@ import { recordWalkInSale } from "@/app/admin/counter/actions";
 import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
 import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
+import { ReceiptPrinter } from "@/components/receipt-printer";
+import type { Receipt } from "@/lib/receipt";
 
 export type CounterMeal = {
   id: string;
@@ -61,7 +63,7 @@ export function CounterTill({
   const [toKitchen, setToKitchen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ total: number; dineIn: boolean } | null>(null);
+  const [done, setDone] = useState<{ total: number; dineIn: boolean; receipt: Receipt } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const byId = useMemo(() => new Map(meals.map((m) => [m.id, m])), [meals]);
@@ -124,6 +126,14 @@ export function CounterTill({
       // Captured before the reset below, so the confirmation names the sale
       // that was actually recorded rather than the state of the next one.
       const wasDineIn = dineIn;
+      const wasMethod = method;
+      const wasReference = reference;
+      const wasTendered = Number(tendered) || 0;
+      const soldLines = lines.map((l) => ({
+        name: l.meal.name,
+        qty: l.qty,
+        price: l.meal.price,
+      }));
       const result = await recordWalkInSale({
         lines: lines.map((l) => ({ mealId: l.meal.id, qty: l.qty })),
         method,
@@ -142,7 +152,31 @@ export function CounterTill({
       // Cleared straight away: the next customer is already at the counter,
       // and a till that needs dismissing before it can take the next order is
       // a till that gets left on the last one.
-      setDone({ total: result.total, dineIn: wasDineIn });
+      // The receipt is built from what was on screen a moment ago, not from a
+      // second read of the order — the till already knows every line, its
+      // price and the cash that changed hands, and going back to the database
+      // for it would be a round trip with a customer waiting.
+      setDone({
+        total: result.total,
+        dineIn: wasDineIn,
+        receipt: {
+          // The last four of the order id: short enough to say out loud,
+          // and it matches what the order is filed under.
+          ref: result.orderId.slice(-4).toUpperCase(),
+          at: new Date(),
+          lines: soldLines,
+          total: result.total,
+          dineIn: wasDineIn,
+          method: wasMethod,
+          tendered: wasMethod === "cash" && wasTendered > 0 ? wasTendered : null,
+          change:
+            wasMethod === "cash" && wasTendered >= result.total
+              ? wasTendered - result.total
+              : null,
+          reference: wasMethod === "gcash" ? wasReference || null : null,
+          servedBy: staffName || null,
+        },
+      });
       // Back to take-out for the next customer. A payment method left on the
       // last choice is harmless; a "dine in" left on is a box, a cup and a bag
       // that quietly never come off the count, every sale, until somebody
@@ -183,17 +217,32 @@ export function CounterTill({
       )}
 
       {done && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-jade-600 px-5 py-4 text-cream-50">
-          <p className="font-display text-lg font-black">
-            Recorded {peso(done.total, 0)} {done.dineIn ? "dine in" : "take out"}
-            {toKitchen ? " — it's on the kitchen board." : " — in the day's takings."}
-          </p>
-          <button
-            onClick={() => setDone(null)}
-            className="rounded-full bg-ink-950/25 px-4 py-1.5 text-xs font-black uppercase tracking-wide"
-          >
-            Next customer
-          </button>
+        <div className="overflow-hidden rounded-2xl ring-1 ring-ink-950/10">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-jade-600 px-5 py-4 text-cream-50">
+            <p className="font-display text-lg font-black">
+              Recorded {peso(done.total, 0)} {done.dineIn ? "dine in" : "take out"}
+              {toKitchen ? " — it's on the kitchen board." : " — in the day's takings."}
+            </p>
+            <button
+              onClick={() => setDone(null)}
+              className="rounded-full bg-ink-950/25 px-4 py-1.5 text-xs font-black uppercase tracking-wide"
+            >
+              Next customer
+            </button>
+          </div>
+
+          {/* The receipt is offered, never forced. The sale is already
+              recorded by the time this appears, so nothing here can lose it —
+              a printer that will not connect costs a piece of paper, not a
+              transaction. */}
+          <details className="bg-cream-100">
+            <summary className="cursor-pointer list-none px-5 py-3 text-sm font-bold text-ink-800/70 hover:text-ink-950">
+              Receipt &amp; printing ▾
+            </summary>
+            <div className="px-5 pb-5">
+              <ReceiptPrinter receipt={done.receipt} />
+            </div>
+          </details>
         </div>
       )}
 

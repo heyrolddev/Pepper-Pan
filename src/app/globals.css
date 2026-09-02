@@ -435,3 +435,52 @@ input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* ------------------------------------------------------------------
+   Printing a receipt through the browser's own dialog.
+   The fallback that works everywhere — including on a laptop with the
+   thermal printer installed as an ordinary system printer, which is how a
+   Bluetooth CLASSIC printer is reached on Windows.
+
+   58mm roll: the printable area is about 48mm once the margins are taken
+   off, so the page is set to that rather than to A4 with a receipt lost in
+   the middle of it.
+   ------------------------------------------------------------------ */
+@media print {
+  @page {
+    size: 58mm auto;
+    margin: 3mm;
+  }
+
+  /* Everything except the receipt, gone. Hiding the app's chrome one class
+     at a time means the next screen that prints brings its sidebar along. */
+  body * {
+    visibility: hidden;
+  }
+  #receipt-paper,
+  #receipt-paper * {
+    visibility: visible;
+  }
+  #receipt-paper {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    color: #000;
+    box-shadow: none;
+    /* Thermal paper is not high-resolution. 10pt in a monospaced face is the
+       smallest that still reads after a receipt has been in a pocket. */
+    font-size: 10pt;
+    line-height: 1.35;
+    white-space: pre;
+  }
+}
+
+/* On screen, the receipt is shown at the width it will actually print, so
+   what somebody checks before printing is what comes out. */
+.receipt-paper {
+  white-space: pre;
+  tab-size: 2;
+}

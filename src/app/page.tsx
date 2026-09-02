@@ -428,7 +428,7 @@ export default async function Home() {
       {/* HQ, and the band disappears when the shop has neither to    */}
       {/* say — an empty gold stripe is worse than no stripe.         */}
       {/* ---------------------------------------------------------- */}
-      {(announcements.dineIn || announcements.comingSoon) && (
+      {(announcements.dineIn || announcements.comingSoon.length > 0) && (
         <section className="grain relative overflow-hidden bg-gold-400 py-16">
           <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 px-6 sm:flex-row sm:items-center sm:justify-between">
             <Reveal direction="right" className="min-w-0 flex-1">
@@ -473,8 +473,13 @@ export default async function Home() {
               It used to be a half-line of text with a thumbnail the size of a
               postage stamp, tucked under the dine-in offer — which is a strange
               way to treat the thing the shop is most excited about. Title, then
-              the picture, then what it is. */}
-          {announcements.comingSoon && (
+              the picture, then what it is.
+
+              Two of them, side by side. What is arriving is usually a pair, and
+              announcing them one at a time makes the second look like an
+              afterthought. The heading is written once above both: repeating
+              "Coming soon" over each card would say it twice and mean it less. */}
+          {announcements.comingSoon.length > 0 && (
             <Reveal
               delay={0.15}
               className="relative mx-auto mt-12 max-w-6xl border-t-2 border-ink-950/15 px-6 pt-10"
@@ -482,22 +487,35 @@ export default async function Home() {
               <p className="font-display text-sm font-black uppercase tracking-[0.2em] text-brand-700 sm:text-base">
                 Coming soon
               </p>
-              <h3 className="mt-2 max-w-3xl font-display text-3xl font-black leading-tight text-ink-950 sm:text-5xl">
-                {announcements.comingSoon.title}
-              </h3>
 
-              {hasMedia(announcements.comingSoon) && (
-                <AnnouncementMedia
-                  row={announcements.comingSoon}
-                  className="mt-6 aspect-[16/10] w-full max-w-xl rounded-3xl border-4 border-ink-950 bg-ink-950 object-cover shadow-[8px_8px_0_0_theme(colors.ink.950)] lg:max-w-2xl"
-                />
-              )}
+              <div
+                className={`mt-6 grid gap-10 ${
+                  announcements.comingSoon.length > 1
+                    ? "sm:grid-cols-2"
+                    : "max-w-2xl"
+                }`}
+              >
+                {announcements.comingSoon.map((row) => (
+                  <article key={row.id}>
+                    <h3 className="font-display text-2xl font-black leading-tight text-ink-950 sm:text-3xl">
+                      {row.title}
+                    </h3>
 
-              {announcements.comingSoon.body && (
-                <p className="mt-6 max-w-xl text-lg font-medium leading-relaxed text-ink-800/85">
-                  {announcements.comingSoon.body}
-                </p>
-              )}
+                    {hasMedia(row) && (
+                      <AnnouncementMedia
+                        row={row}
+                        className="mt-5 aspect-[16/10] w-full rounded-3xl border-4 border-ink-950 bg-ink-950 object-cover shadow-[8px_8px_0_0_theme(colors.ink.950)]"
+                      />
+                    )}
+
+                    {row.body && (
+                      <p className="mt-5 text-base font-medium leading-relaxed text-ink-800/85 sm:text-lg">
+                        {row.body}
+                      </p>
+                    )}
+                  </article>
+                ))}
+              </div>
             </Reveal>
           )}
         </section>
