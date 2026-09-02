@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/costing";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
 import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
+import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
 
 export type CounterMeal = {
@@ -53,6 +54,9 @@ export function CounterTill({
   const [category, setCategory] = useState<string>("All");
   const [method, setMethod] = useState<"cash" | "gcash">("cash");
   const [dineIn, setDineIn] = useState(false);
+  // What was put on the counter. A string, not a number, so the box can be
+  // empty — "nothing typed yet" and "zero pesos" are different answers.
+  const [tendered, setTendered] = useState("");
   const [reference, setReference] = useState("");
   const [toKitchen, setToKitchen] = useState(false);
   const [note, setNote] = useState("");
@@ -110,6 +114,7 @@ export function CounterTill({
     setTicket({});
     setNote("");
     setReference("");
+    setTendered("");
     setError(null);
   };
 
@@ -418,6 +423,54 @@ export function CounterTill({
                 />
               )}
 
+              {/* Counting out the change.
+                  Cash only: a GCash payment is exact by construction — the
+                  customer sends the amount — so a change box there would be a
+                  field that is always zero and always in the way.
+                  Nothing here is recorded. What the customer handed over is
+                  not a fact about the business; the sale is the total, and the
+                  drawer is counted at the end of the shift. This is arithmetic
+                  done out loud so nobody has to do it in their head with a
+                  queue waiting. */}
+              {method === "cash" && lines.length > 0 && (
+                <div className="rounded-xl bg-ink-950/[0.03] p-3">
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-ink-800/40">
+                    Cash received
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tenderSuggestions(total).map((amount, i) => {
+                      const on = tendered === String(amount);
+                      return (
+                        <button
+                          key={amount}
+                          onClick={() => setTendered(on ? "" : String(amount))}
+                          aria-pressed={on}
+                          className={`rounded-lg px-3 py-2 text-sm font-black tabular-nums transition-colors ${
+                            on
+                              ? "bg-ink-950 text-cream-50"
+                              : "bg-cream-50 text-ink-950 ring-1 ring-ink-950/10 hover:bg-cream-200"
+                          }`}
+                        >
+                          {i === 0 ? "Exact" : peso(amount, 0)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <input
+                    value={tendered}
+                    onChange={(e) => setTendered(e.target.value)}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder="Or type the amount"
+                    aria-label="Cash received"
+                    className="mt-2 w-full rounded-xl bg-cream-50 px-3 py-2.5 text-right font-display text-lg font-black tabular-nums ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
+                  />
+                  <Change total={total} tendered={tendered} />
+                </div>
+              )}
+
               <input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -491,5 +544,59 @@ export function CounterTill({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * What to hand back, said once and said big.
+ *
+ * This number gets read out loud while counting coins into somebody's palm,
+ * often on a phone held at arm's length in daylight. It is the largest thing
+ * in the panel for that reason — bigger than the total above it, because the
+ * total has already been agreed and this one is still being acted on.
+ *
+ * Three states, three colours, and each says what to DO rather than what is
+ * true: hand back this much, take this much more, or nothing to give back.
+ * "Short" is not an error — money goes down in handfuls, and a till that
+ * complains mid-count is a till that gets worked around.
+ */
+function Change({ total, tendered }: { total: number; tendered: string }) {
+  const value = tendered.trim() === "" ? null : Number(tendered);
+  const state = changeFor(total, value);
+  // Whole pesos when it is whole, centavos when it isn't. Everywhere else in
+  // HQ a headline figure drops the centavos, because there they never change
+  // a decision — here they are the decision. Rounding ₱0.50 to "₱1" on the
+  // one screen where somebody is about to count coins out of a drawer is the
+  // software telling a small lie about money.
+  const money = (n: number) => peso(n, Number.isInteger(n) ? 0 : 2);
+
+  if (state.kind === "none") return null;
+
+  if (state.kind === "short") {
+    return (
+      <p className="mt-2 flex items-baseline justify-between rounded-lg bg-brand-600 px-3 py-2 text-cream-50">
+        <span className="text-sm font-bold">Still short</span>
+        <span className="font-display text-2xl font-black tabular-nums">
+          {money(state.short)}
+        </span>
+      </p>
+    );
+  }
+
+  if (state.kind === "exact") {
+    return (
+      <p className="mt-2 rounded-lg bg-jade-600 px-3 py-2 text-center text-sm font-black uppercase tracking-wide text-cream-50">
+        Exact — no change
+      </p>
+    );
+  }
+
+  return (
+    <p className="mt-2 flex items-baseline justify-between rounded-lg bg-jade-600 px-3 py-2 text-cream-50">
+      <span className="text-sm font-bold">Change</span>
+      <span className="font-display text-3xl font-black tabular-nums">
+        {money(state.change)}
+      </span>
+    </p>
   );
 }

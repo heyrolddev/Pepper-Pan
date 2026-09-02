@@ -381,3 +381,28 @@ html.intro-lock body {
   outline-offset: 2px;
   border-radius: 0.5rem;
 }
+
+/* ------------------------------------------------------------------
+   Number fields without the little arrows
+
+   Every number input in this app is a quantity or an amount of money, and
+   every one of them is paired with `inputMode="decimal"` — so on a phone the
+   right keypad already appears, and the spinner is a pair of 12-pixel targets
+   nobody aims for on purpose.
+
+   On the till it is worse than clutter: the cash-received box sits under a
+   thumb, and a mis-tapped arrow changes what the customer handed over by one
+   peso without anybody noticing. The change then comes out a peso wrong, and
+   the drawer disagrees with the books at the end of the shift over something
+   that never happened.
+   ------------------------------------------------------------------ */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+}
