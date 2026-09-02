@@ -4,6 +4,9 @@ import { MenuList, type Meal } from "@/components/menu-list";
 import { PageHeader } from "@/components/page-header";
 import { loadAvailability } from "@/lib/costing-server";
 import type { MenuCategory } from "@/lib/categories";
+import { MenuSchema } from "@/components/menu-schema";
+import { SHOP, siteUrl } from "@/lib/site";
+import type { Metadata } from "next";
 
 async function getMenu(): Promise<{
   menu: Meal[] | null;
@@ -67,6 +70,27 @@ async function getMenu(): Promise<{
   }
 }
 
+/**
+ * The page a customer lands on from a search, and until now the only public
+ * page with no title of its own — it inherited the site default, so a result
+ * for the menu looked identical to a result for the homepage.
+ *
+ * The description names the dishes and the town, because that is what the
+ * search actually was. Nobody types "menu"; they type "black pepper noodles
+ * apalit".
+ */
+export const metadata: Metadata = {
+  title: "Menu",
+  description: `The full ${SHOP.name} menu — Taiwan-style black pepper noodles, Ji Pai chicken, rice meals and milktea, made fresh daily in ${SHOP.locality}, ${SHOP.region}. Order ahead for pickup or delivery.`,
+  alternates: { canonical: `${siteUrl()}/menu` },
+  openGraph: {
+    title: `Menu · ${SHOP.name}`,
+    description: `Taiwan-style black pepper noodles, Ji Pai chicken, rice meals and milktea in ${SHOP.locality}. Order ahead for pickup or delivery.`,
+    url: `${siteUrl()}/menu`,
+    type: "website",
+  },
+};
+
 const emptyStateClass =
   "rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80";
 
@@ -104,7 +128,12 @@ export default async function MenuPage() {
             up here.
           </p>
         )}
-        {configured && menu && menu.length > 0 && <MenuList meals={menu} staff={staff} known={categories} />}
+        {configured && menu && menu.length > 0 && (
+          <>
+            <MenuSchema meals={menu} categories={categories} />
+            <MenuList meals={menu} staff={staff} known={categories} />
+          </>
+        )}
       </section>
     </main>
   );
