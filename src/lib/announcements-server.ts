@@ -1,9 +1,34 @@
 import "server-only";
 import { createPublicClient } from "@/lib/supabase/public";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { hasDetail, type Announcement } from "@/lib/announcements";
+import { hasDetail, homepagePicks, type Announcement } from "@/lib/announcements";
 
-const EMPTY = { promos: [], news: [], dineIn: null, comingSoon: null };
+const EMPTY = { promos: [], promoCards: [], news: [], dineIn: null, comingSoon: null };
+
+/**
+ * Every row a visitor is allowed to see, which the policy has already narrowed
+ * to what is live right now.
+ *
+ * Shared by the homepage and by /news so the two can never disagree about
+ * what is running — they differ in how much they show, not in what exists.
+ */
+async function readLive(): Promise<Announcement[]> {
+  const supabase = createPublicClient();
+  // No project configured — the homepage still renders, on its own copy.
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("announcements")
+    .select("*")
+    .order("sort_order")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(`[announcements] ${error.message}`);
+    return [];
+  }
+  return (data ?? []) as Announcement[];
+}
 
 /**
  * What the homepage should show right now.
@@ -24,36 +49,29 @@ const EMPTY = { promos: [], news: [], dineIn: null, comingSoon: null };
  * — and certainly not a reason to 500 on a customer trying to find the menu.
  */
 export async function getLiveAnnouncements(): Promise<{
+  /** Every live promo — the scrolling strip shows them all. */
   promos: Announcement[];
+  /** The two that get a card. */
+  promoCards: Announcement[];
+  /** The three on the homepage: pinned first, then newest. */
   news: Announcement[];
   /** The gold band has room for one of each; these are the ones it shows. */
   dineIn: Announcement | null;
   comingSoon: Announcement | null;
 }> {
   try {
-    const supabase = createPublicClient();
-    // No project configured — the homepage still renders, on its own copy.
-    if (!supabase) return EMPTY;
-
-    const { data, error } = await supabase
-      .from("announcements")
-      .select("*")
-      .order("sort_order")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error(`[announcements] ${error.message}`);
-      return EMPTY;
-    }
-
-    const rows = (data ?? []) as Announcement[];
+    // Ordered by the query only so the strip is stable. WHAT the homepage
+    // shows is decided by homepagePicks, because each kind has a different
+    // idea of "first" — asking the database for one order and then slicing it
+    // three deep is precisely how the newest news post became unreachable.
+    const rows = await readLive();
     return {
       promos: rows.filter((r) => r.kind === "promo"),
-      // Newest first, and only a few: a homepage is not an archive, and the
-      // fourth-oldest notice is not why anybody came. The rest are on /news.
-      news: rows.filter((r) => r.kind === "news").slice(0, 3),
-      dineIn: rows.find((r) => r.kind === "dine_in") ?? null,
-      comingSoon: rows.find((r) => r.kind === "coming_soon") ?? null,
+      promoCards: homepagePicks(rows, "promo"),
+      // A homepage is not an archive; the rest are on /news.
+      news: homepagePicks(rows, "news"),
+      dineIn: homepagePicks(rows, "dine_in")[0] ?? null,
+      comingSoon: homepagePicks(rows, "coming_soon")[0] ?? null,
     };
   } catch (e) {
     console.error(`[announcements] ${e instanceof Error ? e.message : String(e)}`);
@@ -97,14 +115,26 @@ export async function getPublicFeed(): Promise<{
   promos: Announcement[];
   news: Announcement[];
 }> {
-  const live = await getLiveAnnouncements();
-  return {
-    // Only promos with something to read. The strip lines are promo rows
-    // because the scrolling strip is what they are for; as cards they were
-    // four yellow boxes whose only content was "read more".
-    promos: live.promos.filter(hasDetail),
-    news: live.news,
-  };
+  try {
+    const rows = await readLive();
+    return {
+      // Everything running, not only what fits on the homepage — this is the
+      // page the homepage links to precisely when there is more.
+      //
+      // Promos still have to say something beyond their title: the strip
+      // lines are promo rows, and as cards they were yellow boxes whose only
+      // content was the words "read more".
+      promos: rows.filter((r) => r.kind === "promo" && hasDetail(r)),
+      news: rows
+        .filter((r) => r.kind === "news")
+        .sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        ),
+    };
+  } catch (e) {
+    console.error(`[announcements] ${e instanceof Error ? e.message : String(e)}`);
+    return { promos: [], news: [] };
+  }
 }
 
 /**

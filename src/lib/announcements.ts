@@ -29,6 +29,8 @@ export type Announcement = {
   ends_at: string | null;
   is_active: boolean;
   sort_order: number;
+  /** Held at the front of its kind on the homepage. */
+  pinned: boolean;
   /** A photo, a video, both or neither. Null when there is none. */
   image_url: string | null;
   video_url: string | null;
@@ -102,20 +104,87 @@ export function liveStateOf(a: Announcement, now = new Date()): LiveState {
   return "live";
 }
 
+/** How many of each the homepage has room for. */
+export const HOME_LIMIT: Record<AnnouncementKind, number> = {
+  promo: 2,
+  news: 3,
+  dine_in: 1,
+  coming_soon: 1,
+};
+
 /**
- * Where a slot kind sits in the queue.
+ * Exactly what the homepage shows, in the order it shows it.
  *
- * Live but not first means written, in date, and still not on the page —
- * which without a word for it looks exactly like a bug.
+ * One function, used by the homepage to render and by the editor to label —
+ * so the badge that says "On the homepage" cannot disagree with the homepage.
+ * They disagreed before: the editor called every live row live, while the page
+ * silently took three of them.
+ *
+ * Pinned first. Then the natural order for the kind, which is NOT the same
+ * for all of them:
+ *
+ *   news  — newest first. It is news. Reading it by a sort order somebody set
+ *           weeks ago is how the newest post ended up unreachable.
+ *   the rest — the order the owner arranged, because the strip and the band
+ *           are arrangements rather than feeds.
+ *
+ * A promo also has to have something to say beyond its title before it can
+ * take a card slot; the strip lines are promo rows and would otherwise fill
+ * both slots with a heading and nothing else.
  */
-export function queuedBehind(row: Announcement, all: Announcement[], now = new Date()) {
-  if (!isSlotKind(row.kind)) return false;
-  const live = all.filter((a) => a.kind === row.kind && liveStateOf(a, now) === "live");
-  return live.length > 1 && live[0]?.id !== row.id;
+export function homepagePicks(
+  all: Announcement[],
+  kind: AnnouncementKind,
+  now = new Date()
+): Announcement[] {
+  const live = all.filter((r) => r.kind === kind && liveStateOf(r, now) === "live");
+  const eligible = kind === "promo" ? live.filter(hasDetail) : live;
+
+  const newest = (a: Announcement, b: Announcement) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+
+  const natural =
+    kind === "news"
+      ? [...eligible].sort(newest)
+      : [...eligible].sort((a, b) => a.sort_order - b.sort_order || newest(a, b));
+
+  return [
+    ...natural.filter((r) => r.pinned),
+    ...natural.filter((r) => !r.pinned),
+  ].slice(0, HOME_LIMIT[kind]);
 }
 
-export const STATE_TONE: Record<LiveState, { label: string; chip: string }> = {
+/**
+ * Why a row is, or isn't, on the homepage — in words the shop can act on.
+ *
+ * "Listed" is the one that did not exist before and needed to: live, correct,
+ * and simply further down the queue than the homepage has room for. Calling
+ * that "On the homepage" is what hid the bug for a fortnight.
+ */
+export type HomeState = LiveState | "listed" | "queued" | "strip";
+
+export function homeStateOf(
+  row: Announcement,
+  all: Announcement[],
+  now = new Date()
+): HomeState {
+  const state = liveStateOf(row, now);
+  if (state !== "live") return state;
+  if (homepagePicks(all, row.kind, now).some((r) => r.id === row.id)) return "live";
+
+  // A promo with nothing but a title never gets a card and is left off the
+  // news page too — it exists for the scrolling strip. Saying "in All news &
+  // promos" about it would send the owner looking for it somewhere it is not.
+  if (row.kind === "promo" && !hasDetail(row)) return "strip";
+
+  return isSlotKind(row.kind) ? "queued" : "listed";
+}
+
+export const STATE_TONE: Record<HomeState, { label: string; chip: string }> = {
   live: { label: "On the homepage", chip: "bg-jade-600 text-cream-50" },
+  listed: { label: "In All news & promos", chip: "bg-ink-950/[0.07] text-ink-800/70" },
+  strip: { label: "In the scrolling strip", chip: "bg-ink-950/[0.07] text-ink-800/70" },
+  queued: { label: "Next up", chip: "bg-ink-950/[0.07] text-ink-800/70" },
   scheduled: { label: "Scheduled", chip: "bg-gold-400 text-ink-950" },
   finished: { label: "Finished", chip: "bg-ink-950/10 text-ink-800/60" },
   off: { label: "Off", chip: "bg-ink-950/10 text-ink-800/60" },

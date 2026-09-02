@@ -25,7 +25,7 @@ import { getPublicReviews } from "@/lib/reviews-server";
 import { getLiveAnnouncements } from "@/lib/announcements-server";
 import { getSiteFaqs } from "@/lib/faq-site-server";
 import { AnnouncementMedia } from "@/components/announcement-media";
-import { hasDetail, hasMedia } from "@/lib/announcements";
+import { hasMedia } from "@/lib/announcements";
 import { stripItems } from "@/lib/announcements";
 import { getSchedule } from "@/lib/hours-server";
 import { DAY_NAMES, formatClock } from "@/lib/hours";
@@ -108,12 +108,6 @@ export default async function Home() {
   // shipping the whole review history to every homepage.
   const featured = reviews.filter((r) => r.comment && r.rating >= 4).slice(0, 8);
 
-  // A promo earns a card by having something to show beyond its title — a
-  // description or a picture. "Giant Ji Pai" is a strip line, not an offer;
-  // "Free coffee with any rice meal, dine-in only" is the one a customer needs
-  // to read twice. Two at most — a homepage that leads with six promos is not
-  // leading with anything.
-  const featuredPromos = announcements.promos.filter(hasDetail).slice(0, 2);
 
   const whyUsTiles = [
     {
@@ -272,10 +266,10 @@ export default async function Home() {
       {/* into five empty boxes. The section disappears entirely when */}
       {/* there is nothing to show.                                   */}
       {/* ---------------------------------------------------------- */}
-      {(featuredPromos.length > 0 || announcements.news.length > 0) && (
+      {(announcements.promoCards.length > 0 || announcements.news.length > 0) && (
         <section className="mx-auto max-w-6xl px-6 py-16">
           <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
-            {featuredPromos.length > 0 && (
+            {announcements.promoCards.length > 0 && (
               <div>
                 <Reveal className="mb-6">
                   <SectionMark
@@ -289,7 +283,7 @@ export default async function Home() {
                   </h2>
                 </Reveal>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {featuredPromos.map((p, i) => (
+                  {announcements.promoCards.map((p, i) => (
                     <Reveal key={p.id} delay={i * 0.06} className="h-full">
                       {/* The whole card is the link. A "read more" the size of
                           two words, inside a card that is itself the thing
@@ -454,24 +448,6 @@ export default async function Home() {
                 </>
               )}
 
-              {announcements.comingSoon && (
-                <div className="mt-3 flex items-center gap-3">
-                  {hasMedia(announcements.comingSoon) && (
-                    <AnnouncementMedia
-                      row={announcements.comingSoon}
-                      className="h-12 w-12 shrink-0 rounded-xl border-2 border-ink-950 bg-ink-950 object-cover"
-                    />
-                  )}
-                  <p className="font-semibold text-ink-800">
-                    Coming soon: {announcements.comingSoon.title}
-                    {announcements.comingSoon.body && (
-                      <span className="block text-sm font-medium text-ink-800/70">
-                        {announcements.comingSoon.body}
-                      </span>
-                    )}
-                  </p>
-                </div>
-              )}
             </Reveal>
 
             {announcements.dineIn && hasMedia(announcements.dineIn) && (
@@ -492,6 +468,38 @@ export default async function Home() {
               </Link>
             </Reveal>
           </div>
+
+          {/* Coming soon, given room of its own.
+              It used to be a half-line of text with a thumbnail the size of a
+              postage stamp, tucked under the dine-in offer — which is a strange
+              way to treat the thing the shop is most excited about. Title, then
+              the picture, then what it is. */}
+          {announcements.comingSoon && (
+            <Reveal
+              delay={0.15}
+              className="relative mx-auto mt-12 max-w-6xl border-t-2 border-ink-950/15 px-6 pt-10"
+            >
+              <p className="font-display text-sm font-black uppercase tracking-[0.2em] text-brand-700 sm:text-base">
+                Coming soon
+              </p>
+              <h3 className="mt-2 max-w-3xl font-display text-3xl font-black leading-tight text-ink-950 sm:text-5xl">
+                {announcements.comingSoon.title}
+              </h3>
+
+              {hasMedia(announcements.comingSoon) && (
+                <AnnouncementMedia
+                  row={announcements.comingSoon}
+                  className="mt-6 aspect-[16/10] w-full max-w-xl rounded-3xl border-4 border-ink-950 bg-ink-950 object-cover shadow-[8px_8px_0_0_theme(colors.ink.950)] lg:max-w-2xl"
+                />
+              )}
+
+              {announcements.comingSoon.body && (
+                <p className="mt-6 max-w-xl text-lg font-medium leading-relaxed text-ink-800/85">
+                  {announcements.comingSoon.body}
+                </p>
+              )}
+            </Reveal>
+          )}
         </section>
       )}
 
