@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CATEGORY_COLOURS, fallbackColour } from "@/lib/categories";
+import { applyTakeoutMerge, planTakeoutMerge, type MergePlan } from "@/lib/takeout-merge";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 
 const BLOCKED_MESSAGE =
@@ -350,4 +351,58 @@ export async function deleteCategory(name: string): Promise<{ error: string | nu
 
   revalidateMenu();
   return { error: null };
+}
+
+/* ------------------------------------------------------------------ */
+/* Collapsing the "(T.O)" duplicates                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What the merge would do, without doing it.
+ *
+ * Read-only, so it is safe to call every time the Menu screen loads — which
+ * is the point: the panel only appears when there is something to collapse,
+ * and disappears by itself once there isn't.
+ */
+export async function previewTakeoutMerge(): Promise<MergePlan> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) {
+    return { rows: [], skipped: [], before: 0, after: 0, error: "Not allowed." };
+  }
+  return planTakeoutMerge();
+}
+
+/**
+ * Do it. Owner only, and logged.
+ *
+ * The heaviest single change this software can make to a menu, so it leaves a
+ * line in the activity log saying so — the one screen where "who did this and
+ * when" is worth more than the change itself.
+ */
+export async function runTakeoutMerge(): Promise<{
+  done: number;
+  failed: string[];
+  error: string | null;
+}> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) {
+    return { done: 0, failed: [], error: "Only the owner can do this." };
+  }
+
+  const result = await applyTakeoutMerge();
+  if (result.done > 0) {
+    await createAdminClient()
+      .from("activity_log")
+      .insert({
+        category: "menu",
+        description: `Collapsed ${result.done} take-out duplicate${
+          result.done === 1 ? "" : "s"
+        } into packaging on the dine-in dish`,
+        actor: viewer?.profile?.id ?? null,
+      });
+  }
+
+  revalidateMenu();
+  revalidatePath("/admin/costing");
+  return result;
 }
