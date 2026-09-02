@@ -7,6 +7,7 @@ import { Parallax } from "@/components/parallax";
 import { Marquee } from "@/components/marquee";
 import { CountUp } from "@/components/count-up";
 import { HeroVisual } from "@/components/hero-visual";
+import { NoodleLift } from "@/components/noodle-lift";
 import { WhyUs } from "@/components/why-us";
 import { FanFavorites } from "@/components/fan-favorites";
 import { ReviewCarousel } from "@/components/review-carousel";
@@ -185,6 +186,19 @@ export default async function Home() {
           className="drift pointer-events-none absolute -right-20 top-40 h-72 w-72 rounded-full bg-gold-400/20 blur-3xl"
         />
 
+        {/* Coming in from the bottom-left corner, like a lift set down beside
+            the dish. Not tucked under the plate: the photograph is already
+            noodles, and a drawing of noodles behind a photograph of noodles
+            reads as a piece of paper caught under the board.
+
+            Kept on phones rather than hidden there. The hero stacks on a
+            phone and the photo takes the lower half — but the photo is a round
+            plate in a square box, so the corner it leaves empty is exactly
+            where this goes. Most of the people who order from this shop are on
+            a phone; a flourish only desktop ever sees is a flourish nobody
+            sees. */}
+        <NoodleLift className="noodle-sway pointer-events-none absolute -bottom-8 -left-14 w-44 -rotate-[16deg] drop-shadow-2xl sm:-left-16 sm:w-52 lg:-bottom-16 lg:-left-32 lg:w-64 xl:-left-28 xl:w-72" />
+
         <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.05fr_1fr]">
           <div className="flex flex-col items-start gap-6">
             <Reveal>
@@ -253,8 +267,8 @@ export default async function Home() {
           </div>
 
           <HeroVisual
-            src={`${IMG_BASE}/opt/8.webp`}
-            alt="Pepper Pan sizzling black pepper pork rice"
+            src={`${IMG_BASE}/opt/4.webp`}
+            alt="Pepper Pan black pepper beef noodles on a sizzling plate, with a fried egg"
           />
         </div>
       </section>
