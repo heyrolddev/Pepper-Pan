@@ -171,14 +171,20 @@ export function AskWidget({ messengerUrl }: { messengerUrl: string | null }) {
 
   return (
     <>
-      {/* Launcher — offset above the floating cart so the two never overlap. */}
+      {/* Launcher — offset above the floating cart so the two never overlap.
+
+          On a phone it is a plain circle: the full pill is nearly half the
+          width of a small screen, and it sat on top of whatever was behind it.
+          The label comes back from `sm` up, where there is room for it. The
+          aria-label carries the name either way, so hiding the text costs a
+          screen reader nothing. */}
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label="Ask Pepper Pan"
-        className="fixed bottom-24 right-4 z-40 flex items-center gap-2 rounded-full bg-ink-950 py-3 pl-4 pr-5 font-bold text-cream-50 shadow-2xl shadow-ink-950/40 ring-2 ring-gold-400/50 transition-transform hover:scale-105 sm:bottom-6"
+        className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center gap-2 rounded-full bg-ink-950 font-bold text-cream-50 shadow-2xl shadow-ink-950/40 ring-2 ring-gold-400/50 transition-transform hover:scale-105 sm:bottom-6 sm:h-auto sm:w-auto sm:py-3 sm:pl-4 sm:pr-5"
       >
-        <span className="text-lg">💬</span>
-        <span className="text-sm">Ask Pepper Pan</span>
+        <span className="text-xl sm:text-lg">💬</span>
+        <span className="hidden text-sm sm:inline">Ask Pepper Pan</span>
       </button>
 
       <AnimatePresence>
