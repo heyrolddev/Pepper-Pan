@@ -161,6 +161,24 @@ export async function deleteAnnouncement(id: number): Promise<Result> {
   return { error: null };
 }
 
+/**
+ * Hold this one at the front of the homepage, or let go.
+ *
+ * Its own action rather than a field in the editor: deciding what leads is a
+ * glance-and-tap decision made while looking at the whole list, not something
+ * you open a form to change.
+ */
+export async function togglePinned(id: number, pinned: boolean): Promise<Result> {
+  if (!(await mayPost())) return { error: "Not allowed." };
+  const { error } = await createAdminClient()
+    .from("announcements")
+    .update({ pinned })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePublic();
+  return { error: null };
+}
+
 /** Move one up or down the strip. */
 export async function reorderAnnouncement(id: number, direction: -1 | 1): Promise<Result> {
   if (!(await mayPost())) return { error: "Not allowed." };

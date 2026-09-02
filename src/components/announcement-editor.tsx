@@ -7,6 +7,7 @@ import {
   toggleAnnouncement,
   deleteAnnouncement,
   reorderAnnouncement,
+  togglePinned,
 } from "@/app/admin/promos/actions";
 import {
   isSlotKind,
@@ -14,8 +15,9 @@ import {
   KIND_BLURB,
   KIND_NEW_TITLE,
   KIND_PLURAL,
+  HOME_LIMIT,
+  homeStateOf,
   liveStateOf,
-  queuedBehind,
   STATE_TONE,
   stripItems,
   type Announcement,
@@ -133,6 +135,19 @@ function Section({
             {KIND_PLURAL[kind]}
           </h3>
           <p className="mt-0.5 max-w-xl text-sm text-ink-800/60">{KIND_BLURB[kind]}</p>
+          <p className="mt-1 max-w-xl text-xs text-ink-800/45">
+            {HOME_LIMIT[kind] === 1
+              ? "One shows on the homepage."
+              : `${HOME_LIMIT[kind]} show on the homepage`}
+            {kind === "news"
+              ? ", newest first. Pin one with ★ to hold it at the front."
+              : HOME_LIMIT[kind] === 1
+                ? " Pin one with ★ to choose which."
+                : ", in this order. Pin one with ★ to hold it at the front."}
+            {kind === "news" || kind === "promo"
+              ? " The rest stay on All news & promos."
+              : ""}
+          </p>
         </div>
         <button
           onClick={onAdd}
@@ -152,7 +167,7 @@ function Section({
             <Row
               key={a.id}
               row={a}
-              queued={queuedBehind(a, all)}
+              state={homeStateOf(a, all)}
               first={i === 0}
               last={i === rows.length - 1}
               onEdit={() => onEdit(a)}
@@ -166,13 +181,13 @@ function Section({
 
 function Row({
   row,
-  queued,
+  state,
   first,
   last,
   onEdit,
 }: {
   row: Announcement;
-  queued: boolean;
+  state: ReturnType<typeof homeStateOf>;
   first: boolean;
   last: boolean;
   onEdit: () => void;
@@ -180,7 +195,6 @@ function Row({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const state = liveStateOf(row);
   const tone = STATE_TONE[state];
 
   const run = (fn: () => Promise<{ error: string | null }>) =>
@@ -215,15 +229,24 @@ function Row({
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-ink-950">{row.title}</span>
+            {/* The chip is computed from the same function the homepage
+                renders from, so it cannot claim a post is on the homepage
+                when the homepage has no room left for it. */}
             <span
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide ${
-                queued ? "bg-ink-950/10 text-ink-800/60" : tone.chip
-              }`}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide ${tone.chip}`}
             >
-              {/* The band has room for one. Saying "on the homepage" about the
-                  second one would be a lie the owner only catches by looking. */}
-              {queued ? "Next up" : tone.label}
+              {tone.label}
             </span>
+            {state === "strip" && (
+              <span className="text-[11px] text-ink-800/45">
+                add a description or a picture to give it a card
+              </span>
+            )}
+            {row.pinned && (
+              <span className="rounded-full bg-gold-400 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide text-ink-950">
+                ★ Pinned
+              </span>
+            )}
           </p>
           {row.body && (
             <p className="mt-1 max-w-2xl text-sm text-ink-800/65">{row.body}</p>
@@ -235,6 +258,23 @@ function Row({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:justify-end">
+          <button
+            onClick={() => run(() => togglePinned(row.id, !row.pinned))}
+            disabled={pending}
+            aria-label={row.pinned ? `Unpin "${row.title}"` : `Pin "${row.title}" to the homepage`}
+            title={
+              row.pinned
+                ? "Pinned — held at the front of the homepage"
+                : "Pin to hold this at the front of the homepage"
+            }
+            className={`grid h-9 w-9 place-items-center rounded-lg text-base transition-colors disabled:opacity-40 ${
+              row.pinned
+                ? "bg-gold-400 text-ink-950 hover:bg-gold-500"
+                : "bg-ink-950/5 text-ink-800/40 hover:bg-ink-950/10 hover:text-ink-800/70"
+            }`}
+          >
+            {row.pinned ? "★" : "☆"}
+          </button>
           {/* Order matters for the strip, where it decides what scrolls past
               first, and for the band, where it decides which one of these is
               the one shown. News is newest-first and has no order to set. */}
