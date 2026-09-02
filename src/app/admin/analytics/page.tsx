@@ -3,7 +3,8 @@ import { can, getViewer } from "@/lib/auth";
 import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { AnalysisPanel } from "@/components/analysis-panel";
 import { buildSnapshot } from "./snapshot";
-import { StatTile as Tile, pesoRound } from "@/components/stat-tile";
+import { StatTile as Tile } from "@/components/stat-tile";
+import { pesoRound } from "@/lib/costing";
 import { hqTitle } from "@/lib/hq-theme";
 
 // Whole pesos on the headline figures, for the same reason as the dashboard.

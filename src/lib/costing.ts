@@ -430,6 +430,26 @@ export function peso(n: number, decimals = 2): string {
   );
 }
 
+/**
+ * Whole pesos, for a headline figure.
+ *
+ * Centavos on a day's takings are three characters that never change a
+ * decision, and on an *average* they are false precision. Exact amounts still
+ * appear to the centavo where they are actually owed — an order total, a
+ * payment, a receipt — which is what `peso` above is for.
+ *
+ * Lives here rather than beside the tile that renders it, and that is the
+ * whole point of moving it: the tile had to become a client component to
+ * animate, and a pure function that happens to share a file with a component
+ * gets dragged across the client boundary with it. A server component then
+ * cannot call it at all — which is exactly how the owner's Today screen
+ * started returning "a server error occurred".
+ */
+export function pesoRound(n: number): string {
+  const sign = n < 0 ? "−" : "";
+  return sign + "₱" + Math.round(Math.abs(n)).toLocaleString("en-PH");
+}
+
 /** What this ingredient's remaining stock is worth. */
 export function stockValue(i: Ingredient): number {
   return (Number(i.stock) || 0) * (Number(i.cost) || 0);

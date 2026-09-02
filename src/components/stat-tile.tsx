@@ -16,18 +16,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useReducedMotion } from "motion/react";
 
 /**
- * Whole pesos on a headline figure.
- *
- * Centavos on a day's takings are three characters that never change a
- * decision, and on an *average* they're false precision. Exact amounts still
- * appear to the centavo where they're actually owed — an order total, a
- * payment, a receipt.
- */
-export function pesoRound(n: number): string {
-  return "₱" + Math.round(n).toLocaleString("en-PH");
-}
-
-/**
  * The first number in a tile's value, commas and all.
  *
  * A tile can read "₱12,450", "41 / 12 / 7", "4%" or "3/12" — one figure, or a
