@@ -13,6 +13,10 @@ import {
   type PaymentStatus,
 } from "@/lib/payments";
 
+import { privatePage } from "@/lib/seo";
+
+export const metadata = privatePage("My orders");
+
 type OrderLine = {
   id: number;
   meal_id: string;

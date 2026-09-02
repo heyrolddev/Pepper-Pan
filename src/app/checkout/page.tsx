@@ -6,6 +6,10 @@ import { getDeliverySettings } from "@/lib/delivery-server";
 import { getPaymentSettings } from "@/lib/payments-server";
 import { getSchedule } from "@/lib/hours-server";
 
+import { privatePage } from "@/lib/seo";
+
+export const metadata = privatePage("Checkout");
+
 export default async function CheckoutPage() {
   if (!isConfigured()) {
     return (

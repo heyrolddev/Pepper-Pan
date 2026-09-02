@@ -7,6 +7,10 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { PushToggle } from "@/components/push-toggle";
 import { pushConfigured } from "@/lib/push";
 
+import { privatePage } from "@/lib/seo";
+
+export const metadata = privatePage("My account");
+
 export default async function AccountPage() {
   if (!isConfigured()) {
     return (

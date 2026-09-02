@@ -40,13 +40,33 @@ export const metadata: Metadata = {
     template: `%s · ${SHOP.name}`,
   },
   description: SHOP.description,
+  // Every public page resolves to one address. Without this a search engine
+  // treats the Vercel preview URL, the bare domain and the www one as three
+  // different sites competing with each other, and splits the ranking of each
+  // page between them.
+  alternates: { canonical: "/" },
+  // Search engines have not used this tag for ranking in over a decade. It is
+  // kept because some Philippine directory and aggregator sites still read it
+  // when they scrape a listing — that is its whole remaining job, so the
+  // terms here are the ones a person would actually type, local and specific.
+  // "pepper" and "food" alone are not searches anyone makes with the intent
+  // to eat at a stall in Apalit; they are words that appear in a hundred
+  // million pages, and listing them wins nothing.
   keywords: [
     "Pepper Pan",
+    "Pepper Pan Apalit",
     "Taiwanese food Apalit",
+    "Taiwan street food Pampanga",
     "black pepper noodles",
+    "black pepper noodles Apalit",
+    "peppery noodles Pampanga",
     "Ji Pai",
+    "Ji Pai chicken Apalit",
     "milktea Apalit",
     "food delivery Apalit Pampanga",
+    "pagkain sa Apalit",
+    "masarap na pagkain Apalit",
+    "New Apalit Public Market food",
   ],
   openGraph: {
     type: "website",

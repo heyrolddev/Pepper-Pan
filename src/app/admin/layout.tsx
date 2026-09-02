@@ -4,6 +4,10 @@ import { AdminShell } from "@/components/admin-shell";
 import { getAdminBadges } from "@/lib/admin-badges";
 import { openShiftFor } from "@/lib/shifts-server";
 
+import { privatePage } from "@/lib/seo";
+
+export const metadata = privatePage("HQ");
+
 export default async function AdminLayout({
   children,
 }: {

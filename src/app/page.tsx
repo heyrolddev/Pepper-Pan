@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { FaqAccordion } from "@/components/faq-accordion";
+import { FaqSchema } from "@/components/faq-schema";
 import { Reveal } from "@/components/reveal";
 import { Parallax } from "@/components/parallax";
 import { Marquee } from "@/components/marquee";
@@ -809,6 +810,7 @@ export default async function Home() {
           </h2>
         </Reveal>
         <Reveal delay={0.1}>
+          <FaqSchema faqs={siteFaqs} />
           <FaqAccordion items={siteFaqs} />
         </Reveal>
       </section>
