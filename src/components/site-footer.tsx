@@ -62,6 +62,11 @@ export function SiteFooter({
               </Link>
             </li>
             <li>
+              <Link href="/news" className="hover:text-gold-300">
+                News &amp; promos
+              </Link>
+            </li>
+            <li>
               <Link href="/#story" className="hover:text-gold-300">
                 Our story
               </Link>

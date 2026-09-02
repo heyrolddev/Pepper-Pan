@@ -1,14 +1,32 @@
 import { createClient } from "@/lib/supabase/server";
+import { can, getViewer } from "@/lib/auth";
 import { FaqEditor, type FaqRow } from "@/components/faq-editor";
 import { GAVE_UP, groupUnanswered, type Unanswered } from "@/lib/faq";
 import { hqTitle } from "@/lib/hq-theme";
 
 export default async function AdminFaqPage() {
+  // "faq", not "chat". Since migration 0026 these answers are also printed on
+  // the homepage, which puts them with promos rather than with replying to
+  // one customer in the inbox.
+  const viewer = await getViewer();
+  if (!can(viewer, "faq")) {
+    return (
+      <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">
+        <h2 className={hqTitle}>Owner and manager only</h2>
+        <p className="mt-2 max-w-xl text-sm text-ink-800/70">
+          These are the answers the shop gives every customer, and five of them
+          are printed on the homepage — so they are kept to the people who
+          answer for them. Replying to somebody in the Inbox is unaffected.
+        </p>
+      </div>
+    );
+  }
+
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("faq_entries")
-    .select("id, question, answer, triggers, is_active, hits, priority, updated_at")
+    .select("id, question, answer, triggers, is_active, hits, priority, updated_at, show_on_site, site_order")
     .order("priority", { ascending: false })
     .order("hits", { ascending: false })
     .limit(300);
@@ -18,8 +36,9 @@ export default async function AdminFaqPage() {
       <div className="rounded-3xl bg-gold-50 p-8 ring-1 ring-gold-400/40">
         <h2 className={hqTitle}>Answers</h2>
         <p className="mt-2 max-w-xl text-sm text-ink-800/70">
-          Run <strong>migration 0012</strong> in the Supabase SQL Editor to switch
-          this on. It lets you add or correct any answer Ask Pepper Pan gives.
+          Run <strong>migrations 0012 and 0026</strong> in the Supabase SQL
+          Editor to switch this on. They let you add or correct any answer Ask
+          Pepper Pan gives — and choose which of them the homepage prints.
         </p>
         <p className="mt-3 rounded-xl bg-cream-50 px-4 py-2 font-mono text-xs text-ink-800/70">
           {error.message}
@@ -82,7 +101,9 @@ export default async function AdminFaqPage() {
           Anything you write here, Ask Pepper Pan says word for word — and it
           says it <strong>before</strong> its own built-in answers. So this is
           both how you add a question it doesn&apos;t know, and how you correct
-          one it gets wrong.
+          one it gets wrong. Tick <strong>Show on the homepage</strong> on an
+          answer and it is also printed in the FAQ at the bottom of the
+          homepage — one answer, two places, so they can never disagree.
         </p>
       </div>
 

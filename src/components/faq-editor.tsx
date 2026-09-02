@@ -19,6 +19,9 @@ export type FaqRow = {
   hits: number;
   priority: number;
   updated_at: string;
+  /** Printed in the homepage's FAQ as well as given by Ask Pepper Pan. */
+  show_on_site: boolean;
+  site_order: number;
 };
 
 const fieldClass =
@@ -207,11 +210,18 @@ export function FaqEditor({
                   ))}
                 </div>
 
-                <p className="mt-2 text-[11px] text-ink-800/45">
-                  Used {row.hits} time{row.hits === 1 ? "" : "s"}
-                  {row.priority > 0 && ` · priority ${row.priority}`}
-                  {!row.is_active && " · switched off"} · updated{" "}
-                  {formatDateTime(row.updated_at)}
+                <p className="mt-2 flex flex-wrap items-center gap-x-1 text-[11px] text-ink-800/45">
+                  {row.show_on_site && row.is_active && (
+                    <span className="mr-1 rounded-full bg-gold-400 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-ink-950">
+                      On the homepage
+                    </span>
+                  )}
+                  <span>
+                    Used {row.hits} time{row.hits === 1 ? "" : "s"}
+                    {row.priority > 0 && ` · priority ${row.priority}`}
+                    {!row.is_active && " · switched off"} · updated{" "}
+                    {formatDateTime(row.updated_at)}
+                  </span>
                 </p>
               </li>
             )
@@ -322,6 +332,8 @@ function EditAnswer({
   const [triggers, setTriggers] = useState(row.triggers.join(", "));
   const [isActive, setIsActive] = useState(row.is_active);
   const [priority, setPriority] = useState(row.priority);
+  const [showOnSite, setShowOnSite] = useState(row.show_on_site);
+  const [siteOrder, setSiteOrder] = useState(row.site_order);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -336,6 +348,8 @@ function EditAnswer({
       triggers,
       isActive,
       priority,
+      showOnSite,
+      siteOrder,
     });
     setBusy(false);
     if (res.error) return onError(res.error);
@@ -407,6 +421,39 @@ function EditAnswer({
             wins ties
           </span>
         </label>
+      </div>
+
+      {/* The same answer, in two places.
+          Before this the homepage carried its own five questions written in
+          the source, so an answer could be corrected here and stay wrong out
+          there with nothing to notice. One row now feeds both. */}
+      <div className="flex flex-wrap items-center gap-5 rounded-2xl bg-cream-50 px-4 py-3 ring-1 ring-ink-950/10">
+        <label className="flex items-center gap-2 text-sm font-semibold text-ink-800">
+          <input
+            type="checkbox"
+            checked={showOnSite}
+            onChange={(e) => setShowOnSite(e.target.checked)}
+            className="h-4 w-4 accent-gold-400"
+          />
+          Show on the homepage
+        </label>
+
+        {showOnSite && (
+          <label className="flex items-center gap-2 text-sm font-semibold text-ink-800">
+            Order
+            <input
+              type="number"
+              min={0}
+              max={999}
+              value={siteOrder}
+              onChange={(e) => setSiteOrder(Number(e.target.value))}
+              className="w-20 rounded-xl border-2 border-ink-950/15 bg-cream-50 px-2 py-1 text-sm outline-none focus:border-brand-600"
+            />
+            <span className="text-[11px] font-medium text-ink-800/50">
+              lowest first
+            </span>
+          </label>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
