@@ -5,6 +5,8 @@ import { AdminMenuList } from "@/components/admin-menu-list";
 import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
 import { CategoryBar } from "@/components/category-bar";
+import { TakeoutMergePanel } from "@/components/takeout-merge-panel";
+import { planTakeoutMerge } from "@/lib/takeout-merge";
 import { categoryOf, type MenuCategory } from "@/lib/categories";
 import { hqTitle } from "@/lib/hq-theme";
 
@@ -43,6 +45,12 @@ export default async function AdminMenuPage() {
       .order("name"),
   ]);
 
+  // Read-only, so it is safe on every load. It is what decides whether the
+  // collapse panel exists at all.
+  const merge = canEdit
+    ? await planTakeoutMerge()
+    : { rows: [], skipped: [], before: 0, after: 0, error: null };
+
   const meals = (data ?? []) as AdminMeal[];
   const categories = (catRows ?? []) as MenuCategory[];
 
@@ -75,6 +83,11 @@ export default async function AdminMenuPage() {
           Could not load the menu: {error.message}
         </p>
       )}
+
+      {/* Only appears while there is something to collapse, and takes itself
+          away once there isn't — a one-time job shouldn't leave a permanent
+          button on the screen. */}
+      {canEdit && <TakeoutMergePanel plan={merge} />}
 
       {canEdit && <CategoryBar categories={categories} counts={counts} />}
 
