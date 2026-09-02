@@ -74,7 +74,7 @@ export const KIND_BLURB: Record<AnnouncementKind, string> = {
   dine_in:
     "The big line in the gold band. What somebody eating at the stall gets that a take-out order doesn't. Only the first one that's on is shown.",
   coming_soon:
-    "The line under it — what's arriving but isn't on the menu yet. Give it an end date and it takes itself down the day it lands. Only the first one that's on is shown.",
+    "What's arriving but isn't on the menu yet. Shows under the gold band as a card with its picture. Give it an end date and it takes itself down the day it lands. The first two that are on are shown.",
 };
 
 /** Does it carry a picture? Decides whether a card gets a media block. */
@@ -109,7 +109,9 @@ export const HOME_LIMIT: Record<AnnouncementKind, number> = {
   promo: 2,
   news: 3,
   dine_in: 1,
-  coming_soon: 1,
+  // Two, because what is arriving is usually a pair — wings and pops — and
+  // announcing them one at a time makes the second look like an afterthought.
+  coming_soon: 2,
 };
 
 /**
