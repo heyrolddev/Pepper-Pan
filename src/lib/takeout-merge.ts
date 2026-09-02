@@ -49,6 +49,30 @@ export type MergePlan = {
  * does something the owner never saw.
  */
 export async function planTakeoutMerge(): Promise<MergePlan> {
+  // Wrapped, and the wrapping is the point.
+  //
+  // This is an ADVISORY panel on the Menu screen — a suggestion about a
+  // one-time tidy-up. The Menu screen is where the owner changes prices and
+  // marks dishes sold out mid-service. If working out the suggestion throws
+  // for any reason — a missing service key, a table a migration hasn't
+  // created yet, a blip reaching the database — it must not take the whole
+  // screen down with it. An unhandled throw in a server component is a 500
+  // for the entire page, and this page is the one the owner cannot do
+  // without.
+  //
+  // Reported rather than swallowed: the panel renders nothing when `error` is
+  // set, so nobody is nagged about a suggestion the software couldn't work
+  // out, but the reason lands in the server log instead of nowhere.
+  try {
+    return await computePlan();
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[takeout-merge] could not work out a plan: ${message}`);
+    return { rows: [], skipped: [], before: 0, after: 0, error: message };
+  }
+}
+
+async function computePlan(): Promise<MergePlan> {
   const db = createAdminClient();
   const empty = { rows: [], skipped: [], before: 0, after: 0 };
 
@@ -174,6 +198,7 @@ export async function applyTakeoutMerge(): Promise<{
 }> {
   const plan = await planTakeoutMerge();
   if (plan.error) return { done: 0, failed: [], error: plan.error };
+  if (plan.rows.length === 0) return { done: 0, failed: [], error: null };
 
   const db = createAdminClient();
   const failed: string[] = [];
