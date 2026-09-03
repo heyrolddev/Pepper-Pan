@@ -46,6 +46,9 @@ export type Receipt = {
   /** GCash only. */
   reference?: string | null;
   servedBy?: string | null;
+  /** Who it is for. Printed so a bag on the counter can be handed over by
+   *  name instead of by shouting a four-character reference across a queue. */
+  customer?: string | null;
 };
 
 export const COLUMNS = { narrow: 32, wide: 48 } as const;
@@ -147,6 +150,8 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
 
   out.push(left(row(when, r.dineIn ? "DINE-IN" : "TAKE-OUT", cols)));
   out.push(left(`Ref ${r.ref}`));
+  // Above "served by": the customer's own name is the line they look for.
+  if (r.customer) out.push(left(`For ${r.customer}`));
   if (r.servedBy) out.push(left(`Served by ${r.servedBy}`));
   out.push(left(rule(cols, "=")));
 

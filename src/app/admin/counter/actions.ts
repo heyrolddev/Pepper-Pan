@@ -45,6 +45,9 @@ export async function recordWalkInSale(input: {
   /** Eating at the stall — the one case where nothing is packed. */
   dineIn?: boolean;
   note?: string;
+  /** Who the order is for. Goes in `contact_name`, the column that has always
+   *  been there for it, so the name shows on the order as well as the paper. */
+  customerName?: string;
 }): Promise<CounterResult> {
   const viewer = await getViewer();
   if (!can(viewer, "till")) return { error: "Only shop staff can record a sale." };
@@ -144,6 +147,7 @@ export async function recordWalkInSale(input: {
       payment_plan: "full",
       payment_reference: reference,
       revenue: subtotal,
+      contact_name: input.customerName?.trim() || null,
       notes: input.note?.trim() || null,
       tag: "walk-in",
     })
