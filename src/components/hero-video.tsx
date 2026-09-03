@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 
 /**
  * The hero's background video, laid over the still that is already on screen.
@@ -64,10 +64,29 @@ export function HeroVideo({
     prefersReducedMotion,
     noOnServer
   );
+
+  /**
+   * Catch a video that was already loaded before React got here.
+   *
+   * The server sends the <video> with its src, so the browser begins fetching
+   * during parse — before the page has hydrated and before any React handler
+   * exists. On a quick connection `loadeddata` therefore fires into nothing,
+   * and since it only fires once, the video plays perfectly at opacity 0
+   * forever: motion nobody can see, behind a photograph.
+   *
+   * The event alone cannot cover that. Reading `readyState` when React first
+   * takes hold of the element can, because it is state rather than a moment —
+   * anything already loaded reports it, whenever we ask.
+   */
+  const attach = useCallback((el: HTMLVideoElement | null) => {
+    if (el && el.readyState >= 2) setReady(true);
+  }, []);
+
   if (reduced) return null;
 
   return (
     <video
+      ref={attach}
       src={src}
       autoPlay
       muted
@@ -82,6 +101,11 @@ export function HeroVideo({
       // guarantee the loop does not need — if it does stall later it holds a
       // frame, which is no worse than the photograph it replaced.
       onLoadedData={() => setReady(true)}
+      // Two more moments that all mean the same thing — there is a frame to
+      // show. Cheap, and between them there is no ordering in which the reveal
+      // is missed.
+      onCanPlay={() => setReady(true)}
+      onPlaying={() => setReady(true)}
       // A video that fails leaves the still in place rather than a broken
       // player, which is the whole point of layering the two.
       onError={() => setReady(false)}
