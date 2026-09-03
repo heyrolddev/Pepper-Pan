@@ -22,8 +22,12 @@ export type DeliverySettings = {
 
 export const DEFAULT_DELIVERY: DeliverySettings = {
   is_enabled: true,
-  shop_lat: 14.9508,
-  shop_lng: 120.7581,
+  // The stall itself (SHOP.lat/lng), so a shop that has never opened the
+  // delivery settings still measures from the right place. Kept as literals
+  // rather than importing SHOP: this is a starting value the owner is meant to
+  // be able to move, not a mirror that snaps back.
+  shop_lat: 14.9531856,
+  shop_lng: 120.7576564,
   base_fee: 30,
   base_km: 2,
   per_km_fee: 10,

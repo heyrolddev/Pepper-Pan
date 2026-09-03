@@ -1,5 +1,6 @@
 import { SHOP, SOCIALS, siteUrl } from "@/lib/site";
 import { getSchedule } from "@/lib/hours-server";
+import { getDeliverySettings } from "@/lib/delivery-server";
 import { getPublicReviews } from "@/lib/reviews-server";
 import { isConfigured } from "@/lib/auth";
 import { DAY_NAMES } from "@/lib/hours";
@@ -19,11 +20,12 @@ import { DAY_NAMES } from "@/lib/hours";
 export async function ShopSchema() {
   const url = siteUrl();
 
-  const [schedule, reviews] = await Promise.all([
+  const [schedule, reviews, delivery] = await Promise.all([
     getSchedule(),
     isConfigured()
       ? getPublicReviews(1)
       : Promise.resolve({ reviews: [], average: 0, count: 0 }),
+    getDeliverySettings(),
   ]);
 
   const openingHours = schedule.configured
@@ -47,7 +49,10 @@ export async function ShopSchema() {
     telephone: SHOP.phone,
     priceRange: SHOP.priceRange,
     servesCuisine: ["Taiwanese", "Asian", "Noodles"],
-    image: `${url}/opengraph-image`,
+    // More than one, because a place result is a picture as much as a name.
+    // The poster is a frame of the hero video and the story shot is the room
+    // itself — between them a customer sees the food and where they'd eat it.
+    image: [`${url}/opengraph-image`, `${url}/hero-poster.jpg`],
     address: {
       "@type": "PostalAddress",
       streetAddress: SHOP.street,
@@ -58,7 +63,49 @@ export async function ShopSchema() {
     // Every profile the shop actually posts from. `sameAs` is how Google
     // ties this page to those accounts; listing one of three threw away the
     // other two.
-    sameAs: SOCIALS.map((s) => s.href),
+    // The Maps listing belongs in here with the social profiles: sameAs is the
+    // list of other places this same business is described, and for a stall
+    // the listing is the most consequential of them.
+    sameAs: [...SOCIALS.map((s) => s.href), SHOP.mapUrl],
+
+    // And again as hasMap, which is the property that means "this is the map
+    // of this place" rather than merely "this is also us".
+    hasMap: SHOP.mapUrl,
+
+    // Where the stall actually is, to the metre — the same pin as the Google
+    // Business Profile, so the listing and this page describe one place rather
+    // than two that happen to share a name.
+    //
+    // The single most useful thing on this block for "near me": an address
+    // string has to be geocoded and guessed at, a coordinate does not.
+    geo: {
+      "@type": "GeoCoordinates",
+      latitude: SHOP.lat,
+      longitude: SHOP.lng,
+    },
+
+    // The radius the shop will actually travel, read from the settings that
+    // enforce it at checkout — so what Google is told and what a customer is
+    // allowed to order are the same number. Centred on the delivery origin
+    // rather than on SHOP, because that is the point fees are measured from
+    // and therefore the true centre of the area being described.
+    ...(delivery.is_enabled
+      ? {
+          areaServed: {
+            "@type": "GeoCircle",
+            geoMidpoint: {
+              "@type": "GeoCoordinates",
+              latitude: delivery.shop_lat,
+              longitude: delivery.shop_lng,
+            },
+            geoRadius: delivery.max_km * 1000,
+          },
+        }
+      : {}),
+
+    // Answers a question people search: "do they take GCash?"
+    paymentAccepted: "Cash, GCash",
+    currenciesAccepted: "PHP",
     hasMenu: `${url}/menu`,
     acceptsReservations: false,
     ...(openingHours?.length ? { openingHoursSpecification: openingHours } : {}),
