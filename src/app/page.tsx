@@ -444,7 +444,7 @@ export default async function Home() {
       {/* say — an empty gold stripe is worse than no stripe.         */}
       {/* ---------------------------------------------------------- */}
       {(announcements.dineIn || announcements.comingSoon.length > 0) && (
-        <section className="red-field-light grain relative overflow-hidden py-16 sm:py-20">
+        <section className="red-field grain relative overflow-hidden py-16 sm:py-20">
           <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 px-6 sm:flex-row sm:items-center sm:justify-between">
             <Reveal direction="right" className="min-w-0 flex-1">
               {announcements.dineIn && (
@@ -452,11 +452,11 @@ export default async function Home() {
                   <span className="inline-block rounded-full bg-ink-950 px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-cream-50">
                     Dine-in special
                   </span>
-                  <p className="mt-4 max-w-lg font-display text-3xl font-black leading-[1.05] tracking-tight text-ink-950 sm:text-4xl lg:text-5xl">
+                  <p className="mt-4 max-w-lg font-display text-3xl font-black leading-[1.05] tracking-tight text-cream-50 sm:text-4xl lg:text-5xl">
                     {announcements.dineIn.title}
                   </p>
                   {announcements.dineIn.body && (
-                    <p className="mt-3 max-w-xl font-medium text-ink-950/75">
+                    <p className="mt-3 max-w-xl font-medium text-cream-100/85">
                       {announcements.dineIn.body}
                     </p>
                   )}
@@ -492,16 +492,21 @@ export default async function Home() {
               its own, because a slide that moves while somebody is reading it
               takes away the one they had chosen to look at.
 
-              The heading is set as a headline rather than a label. It is the
-              loudest thing in this band on purpose; it is also near-black,
-              which is not a style choice — see `.red-field-light`, where the
-              numbers rule out cream on this red entirely. */}
+              The box is yellow inside a red band, which is the palette the
+              shop's own menu posters already use. It also happens to be the
+              clearest pairing on the whole site: black on gold-400 measures
+              13.22:1. And the two grounds sit at 4.48:1 against each other,
+              so the box separates itself by colour — the black border is
+              there for the poster look, not to do that work.
+
+              The heading is a headline rather than a label, and the loudest
+              thing in this band on purpose. */}
           {announcements.comingSoon.length > 0 && (
             <Reveal
               delay={0.15}
               className="relative mx-auto mt-14 max-w-6xl px-6 sm:mt-16"
             >
-              <div className="rounded-[2rem] border-2 border-ink-950/25 bg-cream-50/15 p-6 shadow-[0_18px_50px_-24px_rgba(18,10,8,0.5)] sm:rounded-[2.5rem] sm:p-10">
+              <div className="rounded-[2rem] border-4 border-ink-950 bg-gold-400 p-6 shadow-[10px_10px_0_0_theme(colors.ink.950)] sm:rounded-[2.5rem] sm:p-10">
                 <p className="font-display text-5xl font-black uppercase leading-[0.88] tracking-[-0.02em] text-ink-950 sm:text-6xl lg:text-7xl">
                   Coming
                   <br />

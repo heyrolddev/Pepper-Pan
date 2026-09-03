@@ -99,7 +99,7 @@ export function Swiper({
               onClick={() => goTo(Math.max(0, active - 1))}
               disabled={active === 0}
               aria-label="Previous"
-              className="grid h-10 w-10 place-items-center rounded-full bg-ink-950 text-lg font-black text-cream-50 transition-opacity disabled:opacity-30"
+              className="grid h-10 w-10 place-items-center rounded-full bg-ink-950 text-lg font-black text-cream-50 ring-2 ring-ink-950 transition-colors disabled:bg-transparent disabled:text-ink-950/40 disabled:ring-ink-950/30"
             >
               ←
             </button>
@@ -107,7 +107,7 @@ export function Swiper({
               onClick={() => goTo(Math.min(children.length - 1, active + 1))}
               disabled={active === children.length - 1}
               aria-label="Next"
-              className="grid h-10 w-10 place-items-center rounded-full bg-ink-950 text-lg font-black text-cream-50 transition-opacity disabled:opacity-30"
+              className="grid h-10 w-10 place-items-center rounded-full bg-ink-950 text-lg font-black text-cream-50 ring-2 ring-ink-950 transition-colors disabled:bg-transparent disabled:text-ink-950/40 disabled:ring-ink-950/30"
             >
               →
             </button>
