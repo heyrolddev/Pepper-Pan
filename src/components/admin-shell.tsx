@@ -200,7 +200,7 @@ function Rail({
                       aria-current={active ? "page" : undefined}
                       className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
                         active
-                          ? "bg-gold-400 text-ink-950"
+                          ? "bg-brand-600 text-cream-50"
                           : "text-cream-100/70 hover:bg-cream-50/10 hover:text-cream-50"
                       }`}
                     >

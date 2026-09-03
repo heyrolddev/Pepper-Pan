@@ -304,7 +304,7 @@ export default async function Home() {
                           under the thumb, is a link most people never hit. */}
                       <Link
                         href={`/news/${p.id}`}
-                        className="group flex h-full flex-col overflow-hidden rounded-3xl border-4 border-ink-950 bg-gold-400 shadow-[6px_6px_0_0_theme(colors.ink.950)] transition-transform hover:-translate-y-1"
+                        className="group flex h-full flex-col overflow-hidden rounded-3xl border-4 border-ink-950 bg-brand-600 shadow-[6px_6px_0_0_theme(colors.ink.950)] transition-transform hover:-translate-y-1"
                       >
                         {hasMedia(p) && (
                           <AnnouncementMedia
@@ -313,15 +313,15 @@ export default async function Home() {
                           />
                         )}
                         <div className="flex flex-1 flex-col p-6">
-                          <h3 className="font-display text-2xl font-black uppercase leading-tight tracking-tight text-ink-950">
+                          <h3 className="font-display text-2xl font-black uppercase leading-tight tracking-tight text-cream-50">
                             {p.title}
                           </h3>
                           {p.body && (
-                            <p className="mt-2 line-clamp-3 text-sm font-medium text-ink-950/75">
+                            <p className="mt-2 line-clamp-3 text-sm font-medium text-cream-100/80">
                               {p.body}
                             </p>
                           )}
-                          <p className="mt-auto pt-4 text-xs font-black uppercase tracking-widest text-brand-700 group-hover:underline">
+                          <p className="mt-auto pt-4 text-xs font-black uppercase tracking-widest text-gold-300 group-hover:underline">
                             {p.ends_at ? `Until ${manilaDate(p.ends_at)} · ` : ""}Read more →
                           </p>
                         </div>
@@ -443,19 +443,19 @@ export default async function Home() {
       {/* say — an empty gold stripe is worse than no stripe.         */}
       {/* ---------------------------------------------------------- */}
       {(announcements.dineIn || announcements.comingSoon.length > 0) && (
-        <section className="grain relative overflow-hidden bg-gold-400 py-16">
+        <section className="grain relative overflow-hidden bg-brand-600 py-16">
           <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 px-6 sm:flex-row sm:items-center sm:justify-between">
             <Reveal direction="right" className="min-w-0 flex-1">
               {announcements.dineIn && (
                 <>
-                  <span className="text-xs font-bold uppercase tracking-widest text-brand-700">
+                  <span className="text-xs font-bold uppercase tracking-widest text-gold-300">
                     Dine-in special
                   </span>
-                  <p className="mt-2 font-display text-3xl font-black leading-tight text-ink-950 sm:text-4xl">
+                  <p className="mt-2 font-display text-3xl font-black leading-tight text-cream-50 sm:text-4xl">
                     {announcements.dineIn.title}
                   </p>
                   {announcements.dineIn.body && (
-                    <p className="mt-2 max-w-xl text-ink-800/80">
+                    <p className="mt-2 max-w-xl text-cream-100/80">
                       {announcements.dineIn.body}
                     </p>
                   )}
@@ -476,7 +476,7 @@ export default async function Home() {
             <Reveal direction="left" delay={0.1} className="shrink-0">
               <Link
                 href="/menu"
-                className="inline-block whitespace-nowrap rounded-full bg-ink-950 px-8 py-4 font-bold text-gold-400 transition-transform hover:scale-105"
+                className="inline-block whitespace-nowrap rounded-full bg-ink-950 px-8 py-4 font-bold text-cream-50 transition-transform hover:scale-105"
               >
                 Order now →
               </Link>
@@ -496,9 +496,9 @@ export default async function Home() {
           {announcements.comingSoon.length > 0 && (
             <Reveal
               delay={0.15}
-              className="relative mx-auto mt-12 max-w-6xl border-t-2 border-ink-950/15 px-6 pt-10"
+              className="relative mx-auto mt-12 max-w-6xl border-t-2 border-cream-50/25 px-6 pt-10"
             >
-              <p className="font-display text-sm font-black uppercase tracking-[0.2em] text-brand-700 sm:text-base">
+              <p className="font-display text-sm font-black uppercase tracking-[0.2em] text-gold-300 sm:text-base">
                 Coming soon
               </p>
 
@@ -511,7 +511,7 @@ export default async function Home() {
               >
                 {announcements.comingSoon.map((row) => (
                   <article key={row.id}>
-                    <h3 className="font-display text-2xl font-black leading-tight text-ink-950 sm:text-3xl">
+                    <h3 className="font-display text-2xl font-black leading-tight text-cream-50 sm:text-3xl">
                       {row.title}
                     </h3>
 
@@ -523,7 +523,7 @@ export default async function Home() {
                     )}
 
                     {row.body && (
-                      <p className="mt-5 text-base font-medium leading-relaxed text-ink-800/85 sm:text-lg">
+                      <p className="mt-5 text-base font-medium leading-relaxed text-cream-100/85 sm:text-lg">
                         {row.body}
                       </p>
                     )}

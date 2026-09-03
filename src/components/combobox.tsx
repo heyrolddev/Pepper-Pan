@@ -140,7 +140,7 @@ export function Combobox({
                 }}
                 onMouseEnter={() => setActive(i)}
                 className={`flex w-full items-baseline justify-between gap-3 px-4 py-2 text-left text-sm transition-colors ${
-                  i === active ? "bg-gold-400 text-ink-950" : "text-ink-800/85"
+                  i === active ? "bg-brand-600 text-cream-50" : "text-ink-800/85"
                 }`}
               >
                 <span className="min-w-0 flex-1">{o.label}</span>

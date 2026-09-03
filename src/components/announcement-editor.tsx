@@ -269,7 +269,7 @@ function Row({
             }
             className={`grid h-9 w-9 place-items-center rounded-lg text-base transition-colors disabled:opacity-40 ${
               row.pinned
-                ? "bg-gold-400 text-ink-950 hover:bg-gold-500"
+                ? "bg-brand-600 text-cream-50 hover:bg-brand-700"
                 : "bg-ink-950/5 text-ink-800/40 hover:bg-ink-950/10 hover:text-ink-800/70"
             }`}
           >

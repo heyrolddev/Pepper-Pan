@@ -489,7 +489,7 @@ export const MENU_CLASS: Record<
     label: "Plowhorse",
     blurb: "Sells well, earns little.",
     action: "Raise the price a little, or find a cheaper way to make it. Never discount it — you'd just be busier and poorer.",
-    chip: "bg-gold-400 text-ink-950",
+    chip: "bg-brand-600 text-cream-50",
   },
   puzzle: {
     label: "Puzzle",

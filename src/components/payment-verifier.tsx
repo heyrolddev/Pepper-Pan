@@ -16,7 +16,7 @@ const peso = (n: number) => "₱" + n.toFixed(2);
 
 const TONE_CLASS = {
   good: "bg-jade-700 text-cream-50",
-  wait: "bg-gold-400 text-ink-950",
+  wait: "bg-brand-600 text-cream-50",
   part: "bg-chili-600 text-cream-50",
   neutral: "bg-ink-950/10 text-ink-800",
 } as const;

@@ -353,7 +353,7 @@ function OrderCard({ order }: { order: TrackedOrder }) {
                 STATUS_LABEL[order.payment_status]?.tone === "good"
                   ? "bg-jade-700 text-cream-50"
                   : STATUS_LABEL[order.payment_status]?.tone === "wait"
-                    ? "bg-gold-400 text-ink-950"
+                    ? "bg-brand-600 text-cream-50"
                     : STATUS_LABEL[order.payment_status]?.tone === "part"
                       ? "bg-chili-600 text-cream-50"
                       : "bg-ink-950/10 text-ink-800"

@@ -135,7 +135,7 @@ export function EtaCountdown({
           ? overdueLabel && over >= 1000
             ? "bg-brand-600 text-cream-50"
             : "bg-jade-600 text-cream-50"
-          : "bg-gold-400 text-ink-950"
+          : "bg-brand-600 text-cream-50"
       } ${className}`}
     >
       <span className="flex items-center gap-1.5 text-xs font-bold">

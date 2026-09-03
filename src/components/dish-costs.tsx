@@ -73,7 +73,7 @@ const TONES: Record<
   },
   ok: {
     bar: "bg-gold-400",
-    chip: "bg-gold-400 text-ink-950",
+    chip: "bg-brand-600 text-cream-50",
     label: "Fine",
     blurb: "Around the usual target for street food.",
   },
@@ -146,7 +146,7 @@ function Stat({
   const skin = {
     plain: "bg-cream-100 text-ink-950 ring-ink-950/10",
     good: "bg-jade-600 text-cream-50 ring-jade-700/30",
-    warn: "bg-gold-400 text-ink-950 ring-gold-600/30",
+    warn: "bg-brand-600 text-cream-50 ring-gold-600/30",
     bad: "bg-brand-600 text-cream-50 ring-brand-700/30",
   }[tone];
   return (
@@ -412,7 +412,7 @@ export function DishCosts({
                 aria-pressed={sort === s.key}
                 className={`rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
                   sort === s.key
-                    ? "bg-gold-400 text-ink-950"
+                    ? "bg-brand-600 text-cream-50"
                     : "bg-cream-100 text-ink-800/60 ring-1 ring-ink-950/10 hover:bg-cream-200"
                 }`}
               >

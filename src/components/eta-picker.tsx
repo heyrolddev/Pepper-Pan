@@ -44,7 +44,7 @@ export function EtaPicker({
         disabled={pending}
         className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-60 ${
           eta != null
-            ? "bg-gold-400 text-ink-950 hover:bg-gold-300"
+            ? "bg-brand-600 text-cream-50 hover:bg-brand-700"
             : "bg-ink-950/10 text-ink-800 hover:bg-ink-950/20"
         }`}
       >

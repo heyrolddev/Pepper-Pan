@@ -17,7 +17,7 @@ export async function ShopStatusBanner() {
   return (
     <div
       className={`px-6 py-3 text-center text-sm font-semibold ${
-        paused ? "bg-brand-600 text-cream-50" : "bg-gold-400 text-ink-950"
+        paused ? "bg-brand-600 text-cream-50" : "bg-brand-600 text-cream-50"
       }`}
     >
       <span>{state.reason}</span>

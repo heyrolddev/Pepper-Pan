@@ -54,7 +54,7 @@ export default async function AnnouncementPage({ params }: PageProps<"/news/[id]
         <p className="mt-8 flex flex-wrap items-center gap-2">
           <span
             className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest ${
-              isPromo ? "bg-gold-400 text-ink-950" : "bg-jade-600 text-cream-50"
+              isPromo ? "bg-brand-600 text-cream-50" : "bg-jade-600 text-cream-50"
             }`}
           >
             {isPromo ? "Promo" : "News"}
