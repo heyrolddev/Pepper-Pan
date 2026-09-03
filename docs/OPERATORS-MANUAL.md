@@ -36,6 +36,8 @@ Vercel holds none of your data; it only assembles pages.
 | Vercel (signed in with GitHub) | The live site, domain, secret keys | Recovered through GitHub |
 | Supabase | Everything the shop knows | **Not recoverable by anyone else** |
 | Your owner account on the site | HQ: prices, money, staff, promos, Ask HQ | Reset by email, or change the role directly in Supabase → Table Editor → `profiles` |
+| Google Business Profile | The panel beside a Google search, and the reviews on it | Recoverable by re-verifying the stall. The reviews are the part that hurts to lose |
+| Google Search Console | What Google reports about the site | Re-verify with the file in `public/` |
 
 **Never share the service-role key.** It ignores every security rule in the
 database. It belongs in exactly two places: Vercel's environment variables, and
@@ -62,6 +64,10 @@ Supabase → Settings → API the same day.
 | `motion` 13.1.1 | Animation | Scroll reveals, count-ups, the scrolling strip |
 | `leaflet` 1.9.4 | Maps | The delivery pin at checkout |
 | `web-push` 3.6.7 | Notifications to a phone with the browser closed | New-order and ETA alerts. Free |
+
+Nothing is used for testing or for printing. Node runs the tests itself, and
+the printer is spoken to by the browser directly — both were deliberate, so
+there is one less thing that can rot.
 
 ### On your own computer
 - **Node.js** v20+ (nodejs.org, LTS) — `npm` comes with it
@@ -90,7 +96,8 @@ npm run dev          # 1. runs at localhost:3000
 
                      # 2. make the change, look at it
 
-npx tsc --noEmit     # 3. check before anyone sees it
+npm test             # 3. check before anyone sees it
+npx tsc --noEmit
 npm run lint
 npm run build
 
@@ -100,6 +107,13 @@ git push
 ```
 
 **Step 3 is not optional.** `npm run build` is the same check Vercel runs.
+
+`npm test` runs 48 checks over the parts where being wrong costs money:
+delivery pricing, what prints on a receipt, dish margins, who may open which
+screen, and what may be uploaded. They take under a second and need no
+database — they are pure arithmetic and rules. If one fails, do not push;
+read what it says it expected. It was written down deliberately, by hand,
+before the code was trusted to produce it.
 
 **Know its limit:** build *compiles* pages, it does not *open* them. A page can
 build perfectly and still fail when someone loads it. Always click through what
@@ -126,11 +140,12 @@ every guide you'll read assumes `main`.
 | Folder | What's in it |
 |---|---|
 | `src/app/` | One folder per page. The URL is the path — `src/app/menu/page.tsx` is `/menu` |
-| `src/app/admin/` | HQ. 20 screens |
-| `src/components/` | 94 reusable pieces of screen |
-| `src/lib/` | 45 files of logic with no screen — costing, permissions, hours, the assistant |
+| `src/app/admin/` | HQ. 21 screens |
+| `src/components/` | 97 reusable pieces of screen |
+| `src/lib/` | 55 files of logic with no screen — costing, permissions, hours, receipts, the assistant |
 | `supabase/migrations/` | 27 numbered SQL files. The database's whole history |
 | `src/app/globals.css` | Palette and fonts. Change a colour once, it changes everywhere |
+| `tests/` | The checks that run on `npm test`. Money, permissions, receipts |
 
 **Read the comments.** Where something looks strange there is usually a comment
 saying why, often naming the bug the obvious approach caused. Before you
@@ -138,7 +153,44 @@ saying why, often naming the bug the obvious approach caused. Before you
 
 ---
 
-## 5. The database rule
+## 5. The receipt printer
+
+The Counter prints over **Bluetooth, straight from the browser**. There is no
+app to install and nothing on the printer to configure — the phone or laptop
+talks to it directly.
+
+**Setting it up:** Counter → **Connect printer** → pick it from the chooser
+your browser opens. That connection lasts as long as the tab stays open, so
+one tap at the start of the day covers every sale after it.
+
+**Automatic printing:** the toggle beside it. On, and a recorded sale prints
+by itself. It is remembered **per device**, which is the point — the counter
+laptop with the printer wants it on, and your phone checking figures at home
+does not.
+
+**What works where.** Web Bluetooth is a Chrome and Edge feature. Android
+phones and Windows or Mac laptops are fine. **iPhone and iPad cannot do it at
+all** — Safari has no Web Bluetooth, and no other iOS browser can add it,
+because they are all Safari underneath. That is Apple's decision, not a
+setting to find. An iPad on the counter needs the printer driven from
+something else.
+
+**If it does not print:**
+
+| What you see | Usually means |
+|---|---|
+| No printer in the chooser | The printer is off, out of paper, or already paired to another device that has it open |
+| "Automatic printing is off" | The toggle, on this device. Each device remembers its own |
+| Nothing happens after a sale | The tab was reloaded — reconnect. A reload drops the connection |
+| Prints boxes or nonsense | An accent or a character the printer's font has no room for. Everything is folded to plain ASCII before sending, so tell me what printed |
+
+The receipt says **"This is not an official receipt"** on purpose. It is not a
+BIR receipt, and a customer should learn that from the paper rather than
+afterwards.
+
+---
+
+## 6. The database rule
 
 > **Never edit a migration that has already been run. Add a new one.**
 
@@ -183,12 +235,13 @@ Both are why migrations 0021 and 0024 exist.
 
 ---
 
-## 6. What happens when you…
+## 7. What happens when you…
 
 | You do this | Risk | What actually happens |
 |---|---|---|
 | **Change a dish's price** | reversible | Website updates at once. Orders already placed keep the price they were sold at. Margins recalculate; the dish may reclassify between star/plowhorse/puzzle/dog |
-| **Ring up an order at the Counter** | reversible | Four things: the sale is recorded with its own cost, ingredients come off the shelf by recipe, the day's takings move, and the dish may flip to sold out. Cancelling puts the ingredients back |
+| **Ring up an order at the Counter** | reversible | You are shown the receipt to check **before** anything is recorded. Confirm and four things happen: the sale is recorded with its own cost, ingredients come off the shelf by recipe, the day's takings move, and the dish may flip to sold out. It prints if automatic printing is on. Cancelling puts the ingredients back |
+| **Take a payment that doesn't add up** | blocked | Cash short of the total, or GCash with no reference number, is refused before it can be recorded — with the reason. A sale cannot be marked paid when it was not |
 | **Record a restock** | reversible | Stock rises; the price you paid becomes the cost from then on. Every dish using it gets a new margin. Break-even moves. Past sales keep their old cost |
 | **Save a promo with an end date** | reversible | Live within a minute; takes itself off at the end of that date. Dates are read in Manila time |
 | **Push code to the live branch** | check first | Vercel builds within seconds. Pass → live in a minute. Fail → **the old site stays up**. To undo: `git revert` and push again |
@@ -200,9 +253,9 @@ Both are why migrations 0021 and 0024 exist.
 
 ---
 
-## 7. Rules worth keeping
+## 8. Rules worth keeping
 
-1. **Back up on the first of the month.** HQ → Backup → download. All 36 tables in one file. Keep it somewhere that is not this computer. `scripts/restore.mjs` puts one back — test that once, on a throwaway project, before you need it. A backup nobody has restored is a guess.
+1. **Back up on the first of the month.** HQ → Backup → download. All 36 tables in one file. Keep it somewhere that is not this computer. `npm run restore <file.json>` puts one back — test that once, on a throwaway project, before you need it. A backup nobody has restored is a guess.
 2. **Never commit `.env.local`.** Already in `.gitignore`. If a key reaches GitHub, treat it as public forever and regenerate it that day.
 3. **One number, one place.** Net profit is calculated in exactly one function; Ask HQ explains it by calling *that* function. A second copy of a formula drifts within a month, and then two screens disagree with no way to tell which is right.
 4. **Change one thing at a time.** Small commits, honest messages. `git log` is only useful if it is.
@@ -211,7 +264,7 @@ Both are why migrations 0021 and 0024 exist.
 
 ---
 
-## 8. When something breaks
+## 9. When something breaks
 
 | What you see | Usually means | What to do |
 |---|---|---|
@@ -225,7 +278,47 @@ Both are why migrations 0021 and 0024 exist.
 
 ---
 
-## 9. What it costs
+## 10. Being found on Google
+
+Two things have to agree with each other: the **Google Business Profile** (the
+panel that appears beside a search for the shop) and the **website**. Google
+matches them into one business, and the strongest thing they can agree on is
+a coordinate — an address written out has to be geocoded and guessed at, a
+pin does not.
+
+**Already done, and nothing to maintain:**
+
+- The shop's coordinates, its opening hours, its menu, its reviews and its
+  payment methods are published on every page in a form Google reads directly
+- A sitemap at `/sitemap.xml` and a `robots.txt`, both generated from the
+  real pages rather than kept by hand
+- The Business Profile is linked from the site, and the site from it
+- Verified in Google Search Console, via `public/googlec21a9f717c196c7e.html`
+  — **do not delete that file.** It has no links to it and looks unused; it
+  is what proves to Google that the site is yours
+
+**Where the shop's location lives:** `SHOP.lat` / `SHOP.lng` in
+`src/lib/site.ts`. It is separate from the delivery pin in HQ → Delivery on
+purpose. This one is *where the business is* and only changes if the stall
+moves; that one is *where delivery fees are measured from* and is a pricing
+knob. They started the same, and if you move the stall, move both.
+
+**What actually moves the ranking now is not code:**
+
+1. **Reviews.** The strongest local ranking signal there is, by a distance.
+   A stall with 40 reviews beats one with 4 whose website is nicer. Put the
+   review QR on the counter. Reply to all of them, including the bad ones
+2. **Photos, weekly.** Google ranks an active listing above a dormant one.
+   Two or three real photos a week, of the actual food
+3. **The primary category.** "Taiwanese restaurant" or "Noodle shop", not
+   "Restaurant". It is the single strongest piece of text on the listing
+
+Do not buy backlinks or an SEO package. At this size those three things are
+most of the result.
+
+---
+
+## 11. What it costs
 
 As built, nothing — and that is a design decision, not an accident. There is no
 API key anywhere in this system that bills you.
@@ -243,7 +336,7 @@ year. Buy it anywhere, point it at Vercel in Settings → Domains.
 
 ---
 
-## 10. Handing it to a developer
+## 12. Handing it to a developer
 
 - **Stack:** Next.js 16 App Router, React 19, Tailwind v4, TypeScript, Supabase (Postgres + Auth + Storage), on Vercel.
 - **Read `AGENTS.md` first.** This is Next 16 — several APIs differ from what they'll remember, and the real docs are in `node_modules/next/dist/docs/`.
@@ -252,6 +345,8 @@ year. Buy it anywhere, point it at Vercel in Settings → Domains.
 - **Migrations are append-only.**
 - **Money is calculated in one place** — `src/lib/money-server.ts` and `src/lib/costing.ts`. Don't reimplement a formula to display it.
 - **The comments explain the why.** Many name a specific bug the obvious approach caused.
+- **`npm test`** — 48 tests on Node's own runner, no framework. Pure logic only: pricing, permissions, receipts, margins, upload rules.
+- **Two coordinates, on purpose** — `SHOP.lat/lng` is where the business *is* (Google matches the listing on it); the delivery settings pin is where fees are *measured from* and is owner-editable. Do not make one read the other.
 
 Ask for four things in return: small commits, honest messages, work on a branch,
 and `npm run build` passing before every push.
