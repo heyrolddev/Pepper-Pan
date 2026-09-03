@@ -1,4 +1,5 @@
 import { SHOP, siteUrl } from "@/lib/site";
+import { jsonLd } from "@/lib/json-ld";
 import type { Meal } from "@/components/menu-list";
 
 /**
@@ -89,7 +90,7 @@ export function MenuSchema({
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{
-        __html: JSON.stringify(schema).replace(/</g, "\\u003c"),
+        __html: jsonLd(schema),
       }}
     />
   );

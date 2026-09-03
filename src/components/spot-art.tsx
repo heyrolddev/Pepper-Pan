@@ -110,17 +110,6 @@ export function ChatSteam({ className, title }: ArtProps) {
   );
 }
 
-/** A star for reviews, drawn rather than typed. */
-export function DrawnStar({ className, title }: ArtProps) {
-  return (
-    <svg viewBox="0 0 64 64" className={className} {...frame(title)}>
-      <g {...stroke}>
-        <path d="M32 10 39 25l16 2-12 11 3 16-14-8-14 8 3-16-12-11 16-2Z" />
-      </g>
-    </svg>
-  );
-}
-
 /**
  * A section marker: the drawing, a rule, and the label.
  *

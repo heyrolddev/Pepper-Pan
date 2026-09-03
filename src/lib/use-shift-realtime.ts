@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useCoalescedRefresh } from "@/lib/use-coalesced-refresh";
 
 /**
  * Keeps "who is on shift" current without anybody refreshing.
@@ -25,7 +25,7 @@ import { createClient } from "@/lib/supabase/client";
  * nobody else's; the owner receives all of them.
  */
 export function useShiftRealtime(channelKey = "shifts") {
-  const router = useRouter();
+  const refresh = useCoalescedRefresh();
 
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
@@ -38,12 +38,12 @@ export function useShiftRealtime(channelKey = "shifts") {
         // Clocking in is an INSERT and clocking out is an UPDATE, so both
         // matter. `*` rather than two handlers that would do the same thing.
         { event: "*", schema: "public", table: "staff_shifts" },
-        () => router.refresh()
+        refresh
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [channelKey, router]);
+  }, [channelKey, refresh]);
 }

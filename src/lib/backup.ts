@@ -24,7 +24,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 
 /** Bumped when the JSON shape changes, so a restore can tell what it's holding. */
-export const BACKUP_VERSION = 2;
+const BACKUP_VERSION = 2;
 
 /**
  * Every table worth copying, and why it's in the list.

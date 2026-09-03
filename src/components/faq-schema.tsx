@@ -1,4 +1,5 @@
 import { siteUrl } from "@/lib/site";
+import { jsonLd } from "@/lib/json-ld";
 import type { SiteFaq } from "@/lib/faq-site";
 
 /**
@@ -34,7 +35,7 @@ export function FaqSchema({ faqs }: { faqs: SiteFaq[] }) {
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{
-        __html: JSON.stringify(schema).replace(/</g, "\\u003c"),
+        __html: jsonLd(schema),
       }}
     />
   );

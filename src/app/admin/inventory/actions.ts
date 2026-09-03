@@ -406,55 +406,6 @@ export async function produceBatch(input: {
   return { error: null, cost: Number(data ?? 0) };
 }
 
-export async function saveBatch(input: {
-  id?: string;
-  name: string;
-  yieldQty: number;
-  yieldUnit: string;
-  reorderLevel: number;
-  /** Set only for a repack — a bought item split into portions, no recipe. */
-  manualCostPerUnit: number | null;
-}): Promise<Result & { id?: string }> {
-  const viewer = await requireStock();
-  if (!viewer) return { error: "Only shop staff can change batches." };
-
-  const name = input.name.trim();
-  if (!name) return { error: "Give the batch a name." };
-  if (input.yieldQty <= 0) return { error: "How much does one batch make?" };
-
-  const supabase = createAdminClient();
-  const row = {
-    name,
-    yield_qty: input.yieldQty,
-    yield_unit: input.yieldUnit.trim() || "g",
-    reorder_level: input.reorderLevel,
-    manual_cost_per_unit: input.manualCostPerUnit,
-  };
-
-  if (input.id) {
-    const { data, error } = await supabase
-      .from("batches")
-      .update(row)
-      .eq("id", input.id)
-      .select("id");
-    if (error) return { error: error.message };
-    if (!data?.length) return { error: "That batch no longer exists." };
-    await log("inventory", `Edited batch "${name}"`, viewer.profile?.id ?? null);
-    revalidate();
-    return { error: null, id: input.id };
-  }
-
-  const { data, error } = await supabase
-    .from("batches")
-    .insert({ ...row, batch_stock: 0 })
-    .select("id")
-    .single();
-  if (error || !data) return { error: error?.message ?? "Could not add it." };
-  await log("inventory", `Added batch "${name}"`, viewer.profile?.id ?? null);
-  revalidate();
-  return { error: null, id: data.id };
-}
-
 /**
  * Replace what goes into a batch, in one go.
  *

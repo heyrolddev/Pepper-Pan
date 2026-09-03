@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CATEGORY_COLOURS, fallbackColour } from "@/lib/categories";
-import { applyTakeoutMerge, planTakeoutMerge, type MergePlan } from "@/lib/takeout-merge";
+import { applyTakeoutMerge } from "@/lib/takeout-merge";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 
 const BLOCKED_MESSAGE =
@@ -351,25 +351,6 @@ export async function deleteCategory(name: string): Promise<{ error: string | nu
 
   revalidateMenu();
   return { error: null };
-}
-
-/* ------------------------------------------------------------------ */
-/* Collapsing the "(T.O)" duplicates                                   */
-/* ------------------------------------------------------------------ */
-
-/**
- * What the merge would do, without doing it.
- *
- * Read-only, so it is safe to call every time the Menu screen loads — which
- * is the point: the panel only appears when there is something to collapse,
- * and disappears by itself once there isn't.
- */
-export async function previewTakeoutMerge(): Promise<MergePlan> {
-  const viewer = await getViewer();
-  if (!can(viewer, "menu.edit")) {
-    return { rows: [], skipped: [], before: 0, after: 0, error: "Not allowed." };
-  }
-  return planTakeoutMerge();
 }
 
 /**

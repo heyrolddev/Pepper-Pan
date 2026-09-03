@@ -124,7 +124,7 @@ function isActive(pathname: string, href: string) {
   return href === "/admin" ? pathname === href : pathname.startsWith(href);
 }
 
-export function currentTitle(pathname: string): string {
+function currentTitle(pathname: string): string {
   // Longest match wins, so /admin/orders doesn't answer to /admin.
   const hit = [...ALL]
     .sort((a, b) => b.href.length - a.href.length)

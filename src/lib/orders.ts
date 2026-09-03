@@ -132,7 +132,7 @@ export const STATUS_TONES: Record<OrderStatus, StatusTone> = {
  * packed, which is what the packaging costing turns on. Everything else goes
  * out in a box and is charged for it.
  */
-export const FULFILLMENT_LABELS: Record<string, string> = {
+const FULFILLMENT_LABELS: Record<string, string> = {
   pickup: "Take-out",
   delivery: "Delivery",
   dine_in: "Dine in",

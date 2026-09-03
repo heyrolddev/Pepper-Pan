@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useCoalescedRefresh } from "@/lib/use-coalesced-refresh";
 
 type Options = {
   /** Limit to one customer's orders. Omit on the admin side to watch them all. */
@@ -39,7 +39,7 @@ export function useOrderRealtime({
   onInsert,
   onUpdate,
 }: Options = {}) {
-  const router = useRouter();
+  const refresh = useCoalescedRefresh();
   const [connected, setConnected] = useState(false);
 
   // Kept in refs so a caller re-creating its callbacks each render doesn't
@@ -68,7 +68,7 @@ export function useOrderRealtime({
         { event: "INSERT", schema: "public", table: "orders", ...(filter && { filter }) },
         (payload) => {
           insertRef.current?.(payload.new as Record<string, unknown>);
-          router.refresh();
+          refresh();
         }
       )
       .on(
@@ -79,7 +79,7 @@ export function useOrderRealtime({
             payload.new as Record<string, unknown>,
             payload.old as Record<string, unknown>
           );
-          router.refresh();
+          refresh();
         }
       )
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
@@ -87,7 +87,7 @@ export function useOrderRealtime({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [customerId, channelKey, router]);
+  }, [customerId, channelKey, refresh]);
 
   return { connected };
 }

@@ -17,7 +17,7 @@ import { pushConfigured, pushToStaff, pushToUser } from "@/lib/push";
  * configured nothing is sent and nothing breaks.
  */
 
-export function emailConfigured() {
+function emailConfigured() {
   return Boolean(process.env.RESEND_API_KEY && process.env.SHOP_FROM_EMAIL);
 }
 

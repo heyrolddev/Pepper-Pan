@@ -123,40 +123,6 @@ export async function setOrderEta(
   return { error: null };
 }
 
-/** Cancel an order on the customer's behalf, recording why. */
-export async function cancelOrderAsStaff(
-  orderId: string,
-  reason: string
-): Promise<{ error: string | null }> {
-  const viewer = await getViewer();
-  if (!can(viewer, "orders")) return { error: "Not allowed." };
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("orders")
-    .update({
-      status: "cancelled",
-      cancelled_reason: reason.trim() || "Cancelled by the shop",
-      eta_minutes: null,
-      eta_set_at: null,
-    })
-    .eq("id", orderId)
-    .select("id");
-
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
-
-  // Whatever was taken off the shelf for this order goes back. A no-op when
-  // the order was never confirmed, so a cancelled `pending` order doesn't
-  // invent stock that was never deducted.
-  await syncStockForStatus(orderId, "cancelled");
-
-  await notifyOrderStatus(orderId);
-
-  revalidateOrders();
-  return { error: null };
-}
-
 /**
  * Confirm (or un-confirm) that a payment actually arrived. Staff check the
  * reference against their own GCash records — nothing here can verify it for

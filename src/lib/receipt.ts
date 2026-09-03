@@ -67,7 +67,7 @@ export type RollWidth = keyof typeof COLUMNS;
  * dropped rather than printed as a smudge. It is not prettier. It is legible
  * on every printer instead of some of them.
  */
-export function toPrinterAscii(text: string): string {
+function toPrinterAscii(text: string): string {
   return text
     .replace(/₱/g, "P")
     .replace(/[""]/g, '"')

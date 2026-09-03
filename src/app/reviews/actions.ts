@@ -83,27 +83,6 @@ export async function saveReview(input: {
   return { error: null };
 }
 
-export async function deleteMyReview(id: string): Promise<{ error: string | null }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "You need to sign in first." };
-
-  const { data, error } = await supabase
-    .from("reviews")
-    .delete()
-    .eq("id", id)
-    .eq("customer_id", user.id)
-    .select("id");
-
-  if (error) return { error: error.message };
-  if (!data || data.length === 0) return { error: "That review is no longer there." };
-
-  revalidateReviews();
-  return { error: null };
-}
-
 /** Staff: publish a reply under a review. */
 export async function replyToReview(
   id: string,

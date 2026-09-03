@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useCoalescedRefresh } from "@/lib/use-coalesced-refresh";
 
 /**
  * Keeps the shop's inbox current as customers type.
@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/client";
  * component so RLS stays the single authority on what this viewer may see.
  */
 export function useChatRealtime() {
-  const router = useRouter();
+  const refresh = useCoalescedRefresh();
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
@@ -27,19 +27,19 @@ export function useChatRealtime() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "chat_messages" },
-        () => router.refresh()
+        refresh
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "chat_threads" },
-        () => router.refresh()
+        refresh
       )
       .subscribe((status) => setConnected(status === "SUBSCRIBED"));
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [router]);
+  }, [refresh]);
 
   return { connected };
 }

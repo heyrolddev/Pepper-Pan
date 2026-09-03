@@ -17,7 +17,7 @@ export type AnnouncementKind = "promo" | "news" | "dine_in" | "coming_soon";
  * live is shown, and the editor says so rather than letting somebody wonder
  * why their second dine-in offer never appeared.
  */
-export const SLOT_KINDS: AnnouncementKind[] = ["dine_in", "coming_soon"];
+const SLOT_KINDS: AnnouncementKind[] = ["dine_in", "coming_soon"];
 export const isSlotKind = (k: AnnouncementKind) => SLOT_KINDS.includes(k);
 
 export type Announcement = {
@@ -200,7 +200,7 @@ export const STATE_TONE: Record<HomeState, { label: string; chip: string }> = {
  * band of red across the homepage looks like the page failed to load, which
  * is a worse outcome than a promo nobody is running.
  */
-export const DEFAULT_STRIP = [
+const DEFAULT_STRIP = [
   "Black Pepper Noodles",
   "Made Fresh Daily",
   "Free Coffee Dine-In",

@@ -1,4 +1,5 @@
 import { SHOP, SOCIALS, siteUrl } from "@/lib/site";
+import { jsonLd } from "@/lib/json-ld";
 import { getSchedule } from "@/lib/hours-server";
 import { getDeliverySettings } from "@/lib/delivery-server";
 import { getPublicReviews } from "@/lib/reviews-server";
@@ -147,7 +148,7 @@ export async function ShopSchema() {
       // shop's own — but "</" is escaped anyway so a stray sequence in a
       // review or a closure note can't end the script tag early.
       dangerouslySetInnerHTML={{
-        __html: JSON.stringify(schema).replace(/</g, "\\u003c"),
+        __html: jsonLd(schema),
       }}
     />
   );

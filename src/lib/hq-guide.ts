@@ -51,7 +51,7 @@ export type Group = "Money" | "The kitchen" | "Every day" | "Setting up" | "Peop
 /* Matching                                                            */
 /* ------------------------------------------------------------------ */
 
-export function normalize(text: string): string {
+function normalize(text: string): string {
   return text
     .toLowerCase()
     .normalize("NFD")
@@ -136,7 +136,7 @@ const TAGALOG_MARKERS = [
   "kasi", "pala", "sana", "salamat", "utang", "kita", "bayad", "presyo",
 ];
 
-export function speaksTaglish(text: string): boolean {
+function speaksTaglish(text: string): boolean {
   const q = normalize(text);
   return TAGALOG_MARKERS.some((m) => new RegExp(`(^| )${m}( |$)`).test(q));
 }

@@ -26,17 +26,18 @@ migration rule, and what to do when something breaks.
    cp .env.example .env.local
    ```
 
-4. (Optional) Import existing business data from `data/pepperpan_backup.json`
-   (not tracked in git):
+4. (Optional) Load a backup taken from a running shop — HQ → Backup produces
+   the file:
 
    ```bash
-   node --env-file=.env.local scripts/seed.mjs
+   npm run restore pepperpan-backup_2026-08-31_1430.json
    ```
 
 5. In Supabase, go to Authentication → URL Configuration and add your site's
    URL (and `http://localhost:3000` for local dev) to both the Site URL and
-   Redirect URLs — customer sign-in uses email magic links that redirect to
-   `/auth/callback` on whichever origin the app is running on.
+   Redirect URLs. Sign-in is email and password; password resets and the
+   email confirmation both come back through `/auth/callback`, on whichever
+   origin the app is running on.
 
 6. Run the dev server:
 
@@ -44,10 +45,23 @@ migration rule, and what to do when something breaks.
    npm run dev
    ```
 
-   Open [http://localhost:3000](http://localhost:3000) — the homepage renders
-   the public menu (meals marked `is_public` and `is_available` in Supabase).
-   Customers can add items to a cart, sign in with an emailed magic link, place
-   an order, and see their order history at `/orders`.
+   Open [http://localhost:3000](http://localhost:3000). The homepage is the
+   shop's front page; `/menu` lists what is for sale (meals marked
+   `is_public` and `is_available` in Supabase). Customers add items to a
+   cart, sign in, order for pickup or delivery, and follow it at `/orders`.
+
+## Checks
+
+```bash
+npm test             # 48 tests, Node's own runner — no framework, no deps
+npx tsc --noEmit
+npm run lint
+npm run build        # the same check Vercel runs
+```
+
+`tests/` covers the pure logic where being wrong costs money: delivery
+pricing, receipt rendering, dish margins, the permission table, and the
+upload guards. No database is needed — they are arithmetic and rules.
 
 ## Notifications
 
@@ -83,22 +97,33 @@ else behaves exactly as before. Email status updates (`RESEND_API_KEY`,
 
 ## Project structure
 
-- `src/app` — Next.js App Router pages: `/` (menu), `/cart`, `/login`
-  (magic-link sign-in), `/checkout`, `/orders` (order history), and
-  `/auth/callback` (exchanges the magic-link code for a session).
+- `src/app` — Next.js App Router pages: `/` (front page), `/menu`, `/cart`,
+  `/checkout`, `/orders`, `/reviews`, `/news`, `/account`, `/login` and
+  `/signup` (email and password), and `/auth/callback`.
+- `src/app/admin` — HQ, the back office: orders, counter, inventory, costing,
+  money, staff, promos, and the rest.
 - `src/app/checkout/actions.ts` — server-side order placement; re-fetches
   current menu prices rather than trusting the client-side cart total.
 - `src/lib/cart-context.tsx` — client-side cart state, persisted to
   `localStorage`.
 - `src/lib/supabase` — Supabase client factories: `client.ts` (browser),
   `server.ts` (server components/actions, respects RLS), `admin.ts`
-  (service-role, server-only, bypasses RLS — used by `scripts/seed.mjs`).
+  (service-role, server-only, bypasses RLS).
 - `src/proxy.ts` — refreshes the Supabase auth session cookie on every
   request (this Next.js version renamed `middleware.ts` to `proxy.ts`).
-- `supabase/migrations` — SQL schema and RLS policies.
+- `supabase/migrations` — SQL schema and RLS policies, numbered and
+  append-only. Never edit one that has already been run; add the next.
+- `scripts/restore.mjs` — puts a backup file back (`npm run restore`).
+- `tests/` — the checks that run on `npm test`.
 
 ## Roles
 
-`profiles.role` is one of `owner`, `staff`, or `customer` (default). Staff and
-owners get full back-office access via RLS; customers can only see/manage
-their own orders and the public menu.
+`profiles.role` is one of `owner`, `manager`, `staff`, or `customer`
+(default). Access is defined as a table of capabilities in
+`src/lib/permissions.ts` — staff, then manager on top of it, then owner on
+top of that — so a role can never hold something the role above it lacks.
+Call sites name a capability, never a role.
+
+Row Level Security in Postgres is the real gate; hiding a button is not a
+permission. A staff account cannot read costs even by querying the database
+directly.

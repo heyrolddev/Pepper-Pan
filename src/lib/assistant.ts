@@ -64,11 +64,6 @@ const WHERE = "in front of Palengkeni, beside Osave, Apalit";
 const peso = (n: number) =>
   "₱" + Number(n).toLocaleString("en-PH", { maximumFractionDigits: 2 });
 
-/** Always available — there is no key to configure. */
-export function assistantConfigured() {
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // Reading the shop
 // ---------------------------------------------------------------------------

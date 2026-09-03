@@ -66,18 +66,6 @@ export function can(viewer: Viewer, what: Capability): boolean {
   return roleCan(viewer?.profile?.role, what);
 }
 
-/**
- * The signed-in person, but only if they may do this.
- *
- * Saves every action repeating the same three lines, and makes the common
- * mistake — fetching the viewer and then forgetting to check — harder to
- * write than the correct version.
- */
-export async function viewerWho(what: Capability): Promise<Viewer> {
-  const viewer = await getViewer();
-  return can(viewer, what) ? viewer : null;
-}
-
 /** Statuses that mean "this order is still happening" for the customer. */
 
 

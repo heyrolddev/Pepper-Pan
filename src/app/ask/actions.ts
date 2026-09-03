@@ -4,8 +4,31 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { askAssistant, type ChatTurn } from "@/lib/assistant";
+import { rateLimit } from "@/lib/rate-limit";
+import { headers } from "next/headers";
 
 const MAX_MESSAGE = 1000;
+
+/**
+ * Who is calling, for the limits below.
+ *
+ * These three actions are the only ones in the app anyone may call without
+ * signing in, and two of them write rows with the service-role client — so
+ * without a ceiling the cost of filling the shop's database with junk threads
+ * and burying a real customer's message is one loop.
+ *
+ * Keyed by address rather than by guest key: the key is chosen by the caller,
+ * so limiting by it means an attacker rotates keys and is never limited. A
+ * shared address — a household, a café, the stall's own wifi — shares a
+ * bucket, which is why the numbers are set well above what a person typing
+ * could reach rather than at the edge of it.
+ */
+async function caller(scope: string): Promise<string> {
+  const fwd = (await headers()).get("x-forwarded-for");
+  return `${scope}:${fwd?.split(",")[0]?.trim() || "unknown"}`;
+}
+
+const TOO_FAST = "That's a lot of messages at once — give it a moment.";
 
 /**
  * One turn of "Ask Pepper Pan".
@@ -33,6 +56,11 @@ export async function sendChatMessage(input: {
   }
   if (!/^[a-z0-9-]{8,64}$/i.test(input.guestKey)) {
     return { reply: "", needsHuman: false, error: "Chat session expired — please reload." };
+  }
+
+  // Twelve a minute. Nobody types that fast for long, and a script does.
+  if (!rateLimit(await caller("chat.send"), 12, 60_000).allowed) {
+    return { reply: "", needsHuman: false, error: TOO_FAST };
   }
 
   // Attribute the thread to a signed-in customer when there is one, so the
@@ -146,6 +174,10 @@ export async function saveChatContact(input: {
   if (!/^[a-z0-9-]{8,64}$/i.test(input.guestKey)) {
     return { error: "Chat session expired — please reload." };
   }
+  // A contact form is filled once, twice if the first attempt was wrong.
+  if (!rateLimit(await caller("chat.contact"), 6, 60_000).allowed) {
+    return { error: TOO_FAST };
+  }
   const name = input.name.trim().slice(0, 120);
   const phone = input.phone.trim().slice(0, 40);
   if (!name || phone.replace(/\D/g, "").length < 10) {
@@ -181,6 +213,12 @@ export async function fetchChatMessages(input: {
   sinceId: number;
 }): Promise<{ messages: ChatMessage[]; takenOver: boolean; error: string | null }> {
   if (!/^[a-z0-9-]{8,64}$/i.test(input.guestKey)) {
+    return { messages: [], takenOver: false, error: null };
+  }
+  // The widget polls every four seconds — fifteen a minute — so this is
+  // roomy on purpose. A poll that gets refused should look like a quiet
+  // moment rather than an error, which is what the empty result does.
+  if (!rateLimit(await caller("chat.poll"), 45, 60_000).allowed) {
     return { messages: [], takenOver: false, error: null };
   }
 
