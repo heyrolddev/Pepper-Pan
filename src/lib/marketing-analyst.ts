@@ -35,11 +35,6 @@ export type Advice = {
   menu: string[];
 };
 
-/** No key, no billing — the analysis is arithmetic on the shop's own data. */
-export function analystConfigured() {
-  return true;
-}
-
 const peso = (n: number) =>
   "₱" + Number(n).toLocaleString("en-PH", { maximumFractionDigits: 0 });
 

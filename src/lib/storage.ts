@@ -1,24 +1,35 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { IMAGE_TYPES, MEDIA_BUCKET, checkMedia } from "@/lib/media";
 
-export const BUCKET = "PepperPan";
-export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+/**
+ * The rules for what may be uploaded live in `media.ts`, not here.
+ *
+ * This file used to restate them, and the two copies had drifted: a menu
+ * photo could be 8MB and a promo photo 5MB, a promo could be a GIF and a menu
+ * photo could not — and the "over 8MB" in the rejection message was a third
+ * copy of the number, written out as English. None of that was decided; it is
+ * just what happens when the same question is answered in two places.
+ *
+ * One answer now. If a limit should differ by surface, that is a real product
+ * decision and belongs in `media.ts` as a named thing, not as a second
+ * constant that quietly disagrees.
+ */
 
 export function extensionFor(type: string) {
-  return type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
+  return IMAGE_TYPES[type] ?? "jpg";
 }
 
 export function validateImage(file: unknown): { error: string } | { file: File } {
   if (!(file instanceof File) || file.size === 0) {
     return { error: "Choose an image first." };
   }
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-    return { error: "Use a JPG, PNG or WebP image." };
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    return { error: "That image is over 8MB — please use a smaller one." };
+  const check = checkMedia(file.type, file.size);
+  // A video passes checkMedia but is not an image, and this is the image path.
+  if (!check.ok) return { error: check.error };
+  if (check.kind !== "image") {
+    return { error: "That has to be a photo — JPG, PNG, WEBP or GIF." };
   }
   return { file };
 }
@@ -42,7 +53,7 @@ export async function uploadImage(
     : sessionClient;
 
   const { error } = await client.storage
-    .from(BUCKET)
+    .from(MEDIA_BUCKET)
     .upload(path, Buffer.from(await file.arrayBuffer()), {
       contentType: file.type,
       upsert: true,
@@ -56,6 +67,6 @@ export async function uploadImage(
 
   const {
     data: { publicUrl },
-  } = client.storage.from(BUCKET).getPublicUrl(path);
+  } = client.storage.from(MEDIA_BUCKET).getPublicUrl(path);
   return { url: publicUrl };
 }

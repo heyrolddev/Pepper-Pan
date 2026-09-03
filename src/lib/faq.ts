@@ -57,7 +57,7 @@ export function deriveTriggers(input: string): string[] {
  * just punctuation — "may allergy ako sa sibuyas, pwede ba tanggalin?" has to
  * yield "sibuyas", or two people asking the same thing never group.
  */
-export function keywordsOf(text: string): string[] {
+function keywordsOf(text: string): string[] {
   return deriveTriggers(text.replace(/,/g, " "));
 }
 

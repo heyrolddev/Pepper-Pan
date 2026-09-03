@@ -90,7 +90,7 @@ export const CATEGORY_TONES: Record<string, CategoryTone> = {
 export const CATEGORY_COLOURS = Object.keys(CATEGORY_TONES);
 
 /** The fallback is deliberately quiet: an uncoloured category is not a loud one. */
-export const DEFAULT_CATEGORY_TONE = "ink";
+const DEFAULT_CATEGORY_TONE = "ink";
 
 export function toneFor(colour: string | null | undefined): CategoryTone {
   return CATEGORY_TONES[colour ?? ""] ?? CATEGORY_TONES[DEFAULT_CATEGORY_TONE];

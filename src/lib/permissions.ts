@@ -161,11 +161,6 @@ export function roleCan(role: string | null | undefined, what: Capability): bool
   return BY_ROLE[role].includes(what);
 }
 
-/** What this role may do, for showing someone their own access. */
-export function capabilitiesOf(role: string | null | undefined): Capability[] {
-  return isShopRole(role) ? BY_ROLE[role] : [];
-}
-
 /**
  * The badge, in one place.
  *

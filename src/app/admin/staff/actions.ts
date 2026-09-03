@@ -79,39 +79,3 @@ export async function setStaffRole(input: {
   return { error: null };
 }
 
-/**
- * Close a shift somebody forgot to end.
- *
- * Owner only, and logged. A shift left open all night otherwise reads as a
- * fourteen-hour day, and the person it belongs to cannot fix it themselves —
- * by design, since that is the same edit as claiming the hours.
- */
-export async function closeShiftAsOwner(input: {
-  shiftId: string;
-  endedAt: string;
-  closingCash: number | null;
-}): Promise<Result> {
-  const owner = await requireOwner();
-  if (!owner) return { error: "Only the owner can correct a shift." };
-
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("staff_shifts")
-    .update({
-      ended_at: input.endedAt,
-      closing_cash: input.closingCash,
-      note: "Closed by the owner",
-    })
-    .eq("id", input.shiftId)
-    .select("id");
-  if (error) return { error: error.message };
-  if (!data?.length) return { error: "That shift no longer exists." };
-
-  await supabase.from("activity_log").insert({
-    category: "staff",
-    description: `Closed shift ${input.shiftId.slice(0, 8)} by hand`,
-    actor: owner.profile?.id ?? null,
-  });
-  revalidatePath("/admin/staff");
-  return { error: null };
-}

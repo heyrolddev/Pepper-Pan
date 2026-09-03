@@ -6,6 +6,12 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // The test files import with an explicit `.ts` extension, because that is
+    // what Node's own runner needs to resolve them — it strips types, it does
+    // not resolve a bundler's extensionless imports. Harmless for the app:
+    // nothing is emitted from here, Next compiles the app with its own
+    // pipeline, and app code keeps importing through the `@/*` alias.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
