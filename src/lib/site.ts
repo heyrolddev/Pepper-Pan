@@ -19,6 +19,36 @@ export const SHOP = {
   phone: "+63 947 353 3060",
   phoneHref: "+639473533060",
   priceRange: "₱₱",
+
+  /**
+   * Where the stall is, to the metre, taken from the pin the owner dropped on
+   * their own Google Business Profile.
+   *
+   * This lives here rather than in the delivery settings on purpose, and the
+   * distinction is worth spelling out because the two look interchangeable:
+   *
+   *   This      is a fact about the business. It is what Google matches the
+   *             listing to the website on, and it should only ever change if
+   *             the stall physically moves.
+   *   Delivery  is the origin fees are measured from. It is editable from the
+   *             admin because it is a pricing knob.
+   *
+   * Reading the schema's location out of the pricing knob — which is what this
+   * did for one commit — means anyone nudging delivery could silently move
+   * where the business claims to be. Same number today; different jobs.
+   */
+  lat: 14.9531856,
+  lng: 120.7576564,
+
+  /**
+   * The Google Maps listing, addressed by its CID.
+   *
+   * The URL copied out of Maps is a place name, a viewport, a zoom level and
+   * four tracking parameters wrapped around one number — this one. The rest is
+   * the state of the browser tab it was copied from, and it goes stale;
+   * ?cid= is the listing itself and does not.
+   */
+  mapUrl: "https://maps.google.com/?cid=13918401762537882815",
 } as const;
 
 /**

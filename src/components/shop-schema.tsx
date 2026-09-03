@@ -63,27 +63,32 @@ export async function ShopSchema() {
     // Every profile the shop actually posts from. `sameAs` is how Google
     // ties this page to those accounts; listing one of three threw away the
     // other two.
-    sameAs: SOCIALS.map((s) => s.href),
+    // The Maps listing belongs in here with the social profiles: sameAs is the
+    // list of other places this same business is described, and for a stall
+    // the listing is the most consequential of them.
+    sameAs: [...SOCIALS.map((s) => s.href), SHOP.mapUrl],
 
-    // Where the stall actually is, to the metre.
+    // And again as hasMap, which is the property that means "this is the map
+    // of this place" rather than merely "this is also us".
+    hasMap: SHOP.mapUrl,
+
+    // Where the stall actually is, to the metre — the same pin as the Google
+    // Business Profile, so the listing and this page describe one place rather
+    // than two that happen to share a name.
     //
-    // Read from the delivery settings rather than typed in here, because that
-    // pin is already the one the owner dropped on a map and it is already the
-    // one distances are charged from. A second copy of a coordinate is a
-    // second thing to keep right, and the one that drifts is always the copy
-    // nobody uses day to day.
-    //
-    // This is the single most useful thing on this block for "near me": an
-    // address string has to be geocoded and guessed at, a coordinate does not.
+    // The single most useful thing on this block for "near me": an address
+    // string has to be geocoded and guessed at, a coordinate does not.
     geo: {
       "@type": "GeoCoordinates",
-      latitude: delivery.shop_lat,
-      longitude: delivery.shop_lng,
+      latitude: SHOP.lat,
+      longitude: SHOP.lng,
     },
 
-    // The radius the shop will actually travel, from the same settings that
+    // The radius the shop will actually travel, read from the settings that
     // enforce it at checkout — so what Google is told and what a customer is
-    // allowed to order are the same number.
+    // allowed to order are the same number. Centred on the delivery origin
+    // rather than on SHOP, because that is the point fees are measured from
+    // and therefore the true centre of the area being described.
     ...(delivery.is_enabled
       ? {
           areaServed: {
