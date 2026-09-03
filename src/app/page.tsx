@@ -66,7 +66,10 @@ const IMG_BASE =
  * rather than one branching component.
  */
 const HERO_STILL = `${IMG_BASE}/opt/4.webp`;
-const HERO_VIDEO: string | null = null;
+// Served from public/ rather than Supabase storage: it is 1.5 MB of static
+// bytes that never change, Vercel puts it on its CDN for free, and it needs no
+// key and no upload step the owner would have to repeat.
+const HERO_VIDEO: string | null = "/hero.mp4";
 
 const favorites = [
   { name: "Pork Noodles", image: `${IMG_BASE}/opt/FB.webp` },
