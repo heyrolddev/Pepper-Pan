@@ -3,12 +3,8 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import { asPlainText, renderReceipt, type Receipt } from "@/lib/receipt";
 import { chunk, encodeReceipt, toBase64 } from "@/lib/escpos";
-import {
-  bluetoothSupported,
-  connectPrinter,
-  sendJob,
-  type Connection,
-} from "@/lib/bluetooth-printer";
+import { bluetoothSupported, sendJob } from "@/lib/bluetooth-printer";
+import * as store from "@/lib/printer-store";
 
 /** These never change while the page is open, so there is nothing to watch. */
 const never = () => () => {};
@@ -43,7 +39,6 @@ export function ReceiptPrinter({
   const rows = renderReceipt(receipt);
   const text = asPlainText(rows);
 
-  const [conn, setConn] = useState<Connection | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,14 +51,25 @@ export function ReceiptPrinter({
   const canBluetooth = useSyncExternalStore(never, bluetoothSupported, offOnServer);
   const isAndroid = useSyncExternalStore(never, onAndroid, offOnServer);
 
+  // The connection and the auto-print setting live outside React, so they
+  // outlast this panel — which is unmounted the moment the till is cleared for
+  // the next customer. See printer-store.ts.
+  useSyncExternalStore(store.subscribe, store.getVersion, store.versionOnServer);
+  const auto = useSyncExternalStore(
+    store.subscribe,
+    store.autoPrint,
+    store.autoPrintOnServer
+  );
+  const connected = store.isConnected();
+  const printerName = store.printer()?.name ?? "printer";
+
   async function printOverBluetooth() {
     setError(null);
     setBusy(true);
     try {
       // Connect once and keep it for the shift. Making somebody pick their
       // printer out of a list for every single sale is not a till.
-      const open = conn?.isOpen() ? conn : await connectPrinter();
-      setConn(open);
+      const open = await store.connect();
       await sendJob(open, chunk(encodeReceipt(rows)));
       setNote(`Printed on ${open.name}.`);
       onDone?.();
@@ -72,7 +78,7 @@ export function ReceiptPrinter({
       // A cancelled chooser is not a failure, it is a person changing their
       // mind, and it should not paint the screen red.
       setError(/cancel|User cancelled/i.test(message) ? null : message);
-      setConn(null);
+      store.disconnect();
     } finally {
       setBusy(false);
     }
@@ -101,8 +107,8 @@ export function ReceiptPrinter({
           >
             {busy
               ? "Printing…"
-              : conn?.isOpen()
-                ? `Print on ${conn.name}`
+              : connected
+                ? `Print on ${printerName}`
                 : "Connect a printer & print"}
           </button>
         )}
@@ -125,11 +131,10 @@ export function ReceiptPrinter({
           </a>
         )}
 
-        {conn?.isOpen() && (
+        {connected && (
           <button
             onClick={() => {
-              conn.disconnect();
-              setConn(null);
+              store.disconnect();
               setNote(null);
             }}
             className="rounded-2xl px-4 py-3 text-sm font-bold text-ink-800/60 hover:text-brand-600"
@@ -138,6 +143,27 @@ export function ReceiptPrinter({
           </button>
         )}
       </div>
+
+      {/* Only offered once there is a printer to print on. A switch for
+          something that cannot happen yet is a switch that teaches somebody
+          the wrong thing about how the till works. */}
+      {connected && (
+        <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-cream-100 px-4 py-3">
+          <input
+            type="checkbox"
+            checked={auto}
+            onChange={(e) => store.setAutoPrint(e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-brand-600"
+          />
+          <span className="text-sm font-semibold text-ink-950">
+            Print automatically after every sale
+            <span className="mt-0.5 block text-xs font-medium text-ink-800/60">
+              Remembered on this device. The printer stays connected until the
+              tab is closed.
+            </span>
+          </span>
+        </label>
+      )}
 
       {note && <p className="text-sm font-semibold text-jade-700">{note}</p>}
       {error && (

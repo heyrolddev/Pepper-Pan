@@ -7,6 +7,7 @@ import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
 import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
 import { ReceiptPrinter } from "@/components/receipt-printer";
+import { printSale } from "@/lib/printer-store";
 import type { Receipt } from "@/lib/receipt";
 
 export type CounterMeal = {
@@ -63,6 +64,7 @@ export function CounterTill({
   const [toKitchen, setToKitchen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [printed, setPrinted] = useState<string | null>(null);
   const [done, setDone] = useState<{ total: number; dineIn: boolean; receipt: Receipt } | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -156,26 +158,37 @@ export function CounterTill({
       // second read of the order — the till already knows every line, its
       // price and the cash that changed hands, and going back to the database
       // for it would be a round trip with a customer waiting.
-      setDone({
+      const receipt: Receipt = {
+        // The last four of the order id: short enough to say out loud,
+        // and it matches what the order is filed under.
+        ref: result.orderId.slice(-4).toUpperCase(),
+        at: new Date(),
+        lines: soldLines,
         total: result.total,
         dineIn: wasDineIn,
-        receipt: {
-          // The last four of the order id: short enough to say out loud,
-          // and it matches what the order is filed under.
-          ref: result.orderId.slice(-4).toUpperCase(),
-          at: new Date(),
-          lines: soldLines,
-          total: result.total,
-          dineIn: wasDineIn,
-          method: wasMethod,
-          tendered: wasMethod === "cash" && wasTendered > 0 ? wasTendered : null,
-          change:
-            wasMethod === "cash" && wasTendered >= result.total
-              ? wasTendered - result.total
-              : null,
-          reference: wasMethod === "gcash" ? wasReference || null : null,
-          servedBy: staffName || null,
-        },
+        method: wasMethod,
+        tendered: wasMethod === "cash" && wasTendered > 0 ? wasTendered : null,
+        change:
+          wasMethod === "cash" && wasTendered >= result.total
+            ? wasTendered - result.total
+            : null,
+        reference: wasMethod === "gcash" ? wasReference || null : null,
+        servedBy: staffName || null,
+      };
+
+      setDone({ total: result.total, dineIn: wasDineIn, receipt });
+
+      // Print without being asked, if this till has been set up for it and a
+      // printer is actually connected. Fired here rather than from an effect
+      // because it is a consequence of recording the sale, not of rendering
+      // the confirmation — an effect would print again on any re-render that
+      // remounted it.
+      //
+      // Not awaited: the receipt is already on screen and the next customer is
+      // already at the counter. Nothing about the sale depends on the paper.
+      void printSale(receipt).then((r) => {
+        if (r.status === "printed") setPrinted(`Printed on ${r.name}.`);
+        else if (r.status === "failed") setPrinted(`Printer: ${r.message}`);
       });
       // Back to take-out for the next customer. A payment method left on the
       // last choice is harmless; a "dine in" left on is a box, a cup and a bag
@@ -224,12 +237,24 @@ export function CounterTill({
               {toKitchen ? " — it's on the kitchen board." : " — in the day's takings."}
             </p>
             <button
-              onClick={() => setDone(null)}
+              onClick={() => {
+                setDone(null);
+                setPrinted(null);
+              }}
               className="rounded-full bg-ink-950/25 px-4 py-1.5 text-xs font-black uppercase tracking-wide"
             >
               Next customer
             </button>
           </div>
+
+          {/* What the printer did, on the green bar rather than buried in the
+              fold below it. Somebody on the till needs to know a receipt came
+              out without opening anything to find out. */}
+          {printed && (
+            <p className="bg-jade-700 px-5 py-2 text-sm font-semibold text-cream-50">
+              {printed}
+            </p>
+          )}
 
           {/* The receipt is offered, never forced. The sale is already
               recorded by the time this appears, so nothing here can lose it —
