@@ -3,11 +3,11 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { FaqAccordion } from "@/components/faq-accordion";
 import { FaqSchema } from "@/components/faq-schema";
+import { HeroVideo } from "@/components/hero-video";
 import { Reveal } from "@/components/reveal";
 import { Parallax } from "@/components/parallax";
 import { Marquee } from "@/components/marquee";
 import { CountUp } from "@/components/count-up";
-import { HeroVisual } from "@/components/hero-visual";
 import { WhyUs } from "@/components/why-us";
 import { FanFavorites } from "@/components/fan-favorites";
 import { ReviewCarousel } from "@/components/review-carousel";
@@ -51,6 +51,21 @@ function manilaDate(iso: string) {
 
 const IMG_BASE =
   "https://djxcwbxahmtoglinsaaz.supabase.co/storage/v1/object/public/PepperPan";
+
+/**
+ * What fills the hero.
+ *
+ * The still is not a placeholder to be deleted when the video lands — it stays
+ * as the poster underneath it, and it is what anyone on a slow connection, a
+ * data saver, or a phone set to reduce motion actually sees. So it has to be a
+ * frame worth looking at on its own.
+ *
+ * Set HERO_VIDEO to a URL and the video layers itself on top. Nothing else in
+ * this file changes: that is the whole reason the two are separate constants
+ * rather than one branching component.
+ */
+const HERO_STILL = `${IMG_BASE}/opt/4.webp`;
+const HERO_VIDEO: string | null = null;
 
 const favorites = [
   { name: "Pork Noodles", image: `${IMG_BASE}/opt/FB.webp` },
@@ -145,71 +160,90 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {/* Hero                                                        */}
       {/* ---------------------------------------------------------- */}
-      <section className="under-nav grain relative overflow-hidden bg-ink-950">
-        <div aria-hidden className="hero-grid pointer-events-none absolute inset-0" />
+      <section className="under-nav grain relative flex min-h-[34rem] flex-col justify-end overflow-hidden bg-ink-950 sm:min-h-[38rem] lg:min-h-[44rem]">
+        {/* The media, edge to edge behind everything.
+
+            The still is server-rendered and `priority`, so it is what arrives
+            first and what a customer on stall wifi actually sees. The video,
+            when there is one, fades in over it once it can play — never
+            instead of it. See hero-video.tsx for why that ordering matters. */}
+        <div aria-hidden className="absolute inset-0">
+          <Image
+            src={HERO_STILL}
+            alt=""
+            fill
+            sizes="100vw"
+            priority
+            className="object-cover"
+          />
+          {HERO_VIDEO && <HeroVideo src={HERO_VIDEO} />}
+        </div>
+
+        {/* Two scrims, doing two different jobs.
+
+            The first knocks the whole frame back so gold type has something to
+            sit on wherever the video happens to be bright. The second is the
+            heavy one: it turns the bottom of the section into near-solid ink,
+            which is what lets the headline cross the video's lower edge and
+            stay readable on every frame of a clip I have not seen yet. Tuning
+            the type to one frame would break on the next. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-ink-950/60 via-ink-950/85 to-ink-950"
+          className="pointer-events-none absolute inset-0 bg-ink-950/35"
+        />
+        {/* Under the navigation. The media now runs to the very top edge, so
+            the logo and the nav links sit on whatever the media happens to be
+            showing — on the phone that was bright noodles under white text.
+            This is not for one photo: a video will put a different frame up
+            there every second, and the nav has to stay readable through all
+            of them. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-ink-950/85 via-ink-950/45 to-transparent"
         />
         <div
           aria-hidden
-          className="drift pointer-events-none absolute -left-24 top-10 h-80 w-80 rounded-full bg-brand-600/40 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="drift pointer-events-none absolute -right-20 top-40 h-72 w-72 rounded-full bg-gold-400/20 blur-3xl"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[85%] bg-gradient-to-t from-ink-950 via-ink-950/80 to-transparent"
         />
 
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.05fr_1fr]">
-          <div className="flex flex-col items-start gap-6">
-            <Reveal>
-              <span className="inline-flex items-center gap-2 rounded-full border border-gold-400/40 bg-gold-400/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-gold-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-gold-400" />
-                Taiwan-Style Street Food
-              </span>
-            </Reveal>
+        <div className="relative mx-auto w-full max-w-7xl px-6 pb-12 pt-32 sm:pb-14 sm:pt-40 lg:pb-16">
+          <Reveal>
+            <h1 className="font-display text-[2.55rem] font-black leading-[0.92] tracking-tight text-cream-50 [text-wrap:balance] sm:text-6xl lg:text-7xl xl:text-[5.6rem]">
+              Home of Taiwan-Style
+              <br />
+              <span className="relative inline-block text-gold-400">
+                Black Pepper
+                <svg
+                  aria-hidden
+                  viewBox="0 0 300 20"
+                  className="absolute -bottom-1 left-0 w-full text-brand-500"
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    d="M2 12c30-14 60 14 90 0s60-14 90 0 60 14 90 0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>{" "}
+              <span className="text-gold-400">Noodles</span>
+            </h1>
+          </Reveal>
 
-            <Reveal delay={0.08}>
-              <h1 className="font-display text-5xl font-black leading-[0.95] tracking-tight text-cream-50 sm:text-7xl">
-                Home of
-                <br />
-                Taiwan-Style
-                <br />
-                <span className="relative inline-block text-gold-400">
-                  Black Pepper
-                  <svg
-                    aria-hidden
-                    viewBox="0 0 300 20"
-                    className="absolute -bottom-1 left-0 w-full text-brand-500"
-                    preserveAspectRatio="none"
-                  >
-                    <path
-                      d="M2 12c30-14 60 14 90 0s60-14 90 0 60 14 90 0"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="6"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </span>{" "}
-                <span className="text-gold-400">Noodles</span>
-              </h1>
-            </Reveal>
-
-            <Reveal delay={0.16}>
-              <p className="max-w-md text-lg text-cream-100/70">
-                New flavors, real cravings — you don&apos;t need to fly to
-                Taiwan to taste it. Just come to Pepper Pan. 🔥
-              </p>
-            </Reveal>
-
-            <Reveal delay={0.24}>
-              <div className="flex flex-wrap items-center gap-4 pt-2">
+          {/* Buttons and the line, on one row where there is room for it.
+              The tagline replaced a three-line paragraph saying the same
+              thing — under a headline this size, a paragraph is the thing
+              nobody reads. */}
+          <Reveal delay={0.1}>
+            <div className="mt-8 flex flex-col gap-5 sm:mt-9 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                 <Link
                   href="/menu"
-                  className="group relative overflow-hidden rounded-full bg-gold-400 px-7 py-3.5 font-bold text-ink-950 transition-transform hover:scale-105"
+                  className="rounded-full bg-gold-400 px-7 py-3.5 font-bold text-ink-950 transition-transform hover:scale-105"
                 >
-                  <span className="relative z-10">View Menu →</span>
+                  View Menu →
                 </Link>
                 <a
                   href="#story"
@@ -218,19 +252,12 @@ export default async function Home() {
                   Our Story
                 </a>
               </div>
-            </Reveal>
 
-            <Reveal delay={0.32}>
-              <div className="flex items-center gap-2 pt-6 text-xs font-semibold uppercase tracking-widest text-cream-100/40">
-                <span className="bob">↓</span> Scroll to explore
-              </div>
-            </Reveal>
-          </div>
-
-          <HeroVisual
-            src={`${IMG_BASE}/opt/4.webp`}
-            alt="Pepper Pan black pepper beef noodles on a sizzling plate, with a fried egg"
-          />
+              <p className="font-display text-lg font-black uppercase tracking-[0.08em] text-cream-50/85 sm:text-xl lg:text-2xl">
+                No passport required.
+              </p>
+            </div>
+          </Reveal>
         </div>
       </section>
 
