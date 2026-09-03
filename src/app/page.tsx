@@ -72,12 +72,16 @@ const IMG_BASE =
 const HERO_STILL = "/hero-poster.jpg";
 
 /**
- * The Our story photograph.
+ * The Our story photograph: the stall itself, lanterns and all.
  *
- * Still the old dish shot until the owner sends the picture of the stall
- * itself. When it lands, this line is the only one that changes.
+ * At the bucket root rather than under /opt, and the space in the filename
+ * stays percent-encoded — it is part of the URL, not a typo to tidy up.
+ *
+ * The original is 3024x3024 and about 2 MB; next/image resizes and re-encodes
+ * it per breakpoint, so what a phone downloads is a fraction of that and the
+ * big file is fetched once, by the optimiser, not by customers.
  */
-const STORY_PHOTO = `${IMG_BASE}/opt/5.webp`;
+const STORY_PHOTO = `${IMG_BASE}/Our%20Story.jpeg`;
 // Served from public/ rather than Supabase storage: it is 1.5 MB of static
 // bytes that never change, Vercel puts it on its CDN for free, and it needs no
 // key and no upload step the owner would have to repeat.
