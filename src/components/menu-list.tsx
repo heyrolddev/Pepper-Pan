@@ -274,15 +274,19 @@ export function MenuList({
         </div>
       </div>
 
-      {/* Two on a phone, which was already right. Four on a laptop and five on
-          a desktop, so a 73-dish menu is a menu rather than a scroll — the gap
-          tightens with the cards, or the grid reads as sparse. */}
+      {/* Two on a phone, three on a tablet, four from a laptop up — and four
+          is the ceiling now. Five fitted, in the sense that the boxes did not
+          overlap: in a 1152px container it left each card about 210px, which
+          is not enough for "16oz Brown Sugar Milktea" and not enough for the
+          photograph above it, so a menu of pictures became a menu of wrapped
+          captions. Four gives roughly 270px. The gap opens with the cards
+          rather than staying tight, or the extra width reads as drift. */}
       {filtered.length === 0 ? (
         <p className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80">
           No items match &ldquo;{query}&rdquo;.
         </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5">
           <AnimatePresence mode="popLayout">
             {filtered.map((meal, i) => (
               <MealCard key={meal.id} meal={meal} index={i} staff={staff} />
