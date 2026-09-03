@@ -8,7 +8,7 @@ import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
 import { ReceiptPrinter } from "@/components/receipt-printer";
 import { printSale } from "@/lib/printer-store";
-import type { Receipt } from "@/lib/receipt";
+import { asPlainText, renderReceipt, type Receipt } from "@/lib/receipt";
 
 export type CounterMeal = {
   id: string;
@@ -62,7 +62,11 @@ export function CounterTill({
   const [tendered, setTendered] = useState("");
   const [reference, setReference] = useState("");
   const [toKitchen, setToKitchen] = useState(false);
+  const [customer, setCustomer] = useState("");
   const [note, setNote] = useState("");
+  /** The sale as it will be recorded, held while somebody checks it. Null
+   *  means nothing is waiting — the dialog is closed. */
+  const [review, setReview] = useState<Receipt | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [printed, setPrinted] = useState<string | null>(null);
   const [done, setDone] = useState<{ total: number; dineIn: boolean; receipt: Receipt } | null>(null);
@@ -117,11 +121,78 @@ export function CounterTill({
   const clear = () => {
     setTicket({});
     setNote("");
+    setCustomer("");
     setReference("");
     setTendered("");
     setError(null);
+    setReview(null);
   };
 
+  /**
+   * What is stopping this sale being recorded, or null.
+   *
+   * The GCash reference was already required, but only by the server — so the
+   * till took a round trip to say so, with a customer waiting. Cash received
+   * was not required at all: an empty amount recorded a sale and printed a
+   * receipt with no change on it, and nobody finds that out until the customer
+   * asks for their change.
+   */
+  const blocker = (): string | null => {
+    if (lines.length === 0) return "Add something to the order first.";
+    if (method === "gcash" && !reference.trim())
+      return "Type the GCash reference number before recording this.";
+    if (method === "cash") {
+      if (tendered.trim() === "") return "Type how much cash the customer handed over.";
+      const paid = Number(tendered);
+      if (!Number.isFinite(paid) || paid <= 0)
+        return "That cash amount isn't a number.";
+      // The change box above already says how much short, live, as it is
+      // typed. Repeating the figure here put two red lines on screen saying
+      // the same thing; this one says what that means instead.
+      if (paid < total)
+        return "That's not enough to cover the total — this can't be recorded as paid.";
+    }
+    return null;
+  };
+
+  /**
+   * Step one: check it, then show it.
+   *
+   * "Take" no longer records. It builds the receipt exactly as it will be
+   * printed and puts it in front of whoever is on the till, because the thing
+   * that goes wrong at a counter is not the arithmetic — it is a tap on the
+   * wrong tile two customers ago that nobody notices until the paper comes
+   * out. Reading it back before the money is committed is the cheapest place
+   * to catch that.
+   */
+  function askToConfirm() {
+    const stop = blocker();
+    if (stop) {
+      setError(stop);
+      return;
+    }
+    setError(null);
+    const paid = Number(tendered) || 0;
+    setReview({
+      // The real reference is the order id, which does not exist until the
+      // sale is recorded. Shown as a placeholder rather than a made-up value:
+      // a number here that later turns out to be different is worse than a
+      // gap that is obviously a gap.
+      ref: "----",
+      at: new Date(),
+      lines: lines.map((l) => ({ name: l.meal.name, qty: l.qty, price: l.meal.price })),
+      total,
+      dineIn,
+      method,
+      tendered: method === "cash" ? paid : null,
+      change: method === "cash" ? paid - total : null,
+      reference: method === "gcash" ? reference.trim() || null : null,
+      servedBy: staffName || null,
+      customer: customer.trim() || null,
+    });
+  }
+
+  /** Step two: it has been read back, so record it. */
   function submit() {
     setError(null);
     startTransition(async () => {
@@ -131,6 +202,7 @@ export function CounterTill({
       const wasMethod = method;
       const wasReference = reference;
       const wasTendered = Number(tendered) || 0;
+      const wasCustomer = customer.trim();
       const soldLines = lines.map((l) => ({
         name: l.meal.name,
         qty: l.qty,
@@ -143,6 +215,7 @@ export function CounterTill({
         toKitchen,
         dineIn,
         note,
+        customerName: customer,
       });
       // Checked against null rather than truthiness: an error type of
       // `string` includes "", so a plain `if (result.error)` doesn't narrow
@@ -174,8 +247,10 @@ export function CounterTill({
             : null,
         reference: wasMethod === "gcash" ? wasReference || null : null,
         servedBy: staffName || null,
+        customer: wasCustomer || null,
       };
 
+      setReview(null);
       setDone({ total: result.total, dineIn: wasDineIn, receipt });
 
       // Print without being asked, if this till has been set up for it and a
@@ -268,6 +343,68 @@ export function CounterTill({
               <ReceiptPrinter receipt={done.receipt} />
             </div>
           </details>
+        </div>
+      )}
+
+      {/* Read it back before the money is committed.
+          What goes wrong at a counter is rarely the arithmetic — it is a tap
+          on the wrong tile two customers ago, and nobody notices until the
+          paper is in somebody's hand. This is the same receipt that will
+          print, shown while it can still be changed. */}
+      {review && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Check this order"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-ink-950/70 p-0 sm:items-center sm:p-6"
+          onClick={() => !pending && setReview(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-cream-50 shadow-2xl sm:rounded-3xl"
+          >
+            <div className="flex items-baseline justify-between gap-3 bg-ink-950 px-5 py-4">
+              <p className="font-display text-lg font-black text-cream-50">
+                Check this order
+              </p>
+              <p className="font-display text-lg font-black text-gold-400">
+                {peso(review.total, 0)}
+              </p>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4">
+              <pre className="overflow-x-auto rounded-2xl bg-cream-100 px-4 py-4 font-mono text-[12px] leading-[1.45] text-ink-950">
+                {asPlainText(renderReceipt(review)).join("\n")}
+              </pre>
+              <p className="mt-2 text-[11px] text-ink-800/50">
+                The reference fills in when it is recorded — everything else is
+                exactly what will print.
+              </p>
+            </div>
+
+            {error && (
+              <p className="mx-5 mb-3 rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-cream-50">
+                {error}
+              </p>
+            )}
+
+            <div className="flex gap-3 border-t border-ink-950/10 bg-cream-100 px-5 py-4">
+              <button
+                onClick={() => setReview(null)}
+                disabled={pending}
+                className="flex-1 rounded-2xl bg-ink-950/5 py-3.5 font-bold text-ink-800 transition-colors hover:bg-ink-950/10 disabled:opacity-40"
+              >
+                Go back
+              </button>
+              <button
+                onClick={submit}
+                disabled={pending}
+                className="flex-[1.4] rounded-2xl bg-jade-600 py-3.5 font-display text-lg font-black text-cream-50 transition-colors hover:bg-jade-700 disabled:bg-ink-950/15 disabled:text-ink-800/40"
+              >
+                {pending ? "Recording…" : "Record it"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -545,6 +682,18 @@ export function CounterTill({
                 </div>
               )}
 
+              {/* Who it is for. Optional, because a queue at lunchtime is not
+                  the place to insist on it — but when it is filled in the name
+                  goes on the paper and on the order, so a bag on the counter
+                  can be handed over by name instead of by shouting a
+                  four-character reference across the shop. */}
+              <input
+                value={customer}
+                onChange={(e) => setCustomer(e.target.value)}
+                placeholder="Customer name (optional)"
+                className="rounded-xl bg-cream-50 px-3 py-2.5 text-sm ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
+              />
+
               <input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -575,7 +724,7 @@ export function CounterTill({
               )}
 
               <button
-                onClick={submit}
+                onClick={askToConfirm}
                 disabled={pending || lines.length === 0}
                 className="rounded-2xl bg-jade-600 py-4 font-display text-lg font-black text-cream-50 transition-colors hover:bg-jade-700 disabled:cursor-not-allowed disabled:bg-ink-950/15 disabled:text-ink-800/40"
               >
