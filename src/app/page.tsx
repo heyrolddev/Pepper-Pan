@@ -4,9 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { FaqAccordion } from "@/components/faq-accordion";
 import { FaqSchema } from "@/components/faq-schema";
 import { Swiper } from "@/components/swiper";
+import { TiltPhoto } from "@/components/tilt-photo";
 import { HeroVideo } from "@/components/hero-video";
 import { Reveal } from "@/components/reveal";
-import { Parallax } from "@/components/parallax";
 import { Marquee } from "@/components/marquee";
 import { CountUp } from "@/components/count-up";
 import { WhyUs } from "@/components/why-us";
@@ -70,6 +70,18 @@ const IMG_BASE =
 // chosen by eye. Because it is the same footage, the swap from still to video
 // is invisible instead of a cut between two different pictures.
 const HERO_STILL = "/hero-poster.jpg";
+
+/**
+ * The Our story photograph: the stall itself, lanterns and all.
+ *
+ * At the bucket root rather than under /opt, and the space in the filename
+ * stays percent-encoded — it is part of the URL, not a typo to tidy up.
+ *
+ * The original is 3024x3024 and about 2 MB; next/image resizes and re-encodes
+ * it per breakpoint, so what a phone downloads is a fraction of that and the
+ * big file is fetched once, by the optimiser, not by customers.
+ */
+const STORY_PHOTO = `${IMG_BASE}/Our%20Story.jpeg`;
 // Served from public/ rather than Supabase storage: it is 1.5 MB of static
 // bytes that never change, Vercel puts it on its CDN for free, and it needs no
 // key and no upload step the owner would have to repeat.
@@ -600,17 +612,14 @@ export default async function Home() {
             </div>
           </Reveal>
 
-          <Parallax distance={40}>
-            <div className="grain relative aspect-square w-full overflow-hidden rounded-[2rem] bg-gradient-to-br from-gold-300 via-chili-400 to-brand-600">
-              <Image
-                src={`${IMG_BASE}/opt/5.webp`}
-                alt="Pepper Pan black pepper noodles topped with a fried egg"
-                fill
-                sizes="(min-width: 1024px) 45vw, 90vw"
-                className="object-contain p-8"
-              />
-            </div>
-          </Parallax>
+          {/* Not a Parallax any more. This photograph settles itself as it
+              scrolls — see tilt-photo.tsx — and two things moving the same
+              element on the same scroll fight each other. */}
+          <TiltPhoto
+            src={STORY_PHOTO}
+            alt="Inside Pepper Pan: red lanterns over the dining tables, with the counter and kitchen behind"
+            className="pr-6 sm:pr-8"
+          />
         </div>
       </section>
 
