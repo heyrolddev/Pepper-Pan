@@ -65,7 +65,11 @@ const IMG_BASE =
  * this file changes: that is the whole reason the two are separate constants
  * rather than one branching component.
  */
-const HERO_STILL = `${IMG_BASE}/opt/4.webp`;
+// A frame lifted from the video at 10.5s — the black pepper noodles the
+// headline names, and the darkest good frame in the clip, measured rather than
+// chosen by eye. Because it is the same footage, the swap from still to video
+// is invisible instead of a cut between two different pictures.
+const HERO_STILL = "/hero-poster.jpg";
 // Served from public/ rather than Supabase storage: it is 1.5 MB of static
 // bytes that never change, Vercel puts it on its CDN for free, and it needs no
 // key and no upload step the owner would have to repeat.

@@ -17,16 +17,20 @@ import { useState, useSyncExternalStore } from "react";
  *   muted + playsInline  iOS refuses to autoplay without BOTH. Miss either and
  *                        the video simply never starts on an iPhone, silently.
  *   loop                 a 14-second clip that stops is worse than no clip.
- *   preload="auto"       it is the hero; on a connection that can take it, it
- *                        is going to be watched.
+ *   preload="auto"       it is the hero; it is going to be watched.
  *
- * Two things decide whether it loads at all, and both of them mean "leave the
- * photograph up" rather than "show a black box":
+ * One thing stops it loading, and it means "leave the photograph up" rather
+ * than "show a black box": reduce-motion. Someone who asked their phone to
+ * stop animating things asked for a reason, and a looping video is exactly
+ * what they turned off.
  *
- *   reduce-motion   someone who asked their phone to stop animating things
- *                   asked for a reason, and a looping video is exactly what
- *                   they turned off.
- *   a slow line     see `connectionIsFast`.
+ * There used to be a second: it skipped the video on a slow connection. The
+ * owner asked for it to play for everyone, every time, and it is their shop
+ * and their customers. What makes that a fair trade rather than a concession
+ * is that the file is now 2.0 MB rather than 3.5, is laid out to start on its
+ * first frame rather than its whole download, and the still underneath is a
+ * frame of the same footage — so the wait it replaces is short, and what is
+ * on screen during it is already the right picture.
  */
 
 /* ---------------- reduce motion ---------------- */
@@ -40,60 +44,10 @@ const subscribeToMotionPref = (onChange: () => void) => {
 const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* ---------------- connection ---------------- */
-
-type Connection = {
-  effectiveType?: string;
-  saveData?: boolean;
-  addEventListener?(t: string, fn: () => void): void;
-  removeEventListener?(t: string, fn: () => void): void;
-};
-
-const connection = (): Connection | null =>
-  typeof navigator === "undefined"
-    ? null
-    : ((navigator as Navigator & { connection?: Connection }).connection ?? null);
-
-const subscribeToConnection = (onChange: () => void) => {
-  const c = connection();
-  c?.addEventListener?.("change", onChange);
-  return () => c?.removeEventListener?.("change", onChange);
-};
-
 /**
- * Is this line worth spending three and a half megabytes on?
- *
- * The video is the size it is. On a good connection it arrives in about a
- * second and is the best thing on the page; on a phone using mobile data at
- * the stall it is a long wait for something the customer did not ask for, and
- * the wait is the part they notice. So on a slow line it is never requested at
- * all — not deferred, not queued: not downloaded. The still photograph is
- * already there and is a perfectly good hero.
- *
- * `saveData` is the browser telling us, on the person's behalf, not to spend
- * their data. That is not a hint to weigh up; it is an answer.
- *
- * When the browser reports nothing — Safari has no Network Information API —
- * the answer is yes. Refusing to play the video for everyone whose browser
- * declines to describe their connection would mean no iPhone ever sees it.
+ * On the server there is no preference to read, and guessing "reduced" would
+ * leave the video out of the server-rendered HTML for everybody.
  */
-const connectionIsFast = () => {
-  const c = connection();
-  if (!c) return true;
-  if (c.saveData) return false;
-  const t = c.effectiveType;
-  // Only "4g" is quick enough to be worth it. "3g" here means roughly 700kbps
-  // — the better part of a minute for this file, spent on their data.
-  return !t || t === "4g";
-};
-
-/**
- * On the server there is no preference and no connection to read. Both default
- * to "show it": guessing the restrictive answer would leave the video out of
- * the server-rendered HTML for everybody, and the restrictive case is the one
- * that can safely be corrected a moment later on the client.
- */
-const yesOnServer = () => true;
 const noOnServer = () => false;
 
 export function HeroVideo({
@@ -110,13 +64,7 @@ export function HeroVideo({
     prefersReducedMotion,
     noOnServer
   );
-  const fast = useSyncExternalStore(
-    subscribeToConnection,
-    connectionIsFast,
-    yesOnServer
-  );
-
-  if (reduced || !fast) return null;
+  if (reduced) return null;
 
   return (
     <video
