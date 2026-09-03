@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { FaqAccordion } from "@/components/faq-accordion";
 import { FaqSchema } from "@/components/faq-schema";
+import { Swiper } from "@/components/swiper";
 import { HeroVideo } from "@/components/hero-video";
 import { Reveal } from "@/components/reveal";
 import { Parallax } from "@/components/parallax";
@@ -448,14 +449,14 @@ export default async function Home() {
             <Reveal direction="right" className="min-w-0 flex-1">
               {announcements.dineIn && (
                 <>
-                  <span className="text-xs font-bold uppercase tracking-widest text-gold-300">
+                  <span className="inline-block rounded-full bg-ink-950 px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-cream-50">
                     Dine-in special
                   </span>
-                  <p className="mt-2 font-display text-3xl font-black leading-tight text-cream-50 sm:text-4xl">
+                  <p className="mt-4 max-w-lg font-display text-3xl font-black leading-[1.05] tracking-tight text-ink-950 sm:text-4xl lg:text-5xl">
                     {announcements.dineIn.title}
                   </p>
                   {announcements.dineIn.body && (
-                    <p className="mt-2 max-w-xl text-cream-100/80">
+                    <p className="mt-3 max-w-xl font-medium text-ink-950/75">
                       {announcements.dineIn.body}
                     </p>
                   )}
@@ -483,55 +484,57 @@ export default async function Home() {
             </Reveal>
           </div>
 
-          {/* Coming soon, boxed.
+          {/* Coming soon, one at a time.
 
-              It was a rule and some text below the dine-in offer, which read
-              as a footnote to it. A card with its own outline says the
-              opposite: still part of this band, but its own announcement —
-              which is what the shop actually means by it.
+              Two cards side by side split the attention of a section whose
+              whole job is to make one thing look worth waiting for. Now it is
+              a single card, swiped — and swiped by hand: nothing advances on
+              its own, because a slide that moves while somebody is reading it
+              takes away the one they had chosen to look at.
 
-              The label is set large on purpose, and not only for emphasis.
-              Gold on this lighter red measures 3.82:1, which fails for body
-              text and passes for large text; at this size it is legible, at
-              the old size it was not. The design ask and the contrast floor
-              happen to want the same thing. */}
+              The heading is set as a headline rather than a label. It is the
+              loudest thing in this band on purpose; it is also near-black,
+              which is not a style choice — see `.red-field-light`, where the
+              numbers rule out cream on this red entirely. */}
           {announcements.comingSoon.length > 0 && (
             <Reveal
               delay={0.15}
-              className="relative mx-auto mt-12 max-w-6xl px-6 sm:mt-14"
+              className="relative mx-auto mt-14 max-w-6xl px-6 sm:mt-16"
             >
-              <div className="rounded-[2rem] border-2 border-cream-50/60 bg-brand-700/25 p-6 shadow-[0_18px_50px_-20px_rgba(18,10,8,0.55)] sm:rounded-[2.5rem] sm:p-10">
-                <p className="font-display text-2xl font-black uppercase leading-none tracking-[0.14em] text-gold-300 sm:text-3xl">
-                  Coming soon
+              <div className="rounded-[2rem] border-2 border-ink-950/25 bg-cream-50/15 p-6 shadow-[0_18px_50px_-24px_rgba(18,10,8,0.5)] sm:rounded-[2.5rem] sm:p-10">
+                <p className="font-display text-5xl font-black uppercase leading-[0.88] tracking-[-0.02em] text-ink-950 sm:text-6xl lg:text-7xl">
+                  Coming
+                  <br />
+                  soon
                 </p>
 
-                <div
-                  className={`mt-7 grid gap-8 sm:mt-9 ${
-                    announcements.comingSoon.length > 1
-                      ? "sm:grid-cols-2"
-                      : "max-w-2xl"
-                  }`}
-                >
-                  {announcements.comingSoon.map((row) => (
-                    <article key={row.id}>
-                      <h3 className="font-display text-3xl font-black leading-[1.05] tracking-tight text-cream-50 sm:text-4xl">
-                        {row.title}
-                      </h3>
+                <div className="mt-8 sm:mt-10">
+                  <Swiper label="Coming soon">
+                    {announcements.comingSoon.map((row) => (
+                      <div
+                        key={row.id}
+                        className="grid gap-6 pr-px sm:grid-cols-[1fr_1.15fr] sm:items-center sm:gap-10"
+                      >
+                        <div className="min-w-0">
+                          <h3 className="font-display text-3xl font-black leading-[1.05] tracking-tight text-ink-950 sm:text-4xl lg:text-5xl">
+                            {row.title}
+                          </h3>
+                          {row.body && (
+                            <p className="mt-4 text-base font-medium leading-relaxed text-ink-950/75 sm:text-lg">
+                              {row.body}
+                            </p>
+                          )}
+                        </div>
 
-                      {hasMedia(row) && (
-                        <AnnouncementMedia
-                          row={row}
-                          className="mt-5 aspect-[16/10] w-full rounded-2xl bg-ink-950 object-cover ring-1 ring-ink-950/40"
-                        />
-                      )}
-
-                      {row.body && (
-                        <p className="mt-4 text-base font-medium leading-relaxed text-cream-100/85">
-                          {row.body}
-                        </p>
-                      )}
-                    </article>
-                  ))}
+                        {hasMedia(row) && (
+                          <AnnouncementMedia
+                            row={row}
+                            className="aspect-[16/10] w-full rounded-2xl bg-ink-950 object-cover ring-1 ring-ink-950/25"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </Swiper>
                 </div>
               </div>
             </Reveal>

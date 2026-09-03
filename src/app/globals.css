@@ -359,38 +359,49 @@ html.intro-lock body {
     );
 }
 
-/* The dine-in band, a step brighter.
+/* The dine-in band, properly light.
 
-   Same four layers as `.red-field`, pitched up to brand-500 so the band
-   reads as an announcement rather than as the deep red used elsewhere.
-   Cream on it measures 4.99:1 and cream body 4.74:1, so the type inside
-   is still safe; gold lands at 3.82:1, which is why the "Coming soon"
-   label in this band is set large — at that size the ratio is the one
-   that applies. */
+   Pitched up until the band reads bright rather than merely red — and
+   that decision forces the other one. Cream fails on every stop of this
+   ramp (2.34:1 at the light end, 4.04:1 at the dark end); near-black
+   passes on every stop (8.07:1 down to 4.66:1). So the band is light
+   red with DARK type, which is not a style preference — at this
+   lightness it is the only pairing that can be read.
+
+   The ramp is kept deliberately narrow for the same reason: a darker
+   bottom corner would look better and would drop the far end below the
+   threshold, and the type does not get to be legible only at the top of
+   the section. */
 .red-field-light {
-  background-color: var(--color-brand-500);
+  background-color: #e36158;
   background-image:
     repeating-linear-gradient(
       115deg,
-      rgba(255, 250, 242, 0.07) 0 1px,
+      rgba(18, 10, 8, 0.05) 0 1px,
       transparent 1px 17px
     ),
     radial-gradient(
-      120% 95% at 8% -18%,
-      rgba(255, 250, 242, 0.22) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      110% 100% at 98% 115%,
-      rgba(148, 16, 15, 0.55) 0%,
+      120% 95% at 6% -20%,
+      rgba(255, 250, 242, 0.42) 0%,
       transparent 62%
     ),
-    linear-gradient(
-      132deg,
-      var(--color-brand-400) 0%,
-      var(--color-brand-500) 44%,
-      var(--color-brand-600) 100%
-    );
+    radial-gradient(
+      110% 100% at 99% 118%,
+      rgba(148, 16, 15, 0.28) 0%,
+      transparent 60%
+    ),
+    linear-gradient(132deg, #f08a80 0%, #e36158 46%, #d94a3f 100%);
+}
+
+/* A scroll container that scrolls without showing a bar. The swipe
+   indicator below the cards does that job, and a native scrollbar under
+   a designed card reads as a mistake. */
+.no-bar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-bar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Fine film grain so big flat colour fields read as printed, not digital. */
