@@ -141,7 +141,7 @@ export default async function Home() {
       number: "03",
       label: "Pickup & Delivery",
       detail: "Order ahead, skip the wait",
-      tone: "jade" as const,
+      tone: "ink" as const,
     },
     {
       number: "04",
@@ -292,7 +292,7 @@ export default async function Home() {
                   >
                     On right now
                   </SectionMark>
-                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-ink-950">
+                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl">
                     What&apos;s on
                   </h2>
                 </Reveal>
@@ -337,11 +337,11 @@ export default async function Home() {
                 <Reveal className="mb-6">
                   <SectionMark
                     art={<ChatSteam className="h-full w-full" />}
-                    className="text-jade-600"
+                    className="text-brand-600"
                   >
                     From the stall
                   </SectionMark>
-                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-ink-950">
+                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl">
                     News
                   </h2>
                 </Reveal>
@@ -394,7 +394,7 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       <section className="mx-auto max-w-6xl px-6 py-20">
         <Reveal className="mb-10 max-w-lg">
-          <h2 className="font-display text-4xl font-black tracking-tight text-ink-950">
+          <h2 className="font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl">
             Why everyone keeps coming back
           </h2>
         </Reveal>
@@ -404,27 +404,27 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {/* Fan favorites                                               */}
       {/* ---------------------------------------------------------- */}
-      <section className="grain relative overflow-hidden bg-ink-950 py-20">
+      <section className="cream-field relative overflow-hidden py-24 sm:py-28">
         <div
           aria-hidden
-          className="drift pointer-events-none absolute -right-20 top-20 h-72 w-72 rounded-full bg-chili-500/20 blur-3xl"
+          className="drift pointer-events-none absolute -right-20 top-20 h-72 w-72 rounded-full bg-chili-500/10 blur-3xl"
         />
         <div className="relative mx-auto max-w-6xl px-6">
           <Reveal className="mb-10 flex flex-wrap items-end justify-between gap-4">
             <div>
               <SectionMark
                 art={<NoodleBowl className="h-full w-full" />}
-                className="text-gold-400"
+                className="text-brand-600"
               >
                 Crowd pleasers
               </SectionMark>
-              <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-cream-50">
+              <h2 className="mt-2 font-display text-5xl font-black tracking-tight text-brand-600 sm:text-6xl">
                 Fan Favorites
               </h2>
             </div>
             <Link
               href="/menu"
-              className="rounded-full border border-cream-100/25 px-5 py-2.5 text-sm font-semibold text-cream-50 transition-colors hover:border-gold-400 hover:text-gold-400"
+              className="rounded-full border border-ink-950/20 px-5 py-2.5 text-sm font-semibold text-ink-950 transition-colors hover:border-gold-400 hover:text-gold-400"
             >
               See all {menuCount ?? ""} items →
             </Link>
@@ -443,7 +443,7 @@ export default async function Home() {
       {/* say — an empty gold stripe is worse than no stripe.         */}
       {/* ---------------------------------------------------------- */}
       {(announcements.dineIn || announcements.comingSoon.length > 0) && (
-        <section className="grain relative overflow-hidden bg-brand-600 py-16">
+        <section className="red-field grain relative overflow-hidden py-16 sm:py-20">
           <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 px-6 sm:flex-row sm:items-center sm:justify-between">
             <Reveal direction="right" className="min-w-0 flex-1">
               {announcements.dineIn && (
@@ -598,7 +598,7 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {/* Testimonial                                                 */}
       {/* ---------------------------------------------------------- */}
-      <section className="grain relative overflow-hidden bg-brand-600 py-20 text-cream-50">
+      <section className="red-field grain relative overflow-hidden py-20 text-cream-50 sm:py-24">
         <div
           aria-hidden
           className="drift pointer-events-none absolute -left-16 bottom-0 h-64 w-64 rounded-full bg-gold-400/20 blur-3xl"
@@ -656,12 +656,12 @@ export default async function Home() {
               an empty field — the same trick the section marks use elsewhere,
               so the page reads as one thing. */}
           <Reveal direction="right">
-            <article className="grain relative flex h-full flex-col overflow-hidden rounded-3xl bg-jade-700 p-10 text-cream-50">
+            <article className="grain relative flex h-full flex-col overflow-hidden rounded-3xl bg-brand-700 p-10 text-cream-50">
               {/* Decorative: `spot-art` marks already carry aria-hidden when
                   given no title, so there's nothing to add here. */}
               <NoodleBowl className="pointer-events-none absolute -bottom-8 -right-8 h-48 w-48 text-cream-50/10" />
-              <span className="relative inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-jade-200">
-                <span className="h-px w-6 bg-jade-200/60" />
+              <span className="relative inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gold-300">
+                <span className="h-px w-6 bg-gold-300/60" />
                 Our mission
               </span>
               <p className="relative mt-5 font-display text-2xl font-bold leading-snug sm:text-[1.75rem]">
@@ -704,7 +704,7 @@ export default async function Home() {
             >
               Come see us
             </SectionMark>
-            <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-ink-950 sm:text-5xl">
+            <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl sm:text-5xl">
               Visit Pepper Pan
             </h2>
             <p className="mt-5 max-w-xl text-lg text-ink-800/80">{ADDRESS}</p>
@@ -818,7 +818,7 @@ export default async function Home() {
           >
             Good to know
           </SectionMark>
-          <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-ink-950">
+          <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl">
             Frequently asked questions
           </h2>
         </Reveal>

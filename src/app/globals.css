@@ -315,6 +315,68 @@ html.intro-lock body {
   animation: bob 2s ease-in-out infinite;
 }
 
+/* ----------------------------------------------------------------
+   A red that is not flat.
+
+   A single `bg-brand-600` across a whole band reads as a printing
+   error at this scale — there is no light in it, and nothing for the
+   eye to travel along. Four layers fix that without touching the
+   brand colour itself, which stays exactly #b91313:
+
+     1. hairline diagonal rules — texture at arm's length, invisible
+        up close, and they give the flat field a grain direction
+     2. a warm highlight bleeding in from the top-left, so the band
+        has a light source
+     3. a deep shadow in the opposite corner, so it has a far side
+     4. the base ramp, brand-500 through brand-700 on the diagonal
+
+   All of it is background-image, so there is no pseudo-element to
+   collide with `.grain::after`, which most of these sections also use.
+   ---------------------------------------------------------------- */
+.red-field {
+  background-color: var(--color-brand-600);
+  background-image:
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 250, 242, 0.055) 0 1px,
+      transparent 1px 17px
+    ),
+    radial-gradient(
+      120% 95% at 10% -15%,
+      rgba(255, 250, 242, 0.2) 0%,
+      transparent 58%
+    ),
+    radial-gradient(
+      105% 95% at 96% 112%,
+      rgba(18, 10, 8, 0.42) 0%,
+      transparent 62%
+    ),
+    linear-gradient(
+      132deg,
+      var(--color-brand-500) 0%,
+      var(--color-brand-600) 46%,
+      var(--color-brand-700) 100%
+    );
+}
+
+/* The same idea in reverse, for a light band: almost white, with the
+   faintest warm blush so it is not a dead sheet of paper next to the
+   red. */
+.cream-field {
+  background-color: var(--color-cream-50);
+  background-image:
+    radial-gradient(
+      90% 70% at 12% 0%,
+      rgba(185, 19, 19, 0.06) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      80% 70% at 92% 100%,
+      rgba(255, 207, 0, 0.09) 0%,
+      transparent 60%
+    );
+}
+
 /* Fine film grain so big flat colour fields read as printed, not digital. */
 .grain::after {
   content: "";

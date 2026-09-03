@@ -21,7 +21,7 @@ export function FanFavorites({ items }: { items: Favorite[] }) {
           transition={{ duration: 0.5, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
           whileHover={{ scale: 1.05, rotate: i % 2 === 0 ? -1.5 : 1.5 }}
           whileTap={{ scale: 0.98 }}
-          className="group relative block overflow-hidden rounded-2xl ring-2 ring-gold-400/70"
+          className="group relative block overflow-hidden rounded-2xl ring-1 ring-ink-950/10 transition-shadow hover:shadow-xl hover:shadow-brand-600/15"
         >
           <div className="relative aspect-[3/4] w-full">
             <Image

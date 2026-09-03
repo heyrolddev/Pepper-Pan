@@ -6,13 +6,13 @@ type Tile = {
   number: string;
   label: string;
   detail: string;
-  tone: "red" | "gold" | "jade" | "cream";
+  tone: "red" | "gold" | "ink" | "cream";
 };
 
 const toneClasses: Record<Tile["tone"], string> = {
   red: "bg-brand-600 text-cream-50",
   gold: "bg-gold-400 text-ink-950",
-  jade: "bg-jade-600 text-cream-50",
+  ink: "bg-ink-950 text-cream-50",
   cream: "bg-cream-100 text-ink-950 ring-2 ring-inset ring-ink-950",
 };
 
