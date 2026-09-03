@@ -359,21 +359,37 @@ html.intro-lock body {
     );
 }
 
-/* The same idea in reverse, for a light band: almost white, with the
-   faintest warm blush so it is not a dead sheet of paper next to the
-   red. */
-.cream-field {
-  background-color: var(--color-cream-50);
+/* The dine-in band, a step brighter.
+
+   Same four layers as `.red-field`, pitched up to brand-500 so the band
+   reads as an announcement rather than as the deep red used elsewhere.
+   Cream on it measures 4.99:1 and cream body 4.74:1, so the type inside
+   is still safe; gold lands at 3.82:1, which is why the "Coming soon"
+   label in this band is set large — at that size the ratio is the one
+   that applies. */
+.red-field-light {
+  background-color: var(--color-brand-500);
   background-image:
-    radial-gradient(
-      90% 70% at 12% 0%,
-      rgba(185, 19, 19, 0.06) 0%,
-      transparent 55%
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 250, 242, 0.07) 0 1px,
+      transparent 1px 17px
     ),
     radial-gradient(
-      80% 70% at 92% 100%,
-      rgba(255, 207, 0, 0.09) 0%,
+      120% 95% at 8% -18%,
+      rgba(255, 250, 242, 0.22) 0%,
       transparent 60%
+    ),
+    radial-gradient(
+      110% 100% at 98% 115%,
+      rgba(148, 16, 15, 0.55) 0%,
+      transparent 62%
+    ),
+    linear-gradient(
+      132deg,
+      var(--color-brand-400) 0%,
+      var(--color-brand-500) 44%,
+      var(--color-brand-600) 100%
     );
 }
 

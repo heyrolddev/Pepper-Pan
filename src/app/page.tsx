@@ -404,27 +404,27 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {/* Fan favorites                                               */}
       {/* ---------------------------------------------------------- */}
-      <section className="cream-field relative overflow-hidden py-24 sm:py-28">
+      <section className="grain relative overflow-hidden bg-ink-950 py-24 sm:py-28">
         <div
           aria-hidden
-          className="drift pointer-events-none absolute -right-20 top-20 h-72 w-72 rounded-full bg-chili-500/10 blur-3xl"
+          className="drift pointer-events-none absolute -right-20 top-20 h-72 w-72 rounded-full bg-chili-500/20 blur-3xl"
         />
         <div className="relative mx-auto max-w-6xl px-6">
           <Reveal className="mb-10 flex flex-wrap items-end justify-between gap-4">
             <div>
               <SectionMark
                 art={<NoodleBowl className="h-full w-full" />}
-                className="text-brand-600"
+                className="text-gold-400"
               >
                 Crowd pleasers
               </SectionMark>
-              <h2 className="mt-2 font-display text-5xl font-black tracking-tight text-brand-600 sm:text-6xl">
+              <h2 className="mt-2 font-display text-5xl font-black tracking-tight text-cream-50 sm:text-6xl">
                 Fan Favorites
               </h2>
             </div>
             <Link
               href="/menu"
-              className="rounded-full border border-ink-950/20 px-5 py-2.5 text-sm font-semibold text-ink-950 transition-colors hover:border-gold-400 hover:text-gold-400"
+              className="rounded-full border border-cream-100/25 px-5 py-2.5 text-sm font-semibold text-cream-50 transition-colors hover:border-gold-400 hover:text-gold-400"
             >
               See all {menuCount ?? ""} items →
             </Link>
@@ -443,7 +443,7 @@ export default async function Home() {
       {/* say — an empty gold stripe is worse than no stripe.         */}
       {/* ---------------------------------------------------------- */}
       {(announcements.dineIn || announcements.comingSoon.length > 0) && (
-        <section className="red-field grain relative overflow-hidden py-16 sm:py-20">
+        <section className="red-field-light grain relative overflow-hidden py-16 sm:py-20">
           <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 px-6 sm:flex-row sm:items-center sm:justify-between">
             <Reveal direction="right" className="min-w-0 flex-1">
               {announcements.dineIn && (
@@ -483,52 +483,56 @@ export default async function Home() {
             </Reveal>
           </div>
 
-          {/* Coming soon, given room of its own.
-              It used to be a half-line of text with a thumbnail the size of a
-              postage stamp, tucked under the dine-in offer — which is a strange
-              way to treat the thing the shop is most excited about. Title, then
-              the picture, then what it is.
+          {/* Coming soon, boxed.
 
-              Two of them, side by side. What is arriving is usually a pair, and
-              announcing them one at a time makes the second look like an
-              afterthought. The heading is written once above both: repeating
-              "Coming soon" over each card would say it twice and mean it less. */}
+              It was a rule and some text below the dine-in offer, which read
+              as a footnote to it. A card with its own outline says the
+              opposite: still part of this band, but its own announcement —
+              which is what the shop actually means by it.
+
+              The label is set large on purpose, and not only for emphasis.
+              Gold on this lighter red measures 3.82:1, which fails for body
+              text and passes for large text; at this size it is legible, at
+              the old size it was not. The design ask and the contrast floor
+              happen to want the same thing. */}
           {announcements.comingSoon.length > 0 && (
             <Reveal
               delay={0.15}
-              className="relative mx-auto mt-12 max-w-6xl border-t-2 border-cream-50/25 px-6 pt-10"
+              className="relative mx-auto mt-12 max-w-6xl px-6 sm:mt-14"
             >
-              <p className="font-display text-sm font-black uppercase tracking-[0.2em] text-gold-300 sm:text-base">
-                Coming soon
-              </p>
+              <div className="rounded-[2rem] border-2 border-cream-50/60 bg-brand-700/25 p-6 shadow-[0_18px_50px_-20px_rgba(18,10,8,0.55)] sm:rounded-[2.5rem] sm:p-10">
+                <p className="font-display text-2xl font-black uppercase leading-none tracking-[0.14em] text-gold-300 sm:text-3xl">
+                  Coming soon
+                </p>
 
-              <div
-                className={`mt-6 grid gap-10 ${
-                  announcements.comingSoon.length > 1
-                    ? "sm:grid-cols-2"
-                    : "max-w-2xl"
-                }`}
-              >
-                {announcements.comingSoon.map((row) => (
-                  <article key={row.id}>
-                    <h3 className="font-display text-2xl font-black leading-tight text-cream-50 sm:text-3xl">
-                      {row.title}
-                    </h3>
+                <div
+                  className={`mt-7 grid gap-8 sm:mt-9 ${
+                    announcements.comingSoon.length > 1
+                      ? "sm:grid-cols-2"
+                      : "max-w-2xl"
+                  }`}
+                >
+                  {announcements.comingSoon.map((row) => (
+                    <article key={row.id}>
+                      <h3 className="font-display text-3xl font-black leading-[1.05] tracking-tight text-cream-50 sm:text-4xl">
+                        {row.title}
+                      </h3>
 
-                    {hasMedia(row) && (
-                      <AnnouncementMedia
-                        row={row}
-                        className="mt-5 aspect-[16/10] w-full rounded-3xl border-4 border-ink-950 bg-ink-950 object-cover shadow-[8px_8px_0_0_theme(colors.ink.950)]"
-                      />
-                    )}
+                      {hasMedia(row) && (
+                        <AnnouncementMedia
+                          row={row}
+                          className="mt-5 aspect-[16/10] w-full rounded-2xl bg-ink-950 object-cover ring-1 ring-ink-950/40"
+                        />
+                      )}
 
-                    {row.body && (
-                      <p className="mt-5 text-base font-medium leading-relaxed text-cream-100/85 sm:text-lg">
-                        {row.body}
-                      </p>
-                    )}
-                  </article>
-                ))}
+                      {row.body && (
+                        <p className="mt-4 text-base font-medium leading-relaxed text-cream-100/85">
+                          {row.body}
+                        </p>
+                      )}
+                    </article>
+                  ))}
+                </div>
               </div>
             </Reveal>
           )}
