@@ -187,7 +187,7 @@ export const STATE_TONE: Record<HomeState, { label: string; chip: string }> = {
   listed: { label: "In All news & promos", chip: "bg-ink-950/[0.07] text-ink-800/70" },
   strip: { label: "In the scrolling strip", chip: "bg-ink-950/[0.07] text-ink-800/70" },
   queued: { label: "Next up", chip: "bg-ink-950/[0.07] text-ink-800/70" },
-  scheduled: { label: "Scheduled", chip: "bg-gold-400 text-ink-950" },
+  scheduled: { label: "Scheduled", chip: "bg-brand-600 text-cream-50" },
   finished: { label: "Finished", chip: "bg-ink-950/10 text-ink-800/60" },
   off: { label: "Off", chip: "bg-ink-950/10 text-ink-800/60" },
 };

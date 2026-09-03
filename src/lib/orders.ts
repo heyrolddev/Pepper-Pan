@@ -70,7 +70,7 @@ export type StatusTone = {
 
 export const STATUS_TONES: Record<OrderStatus, StatusTone> = {
   pending: {
-    chip: "bg-gold-400 text-ink-950",
+    chip: "bg-brand-600 text-cream-50",
     dot: "bg-gold-400",
     rail: "border-gold-400",
     live: true,

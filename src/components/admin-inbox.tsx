@@ -340,7 +340,7 @@ export function AdminInbox({ threads }: { threads: InboxThread[] }) {
                               className={`rounded-full px-4 py-2 text-xs font-bold transition-colors ${
                                 teaching === t.id
                                   ? "bg-ink-950 text-gold-400"
-                                  : "bg-gold-400 text-ink-950"
+                                  : "bg-brand-600 text-cream-50"
                               }`}
                             >
                               Teach this answer

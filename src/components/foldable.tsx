@@ -22,7 +22,7 @@ import { useState, type ReactNode } from "react";
  * hurry, holding a ladle.
  */
 export function Foldable({
-  /** Tailwind background+text for this row's status, e.g. "bg-gold-400 text-ink-950". */
+  /** Tailwind background+text for this row's status, e.g. "bg-brand-600 text-cream-50". */
   chip,
   /** Tailwind border colour for the left rail, e.g. "border-gold-400". */
   rail,

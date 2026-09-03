@@ -197,7 +197,7 @@ export function StaffToday({
                 className={`rounded-full px-4 py-2 text-sm font-bold ${
                   d.makeable <= 0
                     ? "bg-brand-600 text-cream-50"
-                    : "bg-gold-400 text-ink-950"
+                    : "bg-brand-600 text-cream-50"
                 }`}
               >
                 {d.name}

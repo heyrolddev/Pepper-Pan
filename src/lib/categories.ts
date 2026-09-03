@@ -51,7 +51,7 @@ export const CATEGORY_TONES: Record<string, CategoryTone> = {
     // Gold is the one that cannot take cream text — it's a light colour, and
     // the chip needs ink on it or the label vanishes.
     label: "Yellow",
-    chip: "bg-gold-400 text-ink-950",
+    chip: "bg-brand-600 text-cream-50",
     soft: "bg-gold-400/25 text-ink-900",
     dot: "bg-gold-400",
   },

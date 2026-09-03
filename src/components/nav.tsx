@@ -150,12 +150,12 @@ export function Nav({
               className={`group flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-3 font-bold ring-2 transition-all hover:scale-105 ${
                 scrolled
                   ? "bg-ink-950 text-gold-400 ring-gold-400/40"
-                  : "bg-gold-400 text-ink-950 ring-gold-400/60"
+                  : "bg-brand-600 text-cream-50 ring-gold-400/60"
               }`}
             >
               <span
                 className={`grid h-6 w-6 place-items-center rounded-full ${
-                  scrolled ? "bg-gold-400 text-ink-950" : "bg-ink-950 text-gold-400"
+                  scrolled ? "bg-brand-600 text-cream-50" : "bg-ink-950 text-gold-400"
                 }`}
               >
                 <ChefHatIcon className="h-3.5 w-3.5" />
@@ -243,7 +243,7 @@ export function Nav({
               aria-current={onAccount ? "page" : undefined}
               className={`flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 font-bold transition-all hover:scale-105 min-[880px]:pr-3 ${
                 onAccount
-                  ? "bg-gold-400 text-ink-950 ring-2 ring-gold-400"
+                  ? "bg-brand-600 text-cream-50 ring-2 ring-gold-400"
                   : scrolled
                     ? "bg-ink-950/5 text-ink-950 ring-1 ring-ink-950/10"
                     : "bg-cream-50/10 text-cream-50 ring-1 ring-cream-50/20"
@@ -277,7 +277,7 @@ export function Nav({
               className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 font-bold transition-colors ${
                 scrolled
                   ? "bg-ink-950 text-cream-50 hover:bg-brand-600"
-                  : "bg-gold-400 text-ink-950 hover:bg-gold-300"
+                  : "bg-brand-600 text-cream-50 hover:bg-brand-700"
               }`}
             >
               Sign in

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { FaqAccordion } from "@/components/faq-accordion";
 import { FaqSchema } from "@/components/faq-schema";
+import { Swiper } from "@/components/swiper";
 import { HeroVideo } from "@/components/hero-video";
 import { Reveal } from "@/components/reveal";
 import { Parallax } from "@/components/parallax";
@@ -64,8 +65,15 @@ const IMG_BASE =
  * this file changes: that is the whole reason the two are separate constants
  * rather than one branching component.
  */
-const HERO_STILL = `${IMG_BASE}/opt/4.webp`;
-const HERO_VIDEO: string | null = null;
+// A frame lifted from the video at 10.5s — the black pepper noodles the
+// headline names, and the darkest good frame in the clip, measured rather than
+// chosen by eye. Because it is the same footage, the swap from still to video
+// is invisible instead of a cut between two different pictures.
+const HERO_STILL = "/hero-poster.jpg";
+// Served from public/ rather than Supabase storage: it is 1.5 MB of static
+// bytes that never change, Vercel puts it on its CDN for free, and it needs no
+// key and no upload step the owner would have to repeat.
+const HERO_VIDEO: string | null = "/hero.mp4";
 
 const favorites = [
   { name: "Pork Noodles", image: `${IMG_BASE}/opt/FB.webp` },
@@ -141,7 +149,7 @@ export default async function Home() {
       number: "03",
       label: "Pickup & Delivery",
       detail: "Order ahead, skip the wait",
-      tone: "jade" as const,
+      tone: "ink" as const,
     },
     {
       number: "04",
@@ -292,7 +300,7 @@ export default async function Home() {
                   >
                     On right now
                   </SectionMark>
-                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-ink-950">
+                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl">
                     What&apos;s on
                   </h2>
                 </Reveal>
@@ -304,7 +312,7 @@ export default async function Home() {
                           under the thumb, is a link most people never hit. */}
                       <Link
                         href={`/news/${p.id}`}
-                        className="group flex h-full flex-col overflow-hidden rounded-3xl border-4 border-ink-950 bg-gold-400 shadow-[6px_6px_0_0_theme(colors.ink.950)] transition-transform hover:-translate-y-1"
+                        className="group flex h-full flex-col overflow-hidden rounded-3xl border-4 border-ink-950 bg-brand-600 shadow-[6px_6px_0_0_theme(colors.ink.950)] transition-transform hover:-translate-y-1"
                       >
                         {hasMedia(p) && (
                           <AnnouncementMedia
@@ -313,15 +321,15 @@ export default async function Home() {
                           />
                         )}
                         <div className="flex flex-1 flex-col p-6">
-                          <h3 className="font-display text-2xl font-black uppercase leading-tight tracking-tight text-ink-950">
+                          <h3 className="font-display text-2xl font-black uppercase leading-tight tracking-tight text-cream-50">
                             {p.title}
                           </h3>
                           {p.body && (
-                            <p className="mt-2 line-clamp-3 text-sm font-medium text-ink-950/75">
+                            <p className="mt-2 line-clamp-3 text-sm font-medium text-cream-100/80">
                               {p.body}
                             </p>
                           )}
-                          <p className="mt-auto pt-4 text-xs font-black uppercase tracking-widest text-brand-700 group-hover:underline">
+                          <p className="mt-auto pt-4 text-xs font-black uppercase tracking-widest text-gold-300 group-hover:underline">
                             {p.ends_at ? `Until ${manilaDate(p.ends_at)} · ` : ""}Read more →
                           </p>
                         </div>
@@ -337,11 +345,11 @@ export default async function Home() {
                 <Reveal className="mb-6">
                   <SectionMark
                     art={<ChatSteam className="h-full w-full" />}
-                    className="text-jade-600"
+                    className="text-brand-600"
                   >
                     From the stall
                   </SectionMark>
-                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-ink-950">
+                  <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl">
                     News
                   </h2>
                 </Reveal>
@@ -394,7 +402,7 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       <section className="mx-auto max-w-6xl px-6 py-20">
         <Reveal className="mb-10 max-w-lg">
-          <h2 className="font-display text-4xl font-black tracking-tight text-ink-950">
+          <h2 className="font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl">
             Why everyone keeps coming back
           </h2>
         </Reveal>
@@ -404,7 +412,7 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {/* Fan favorites                                               */}
       {/* ---------------------------------------------------------- */}
-      <section className="grain relative overflow-hidden bg-ink-950 py-20">
+      <section className="grain relative overflow-hidden bg-ink-950 py-24 sm:py-28">
         <div
           aria-hidden
           className="drift pointer-events-none absolute -right-20 top-20 h-72 w-72 rounded-full bg-chili-500/20 blur-3xl"
@@ -418,7 +426,7 @@ export default async function Home() {
               >
                 Crowd pleasers
               </SectionMark>
-              <h2 className="mt-2 font-display text-4xl font-black tracking-tight text-cream-50">
+              <h2 className="mt-2 font-display text-5xl font-black tracking-tight text-cream-50 sm:text-6xl">
                 Fan Favorites
               </h2>
             </div>
@@ -443,19 +451,19 @@ export default async function Home() {
       {/* say — an empty gold stripe is worse than no stripe.         */}
       {/* ---------------------------------------------------------- */}
       {(announcements.dineIn || announcements.comingSoon.length > 0) && (
-        <section className="grain relative overflow-hidden bg-gold-400 py-16">
+        <section className="red-field grain relative overflow-hidden py-16 sm:py-20">
           <div className="relative mx-auto flex max-w-6xl flex-col items-start gap-8 px-6 sm:flex-row sm:items-center sm:justify-between">
             <Reveal direction="right" className="min-w-0 flex-1">
               {announcements.dineIn && (
                 <>
-                  <span className="text-xs font-bold uppercase tracking-widest text-brand-700">
+                  <span className="inline-block rounded-full bg-ink-950 px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-cream-50">
                     Dine-in special
                   </span>
-                  <p className="mt-2 font-display text-3xl font-black leading-tight text-ink-950 sm:text-4xl">
+                  <p className="mt-4 max-w-lg font-display text-3xl font-black leading-[1.05] tracking-tight text-cream-50 sm:text-4xl lg:text-5xl">
                     {announcements.dineIn.title}
                   </p>
                   {announcements.dineIn.body && (
-                    <p className="mt-2 max-w-xl text-ink-800/80">
+                    <p className="mt-3 max-w-xl font-medium text-cream-100/85">
                       {announcements.dineIn.body}
                     </p>
                   )}
@@ -476,59 +484,70 @@ export default async function Home() {
             <Reveal direction="left" delay={0.1} className="shrink-0">
               <Link
                 href="/menu"
-                className="inline-block whitespace-nowrap rounded-full bg-ink-950 px-8 py-4 font-bold text-gold-400 transition-transform hover:scale-105"
+                className="inline-block whitespace-nowrap rounded-full bg-ink-950 px-8 py-4 font-bold text-cream-50 transition-transform hover:scale-105"
               >
                 Order now →
               </Link>
             </Reveal>
           </div>
 
-          {/* Coming soon, given room of its own.
-              It used to be a half-line of text with a thumbnail the size of a
-              postage stamp, tucked under the dine-in offer — which is a strange
-              way to treat the thing the shop is most excited about. Title, then
-              the picture, then what it is.
+          {/* Coming soon, one at a time.
 
-              Two of them, side by side. What is arriving is usually a pair, and
-              announcing them one at a time makes the second look like an
-              afterthought. The heading is written once above both: repeating
-              "Coming soon" over each card would say it twice and mean it less. */}
+              Two cards side by side split the attention of a section whose
+              whole job is to make one thing look worth waiting for. Now it is
+              a single card, swiped — and swiped by hand: nothing advances on
+              its own, because a slide that moves while somebody is reading it
+              takes away the one they had chosen to look at.
+
+              The box is yellow inside a red band, which is the palette the
+              shop's own menu posters already use. It also happens to be the
+              clearest pairing on the whole site: black on gold-400 measures
+              13.22:1. And the two grounds sit at 4.48:1 against each other,
+              so the box separates itself by colour — the black border is
+              there for the poster look, not to do that work.
+
+              The heading is a headline rather than a label, and the loudest
+              thing in this band on purpose. */}
           {announcements.comingSoon.length > 0 && (
             <Reveal
               delay={0.15}
-              className="relative mx-auto mt-12 max-w-6xl border-t-2 border-ink-950/15 px-6 pt-10"
+              className="relative mx-auto mt-14 max-w-6xl px-6 sm:mt-16"
             >
-              <p className="font-display text-sm font-black uppercase tracking-[0.2em] text-brand-700 sm:text-base">
-                Coming soon
-              </p>
+              <div className="rounded-[2rem] border-4 border-ink-950 bg-gold-400 p-6 shadow-[10px_10px_0_0_theme(colors.ink.950)] sm:rounded-[2.5rem] sm:p-10">
+                <p className="font-display text-5xl font-black uppercase leading-[0.88] tracking-[-0.02em] text-ink-950 sm:text-6xl lg:text-7xl">
+                  Coming
+                  <br />
+                  soon
+                </p>
 
-              <div
-                className={`mt-6 grid gap-10 ${
-                  announcements.comingSoon.length > 1
-                    ? "sm:grid-cols-2"
-                    : "max-w-2xl"
-                }`}
-              >
-                {announcements.comingSoon.map((row) => (
-                  <article key={row.id}>
-                    <h3 className="font-display text-2xl font-black leading-tight text-ink-950 sm:text-3xl">
-                      {row.title}
-                    </h3>
+                <div className="mt-8 sm:mt-10">
+                  <Swiper label="Coming soon">
+                    {announcements.comingSoon.map((row) => (
+                      <div
+                        key={row.id}
+                        className="grid gap-6 pr-px sm:grid-cols-[1fr_1.15fr] sm:items-center sm:gap-10"
+                      >
+                        <div className="min-w-0">
+                          <h3 className="font-display text-3xl font-black leading-[1.05] tracking-tight text-ink-950 sm:text-4xl lg:text-5xl">
+                            {row.title}
+                          </h3>
+                          {row.body && (
+                            <p className="mt-4 text-base font-medium leading-relaxed text-ink-950/75 sm:text-lg">
+                              {row.body}
+                            </p>
+                          )}
+                        </div>
 
-                    {hasMedia(row) && (
-                      <AnnouncementMedia
-                        row={row}
-                        className="mt-5 aspect-[16/10] w-full rounded-3xl border-4 border-ink-950 bg-ink-950 object-cover shadow-[8px_8px_0_0_theme(colors.ink.950)]"
-                      />
-                    )}
-
-                    {row.body && (
-                      <p className="mt-5 text-base font-medium leading-relaxed text-ink-800/85 sm:text-lg">
-                        {row.body}
-                      </p>
-                    )}
-                  </article>
-                ))}
+                        {hasMedia(row) && (
+                          <AnnouncementMedia
+                            row={row}
+                            className="aspect-[16/10] w-full rounded-2xl bg-ink-950 object-cover ring-1 ring-ink-950/25"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </Swiper>
+                </div>
               </div>
             </Reveal>
           )}
@@ -598,7 +617,7 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {/* Testimonial                                                 */}
       {/* ---------------------------------------------------------- */}
-      <section className="grain relative overflow-hidden bg-brand-600 py-20 text-cream-50">
+      <section className="red-field grain relative overflow-hidden py-20 text-cream-50 sm:py-24">
         <div
           aria-hidden
           className="drift pointer-events-none absolute -left-16 bottom-0 h-64 w-64 rounded-full bg-gold-400/20 blur-3xl"
@@ -656,12 +675,12 @@ export default async function Home() {
               an empty field — the same trick the section marks use elsewhere,
               so the page reads as one thing. */}
           <Reveal direction="right">
-            <article className="grain relative flex h-full flex-col overflow-hidden rounded-3xl bg-jade-700 p-10 text-cream-50">
+            <article className="grain relative flex h-full flex-col overflow-hidden rounded-3xl bg-brand-700 p-10 text-cream-50">
               {/* Decorative: `spot-art` marks already carry aria-hidden when
                   given no title, so there's nothing to add here. */}
               <NoodleBowl className="pointer-events-none absolute -bottom-8 -right-8 h-48 w-48 text-cream-50/10" />
-              <span className="relative inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-jade-200">
-                <span className="h-px w-6 bg-jade-200/60" />
+              <span className="relative inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gold-300">
+                <span className="h-px w-6 bg-gold-300/60" />
                 Our mission
               </span>
               <p className="relative mt-5 font-display text-2xl font-bold leading-snug sm:text-[1.75rem]">
@@ -704,7 +723,7 @@ export default async function Home() {
             >
               Come see us
             </SectionMark>
-            <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-ink-950 sm:text-5xl">
+            <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl sm:text-5xl">
               Visit Pepper Pan
             </h2>
             <p className="mt-5 max-w-xl text-lg text-ink-800/80">{ADDRESS}</p>
@@ -818,7 +837,7 @@ export default async function Home() {
           >
             Good to know
           </SectionMark>
-          <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-ink-950">
+          <h2 className="mt-3 font-display text-4xl font-black tracking-tight text-brand-600 sm:text-5xl">
             Frequently asked questions
           </h2>
         </Reveal>
