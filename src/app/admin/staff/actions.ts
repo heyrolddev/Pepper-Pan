@@ -26,10 +26,19 @@ export async function setStaffRole(input: {
   /**
    * Manager sits between the two: runs a service, restocks, marks a dish sold
    * out — and still cannot change a price or see what anything earns.
-   * "owner" is deliberately not offered. Handing over the whole business is
-   * not a button on a list of names.
+   *
+   * "owner" is offered, and it was not before. The reason it is now is the
+   * question "what happens if the owner loses their phone, or forgets their
+   * password, or somebody takes the account": with exactly one owner, every
+   * answer runs through a database dashboard, and if that is lost too there
+   * is no answer at all. A second owner is the only backup plan that works
+   * without anybody's help — one can always restore the other.
+   *
+   * It is still the heaviest thing on this screen, so it goes through the
+   * same offer-and-accept as every other role: the person has to say yes,
+   * from their own signed-in session, and it is written in the activity log.
    */
-  role: "manager" | "staff" | "customer";
+  role: "owner" | "manager" | "staff" | "customer";
 }): Promise<Result> {
   const owner = await requireOwner();
   if (!owner) return { error: "Only the owner can change who works here." };
@@ -45,6 +54,9 @@ export async function setStaffRole(input: {
     .maybeSingle();
   if (!target) return { error: "That account no longer exists." };
   if (target.role === "owner") {
+    // Deliberate: an owner cannot be removed from this screen, only by the
+    // person themselves or in the database. Two owners who can each demote
+    // the other is a disagreement that ends with nobody able to get in.
     return { error: "You can't stand down another owner from here." };
   }
 

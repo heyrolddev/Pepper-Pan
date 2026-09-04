@@ -39,7 +39,17 @@ export default async function AnnouncementPage({ params }: PageProps<"/news/[id]
   if (!row) notFound();
 
   const when = windowText(row.starts_at, row.ends_at);
-  const isPromo = row.kind === "promo";
+
+  // Every kind has a page here, including the two that only ever appeared
+  // inside the homepage's band — so the badge has to name all four rather
+  // than calling a Coming soon post "News".
+  const badge: Record<typeof row.kind, { label: string; chip: string }> = {
+    promo: { label: "Promo", chip: "bg-brand-600 text-cream-50" },
+    news: { label: "News", chip: "bg-jade-600 text-cream-50" },
+    coming_soon: { label: "Coming soon", chip: "bg-gold-400 text-ink-950" },
+    dine_in: { label: "Dine-in special", chip: "bg-ink-950 text-gold-400" },
+  };
+  const kind = badge[row.kind] ?? badge.news;
 
   return (
     <main className="under-nav flex-1 bg-cream-50">
@@ -53,11 +63,9 @@ export default async function AnnouncementPage({ params }: PageProps<"/news/[id]
 
         <p className="mt-8 flex flex-wrap items-center gap-2">
           <span
-            className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest ${
-              isPromo ? "bg-brand-600 text-cream-50" : "bg-jade-600 text-cream-50"
-            }`}
+            className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest ${kind.chip}`}
           >
-            {isPromo ? "Promo" : "News"}
+            {kind.label}
           </span>
           <span className="text-xs font-semibold uppercase tracking-widest text-ink-800/45">
             {longDate(row.starts_at ?? row.created_at)}

@@ -14,7 +14,7 @@ export type Profile = {
   is_verified: boolean;
   is_blocked: boolean;
   /** A role the owner has offered and this person has not accepted yet. */
-  pending_role: "manager" | "staff" | null;
+  pending_role: "owner" | "manager" | "staff" | null;
 };
 
 export type Viewer = { email: string; profile: Profile | null } | null;
