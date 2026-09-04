@@ -99,7 +99,8 @@ export function SiteFooter({
               </a>
             </li>
             <li className="text-cream-100/60">
-              In front of Palengkeni, beside Osave! — Apalit
+              In front of Palengkeni, beside Osave! — Apalit, Pampanga,
+              Philippines
             </li>
           </ul>
         </div>

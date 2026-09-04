@@ -36,6 +36,34 @@ const ETA_IS_OVER: OrderStatus[] = [
   "cancelled",
 ];
 
+/**
+ * Who did this, on the record.
+ *
+ * Counter sales already carried `logged_by`, so a walk-in has always had a
+ * name on it. An online order did not: moving one to "completed", or marking
+ * a customer's GCash payment as received, changed the row and left nothing
+ * saying who decided it. Those are the two moments most worth being able to
+ * ask about later — one hands over food, the other says money arrived — and
+ * "the system says it was paid" is not an answer when the drawer is short.
+ *
+ * Written with the admin client and never fatal: losing the log line is bad,
+ * losing the status change it describes because the log failed is worse.
+ */
+async function record(
+  description: string,
+  actorId: string | null
+): Promise<void> {
+  const { error } = await createAdminClient()
+    .from("activity_log")
+    .insert({ category: "orders", description, actor: actorId });
+  if (error) console.error(`[orders] log: ${error.message}`);
+}
+
+/** A person, as they should read on the activity page. */
+function nameOf(viewer: Awaited<ReturnType<typeof getViewer>>): string {
+  return viewer?.profile?.full_name?.trim() || viewer?.email || "someone";
+}
+
 export async function setOrderStatus(
   orderId: string,
   status: OrderStatus
@@ -78,6 +106,11 @@ export async function setOrderStatus(
   // dangling promise silently. It swallows its own failures, so the status
   // change can't be held up by a mail problem.
   await notifyOrderStatus(orderId);
+
+  await record(
+    `${nameOf(viewer)} set order ${orderId} to ${status}`,
+    viewer?.profile?.id ?? null
+  );
 
   revalidateOrders();
   return { error: null };
@@ -159,6 +192,11 @@ export async function setPaymentStatus(
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  await record(
+    `${nameOf(viewer)} marked payment for order ${orderId} as ${status}`,
+    viewer?.profile?.id ?? null
+  );
 
   revalidateOrders();
   return { error: null };

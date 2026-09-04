@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Stars } from "@/components/stars";
 
 export type FeaturedReview = {
@@ -12,21 +12,30 @@ export type FeaturedReview = {
 };
 
 /**
- * The homepage's reviews: three cards at a time, moving.
+ * The homepage's reviews: three cards at a time, and you can push them.
  *
- * The first attempt showed one big quote and rotated it. It moved, which was
- * the ask — but it threw away what the grid was good at: three cards read as
- * *several people liked this*, and one quote reads as one person did. Social
- * proof is partly a count, and the count has to be visible.
+ * Three cards rather than one big quote, because social proof is partly a
+ * count — three cards read as *several people liked this*, one quote reads as
+ * one person did.
  *
- * So the cards stay and the whole row pages. Three at a time on a desktop, two
- * on a tablet, one on a phone — the widths are plain CSS, so the first paint
- * is right before any JavaScript runs, and only the page arithmetic needs to
- * know how many fit.
+ * The move away from transform-paging is the point of this file. It used to
+ * translate a track by whole pages, which meant the only way to get to a
+ * different review was the row of dots underneath: the cards themselves did
+ * nothing when you touched them. On a phone that is the wrong way round —
+ * the obvious thing to do with a row of cards is push it sideways, and the
+ * dots are eight pixels tall at the bottom of a dark section.
  *
- * It stops when it should: on hover, on keyboard focus, in a background tab,
- * and permanently for anyone who's asked for reduced motion. Text that moves
- * while you're reading it is how a carousel becomes worse than a list.
+ * So the scrolling is the browser's now: a flex row with CSS scroll snapping.
+ * Touch swipe, momentum, rubber-band at the ends, trackpad gestures and
+ * keyboard all work without being reimplemented, because they are not
+ * reimplemented. React only watches where the scroll ended up so it can light
+ * the right dot, and adds the one thing native scrolling does not give you —
+ * click-and-drag with a mouse.
+ *
+ * It still stops when it should: while you are touching it, on hover, on
+ * keyboard focus, in a background tab, and permanently for anyone who asked
+ * for reduced motion. Text that moves while you are reading it is how a
+ * carousel becomes worse than a list.
  */
 
 /** Three cards is more to read than one quote was. */
@@ -40,13 +49,11 @@ function perPageFor(width: number): number {
 }
 
 export function ReviewCarousel({ reviews }: { reviews: FeaturedReview[] }) {
+  const track = useRef<HTMLUListElement>(null);
   const [page, setPage] = useState(0);
   const [paused, setPaused] = useState(false);
   const [motionOk, setMotionOk] = useState(false);
   const [visible, setVisible] = useState(true);
-  // Three to start: the desktop case, and the widest. A phone corrects it on
-  // mount, long before the first auto-advance — and page 0 looks identical
-  // either way, so nothing visibly shifts underneath anyone.
   const [perPage, setPerPage] = useState(3);
 
   useEffect(() => {
@@ -79,14 +86,83 @@ export function ReviewCarousel({ reviews }: { reviews: FeaturedReview[] }) {
   const safePage = Math.min(page, pages - 1);
   const running = motionOk && !paused && visible && pages > 1;
 
-  // Keyed on the page so a manual jump restarts the full interval. Landing on
-  // a page with half a second left before it slides away is worse than not
-  // being able to jump at all.
+  /** Scroll to a page, wrapping at both ends so it never dead-ends. */
+  const goTo = useCallback(
+    (i: number, smooth = true) => {
+      const el = track.current;
+      if (!el) return;
+      const last = pages - 1;
+      const target = i < 0 ? last : i > last ? 0 : i;
+      el.scrollTo({
+        left: target * el.clientWidth,
+        behavior: smooth ? "smooth" : "auto",
+      });
+    },
+    [pages]
+  );
+
+  // Where the scroll actually ended up, which is the only thing that knows
+  // where a swipe left off. Rounded rather than floored: half-way through a
+  // swipe the next page is the one being looked at, and the dot should agree.
+  const onScroll = useCallback(() => {
+    const el = track.current;
+    if (!el) return;
+    setPage(Math.round(el.scrollLeft / el.clientWidth));
+  }, []);
+
+  // Auto-advance. Keyed on the page so a swipe or a tap restarts the full
+  // interval — landing on a card with half a second left before it slides
+  // away is worse than it not advancing at all.
   useEffect(() => {
     if (!running) return;
-    const t = setTimeout(() => setPage((p) => (p + 1) % pages), INTERVAL);
+    const t = setTimeout(() => goTo(safePage + 1), INTERVAL);
     return () => clearTimeout(t);
-  }, [running, safePage, pages]);
+  }, [running, safePage, goTo]);
+
+  /* ---------------- click and drag, for a mouse ---------------- */
+
+  // Native scrolling covers touch and trackpad. It does not cover holding the
+  // left button and pulling, which is what someone on a laptop tries first
+  // once the cards look draggable. Pointer events cover all three input
+  // kinds, so this is written once rather than per device.
+  const drag = useRef<{ startX: number; startLeft: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLUListElement>) => {
+    // Touch already scrolls natively and far better than this would; taking
+    // it over here would replace momentum with a worse imitation of it.
+    if (e.pointerType === "touch") return;
+    const el = track.current;
+    if (!el) return;
+    drag.current = { startX: e.clientX, startLeft: el.scrollLeft };
+    setDragging(true);
+    setPaused(true);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLUListElement>) => {
+    const el = track.current;
+    if (!drag.current || !el) return;
+    // Capture only once the pull is deliberate. Grabbing the pointer on the
+    // first pixel would swallow clicks on anything inside a card.
+    const dx = e.clientX - drag.current.startX;
+    if (Math.abs(dx) > 4 && !el.hasPointerCapture(e.pointerId)) {
+      el.setPointerCapture(e.pointerId);
+    }
+    el.scrollLeft = drag.current.startLeft - dx;
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLUListElement>) => {
+    const el = track.current;
+    if (!drag.current || !el) return;
+    drag.current = null;
+    setDragging(false);
+    setPaused(false);
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    // Settle on the nearest page. Scroll snapping does this by itself after a
+    // real scroll, but a drag sets scrollLeft directly and leaves it wherever
+    // the hand stopped.
+    goTo(Math.round(el.scrollLeft / el.clientWidth));
+  };
 
   if (reviews.length === 0) return null;
 
@@ -98,47 +174,50 @@ export function ReviewCarousel({ reviews }: { reviews: FeaturedReview[] }) {
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      {/* The track is exactly one page wide, so translating it by 100% moves
-          by one page — not by its own full length, which is the classic way
-          this goes wrong the moment there are more cards than fit. */}
-      <div className="-mx-2.5 overflow-hidden">
+      <div className="-mx-2.5">
         <ul
-          className="flex w-full items-stretch transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-          style={{ transform: `translateX(-${safePage * 100}%)` }}
+          ref={track}
+          onScroll={onScroll}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          aria-roledescription="carousel"
+          aria-label="What people say"
+          // `no-bar` hides the scrollbar without disabling the scrolling —
+          // the section is dark and a pale native bar under the cards reads
+          // as a mistake. Touch action stays on the browser for panning, so
+          // vertical page scrolling still works with a finger on a card.
+          className={`no-bar flex snap-x snap-mandatory items-stretch overflow-x-auto ${
+            dragging ? "cursor-grabbing select-none" : "cursor-grab"
+          }`}
         >
-          {reviews.map((r, i) => {
-            const onThisPage =
-              i >= safePage * perPage && i < (safePage + 1) * perPage;
-            return (
-              <li
-                key={r.id}
-                className="w-full shrink-0 px-2.5 sm:w-1/2 lg:w-1/3"
-                // Cards scrolled out of view are still in the document, so a
-                // keyboard would otherwise tab onto a card nobody can see.
-                aria-hidden={!onThisPage}
-              >
-                <figure className="flex h-full flex-col gap-3 rounded-3xl bg-cream-50/10 p-6 ring-1 ring-cream-50/20">
-                  <Stars rating={r.rating} className="text-gold-300" />
-                  <blockquote className="flex-1 font-display text-lg font-bold leading-snug">
-                    &ldquo;{r.comment}&rdquo;
-                  </blockquote>
-                  <figcaption className="text-sm text-cream-100/70">
-                    {r.author}
-                    {r.mealName && ` · ${r.mealName}`}
-                  </figcaption>
-                </figure>
-              </li>
-            );
-          })}
+          {reviews.map((r) => (
+            <li
+              key={r.id}
+              className="w-full shrink-0 snap-start px-2.5 sm:w-1/2 lg:w-1/3"
+            >
+              <figure className="flex h-full flex-col gap-3 rounded-3xl bg-cream-50/10 p-6 ring-1 ring-cream-50/20">
+                <Stars rating={r.rating} className="text-gold-300" />
+                <blockquote className="flex-1 font-display text-lg font-bold leading-snug">
+                  &ldquo;{r.comment}&rdquo;
+                </blockquote>
+                <figcaption className="text-sm text-cream-100/70">
+                  {r.author}
+                  {r.mealName && ` · ${r.mealName}`}
+                </figcaption>
+              </figure>
+            </li>
+          ))}
         </ul>
       </div>
 
       {pages > 1 && (
-        <div className="mt-6 flex justify-center gap-1">
+        <div className="mt-6 flex items-center justify-center gap-1">
           {Array.from({ length: pages }, (_, i) => (
             <button
               key={i}
-              onClick={() => setPage(i)}
+              onClick={() => goTo(i)}
               aria-label={`Reviews, page ${i + 1} of ${pages}`}
               aria-current={i === safePage}
               // A tap target the size of the dot is a tap target nobody hits,

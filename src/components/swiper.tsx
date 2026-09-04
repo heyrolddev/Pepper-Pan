@@ -38,11 +38,24 @@ export function Swiper({
     setActive(Math.round(el.scrollLeft / el.clientWidth));
   }, []);
 
-  const goTo = useCallback((i: number) => {
-    const el = track.current;
-    if (!el) return;
-    el.scrollTo({ left: i * el.clientWidth, behavior: "smooth" });
-  }, []);
+  /**
+   * Wraps at both ends.
+   *
+   * Past the last card lands on the first, and before the first lands on the
+   * last. With only a few cards the alternative is a "next" button that goes
+   * dead the moment you reach the end — which reads as broken rather than as
+   * finished, because nothing on screen says there is nothing more.
+   */
+  const goTo = useCallback(
+    (i: number) => {
+      const el = track.current;
+      if (!el) return;
+      const last = children.length - 1;
+      const target = i < 0 ? last : i > last ? 0 : i;
+      el.scrollTo({ left: target * el.clientWidth, behavior: "smooth" });
+    },
+    [children.length]
+  );
 
   return (
     <div className="relative">
@@ -95,19 +108,20 @@ export function Swiper({
               screen readers because the dots above already say the same
               thing, and saying it twice is noise. */}
           <div className="hidden gap-2 sm:flex">
+            {/* Neither arrow is ever disabled now, because neither is ever a
+                dead end. A hollow, unclickable arrow was the old way of
+                saying "that is the last one", and it said it badly. */}
             <button
-              onClick={() => goTo(Math.max(0, active - 1))}
-              disabled={active === 0}
+              onClick={() => goTo(active - 1)}
               aria-label="Previous"
-              className="grid h-10 w-10 place-items-center rounded-full bg-ink-950 text-lg font-black text-cream-50 ring-2 ring-ink-950 transition-colors disabled:bg-transparent disabled:text-ink-950/40 disabled:ring-ink-950/30"
+              className="grid h-10 w-10 place-items-center rounded-full bg-ink-950 text-lg font-black text-cream-50 ring-2 ring-ink-950 transition-colors hover:bg-brand-600 hover:ring-brand-600"
             >
               ←
             </button>
             <button
-              onClick={() => goTo(Math.min(children.length - 1, active + 1))}
-              disabled={active === children.length - 1}
+              onClick={() => goTo(active + 1)}
               aria-label="Next"
-              className="grid h-10 w-10 place-items-center rounded-full bg-ink-950 text-lg font-black text-cream-50 ring-2 ring-ink-950 transition-colors disabled:bg-transparent disabled:text-ink-950/40 disabled:ring-ink-950/30"
+              className="grid h-10 w-10 place-items-center rounded-full bg-ink-950 text-lg font-black text-cream-50 ring-2 ring-ink-950 transition-colors hover:bg-brand-600 hover:ring-brand-600"
             >
               →
             </button>

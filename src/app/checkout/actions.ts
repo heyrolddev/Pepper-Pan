@@ -273,9 +273,16 @@ export async function placeOrder(
           : "We can't take orders ahead just now. Please order when we're open.",
       };
     }
-    if (!reference) {
+    // Either proof, not both — the same rule as the general check above.
+    //
+    // This said `!reference` and nothing else, which meant a customer who
+    // attached a screenshot of the GCash receipt was still refused and told
+    // to type a reference number. They had already given the proof; the form
+    // was asking for it twice and only counting one.
+    if (reference.length < 4 && !receiptFile) {
       return {
-        error: "Add your GCash reference number so we can confirm the booking.",
+        error:
+          "Add your GCash reference number or a screenshot of the receipt so we can confirm the booking — either one is fine.",
       };
     }
   } else if (schedule.configured && !schedule.state.isOpen) {

@@ -34,7 +34,7 @@ import { isConfigured } from "@/lib/auth";
 import { ShopSchema } from "@/components/shop-schema";
 
 const ADDRESS =
-  "In front of Palengkeni (New Apalit Public Market), beside Osave!, Apalit, Philippines";
+  "In front of Palengkeni (New Apalit, Pampanga Public Market), beside Osave!, Apalit, Philippines";
 const PHONE = "+63 947 353 3060";
 const PHONE_HREF = "+639473533060";
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
@@ -233,18 +233,47 @@ export default async function Home() {
               <br />
               <span className="relative inline-block text-gold-400">
                 Black Pepper
+                {/* The wave under the words.
+                    
+                    It used to be cut off, for three reasons at once, and all
+                    three were in these few lines:
+                    
+                    The crests left the box. `M2 12c30-14 …` sends control
+                    points to y = -2, above a viewBox whose top is 0, and a
+                    6-wide stroke reaches 3 further still — so the tops of
+                    every wave were sliced flat by the edge of the SVG.
+                    
+                    The wave stopped short. The path ran to x = 272 inside a
+                    300-wide box, so it ended about 9% before the last letter
+                    and looked like it had been trimmed.
+                    
+                    And `preserveAspectRatio="none"` stretched it. The box is
+                    squashed to whatever width the headline happens to be, and
+                    a stroke stretched unevenly is thick on the flats and thin
+                    on the curves — which reads as a badly drawn line rather
+                    than a deliberate one.
+                    
+                    The fix that actually holds is `overflow-visible`. Sizing
+                    the box to fit the stroke sounds right and is not enough:
+                    with a non-scaling stroke the line is a fixed number of
+                    SCREEN pixels, so how many viewBox units it needs depends
+                    on how squashed the box ends up — which changes with the
+                    width of the headline, which changes with the breakpoint.
+                    There is no single height that is always tall enough.
+                    Letting it draw outside the box removes the question. */}
                 <svg
                   aria-hidden
-                  viewBox="0 0 300 20"
-                  className="absolute -bottom-1 left-0 w-full text-brand-500"
+                  viewBox="0 0 300 24"
+                  className="absolute -bottom-5 left-0 w-full overflow-visible text-brand-500 sm:-bottom-6"
                   preserveAspectRatio="none"
                 >
                   <path
-                    d="M2 12c30-14 60 14 90 0s60-14 90 0 60 14 90 0"
+                    d="M0 12c25-11 50 11 75 0s50-11 75 0 50 11 75 0 50-11 75 0"
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="6"
+                    strokeWidth="8"
                     strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
                   />
                 </svg>
               </span>{" "}
@@ -582,14 +611,18 @@ export default async function Home() {
               No passport required.
             </h2>
             <p className="mt-5 text-lg leading-relaxed text-ink-800/80">
-              We wanted people to experience bold, new flavors without booking
-              a flight — so we brought Taiwan&apos;s street food culture
-              straight to Apalit.
+              We wanted people to experience bold, new flavors and kakaibang
+              anghang without booking a flight. So we brought Taiwan&apos;s
+              famous food straight here in Apalit, Pampanga — and soon,
+              everywhere you can find us.
             </p>
             <p className="mt-4 text-lg leading-relaxed text-ink-800/80">
-              From our signature black pepper noodles to everything else on the
-              menu, it&apos;s made fresh daily — the kind of food that stays on
-              your mind long after the last bite.
+              From our signature black pepper noodles and sauce to everything
+              else on the menu, it&apos;s made fresh daily. The kind of food
+              that stays on your mind long after the last bite — and the{" "}
+              <span className="font-bold text-brand-600">
+                &ldquo;Sarap na kakaiba!&rdquo;
+              </span>
             </p>
 
             <div className="mt-8 grid grid-cols-3 gap-6 border-t border-ink-950/10 pt-6">
@@ -693,11 +726,12 @@ export default async function Home() {
                 Our mission
               </span>
               <p className="relative mt-5 font-display text-2xl font-bold leading-snug sm:text-[1.75rem]">
-                Bring the bold flavors of Taiwan-style food to our community in
-                Apalit — made fresh every single day.
+                Bring the bold flavors of Taiwan-style food with a touch of our
+                own Filipino taste — a new, delicious food that is something
+                unique.
               </p>
               <p className="relative mt-auto pt-8 text-sm text-cream-100/70">
-                Cooked to order, never held under a lamp.
+                Sarap na kakaiba!
               </p>
             </article>
           </Reveal>
@@ -709,11 +743,11 @@ export default async function Home() {
                 Our vision
               </span>
               <p className="relative mt-5 font-display text-2xl font-bold leading-snug sm:text-[1.75rem]">
-                To be the neighborhood&apos;s go-to spot for Taiwan-style
-                cravings — no flight required.
+                To be the neighborhood&apos;s go-to spot for Taiwan-style food
+                — and become the world&apos;s new cravings.
               </p>
               <p className="relative mt-auto pt-8 text-sm text-cream-100/70">
-                One stall in Apalit, and a queue that keeps coming back.
+                One unforgettable bite.
               </p>
             </article>
           </Reveal>
