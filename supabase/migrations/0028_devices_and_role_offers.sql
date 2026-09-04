@@ -69,7 +69,11 @@ begin
     select 1 from pg_constraint where conname = 'profiles_pending_role_check'
   ) then
     alter table profiles add constraint profiles_pending_role_check
-      check (pending_role is null or pending_role in ('manager', 'staff'));
+      -- 'owner' is in here on purpose. With exactly one owner account, every
+      -- answer to "what if they lose their phone" runs through this
+      -- dashboard, and if that is lost too there is no answer at all. A
+      -- second owner is the only recovery plan that needs nobody's help.
+      check (pending_role is null or pending_role in ('owner', 'manager', 'staff'));
   end if;
 end $$;
 

@@ -331,7 +331,18 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {(announcements.promoCards.length > 0 || announcements.news.length > 0) && (
         <section className="mx-auto max-w-6xl px-6 py-16">
-          <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
+          {/* Two columns only when there are two things to put in them.
+              With the star now deciding what appears here, one side being
+              empty is an ordinary Tuesday rather than an edge case — and a
+              lone News column sitting in a 1.4fr track reads as a column
+              with something missing beside it. */}
+          <div
+            className={`grid gap-8 ${
+              announcements.promoCards.length > 0 && announcements.news.length > 0
+                ? "lg:grid-cols-[1.4fr_1fr]"
+                : ""
+            }`}
+          >
             {announcements.promoCards.length > 0 && (
               <div>
                 <Reveal className="mb-6">
@@ -504,9 +515,20 @@ export default async function Home() {
                     {announcements.dineIn.title}
                   </p>
                   {announcements.dineIn.body && (
-                    <p className="mt-3 max-w-xl font-medium text-cream-100/85">
-                      {announcements.dineIn.body}
-                    </p>
+                    <>
+                      {/* Clamped here and whole on its own page. The band is
+                          a headline the eye passes on the way down; anything
+                          longer than a few lines stops being a headline. */}
+                      <p className="mt-3 max-w-xl font-medium text-cream-100/85 line-clamp-3">
+                        {announcements.dineIn.body}
+                      </p>
+                      <Link
+                        href={`/news/${announcements.dineIn.id}`}
+                        className="mt-3 inline-block text-xs font-black uppercase tracking-widest text-gold-300 underline-offset-4 hover:underline"
+                      >
+                        Read more →
+                      </Link>
+                    </>
                   )}
                 </>
               )}
@@ -573,10 +595,20 @@ export default async function Home() {
                             {row.title}
                           </h3>
                           {row.body && (
-                            <p className="mt-4 text-base font-medium leading-relaxed text-ink-950/75 sm:text-lg">
+                            <p className="mt-4 line-clamp-4 text-base font-medium leading-relaxed text-ink-950/75 sm:text-lg">
                               {row.body}
                             </p>
                           )}
+                          {/* Every card can be opened. A slide in a swiper is
+                              a poster, and a poster with six paragraphs on it
+                              is one nobody finishes — the full version lives
+                              on its own page. */}
+                          <Link
+                            href={`/news/${row.id}`}
+                            className="mt-4 inline-block text-xs font-black uppercase tracking-widest text-ink-950/70 underline-offset-4 hover:text-ink-950 hover:underline"
+                          >
+                            Read more →
+                          </Link>
                         </div>
 
                         {hasMedia(row) && (

@@ -122,8 +122,18 @@ export const HOME_LIMIT: Record<AnnouncementKind, number> = {
  * They disagreed before: the editor called every live row live, while the page
  * silently took three of them.
  *
- * Pinned first. Then the natural order for the kind, which is NOT the same
- * for all of them:
+ * The star decides. A row that is live but not starred does not go on the
+ * homepage at all — it belongs to /news, where everything lives.
+ *
+ * It used to be a tie-breaker: starred rows went first and unstarred ones
+ * filled whatever slots were left. That made the star nearly meaningless
+ * while there were few enough rows to all fit, and it meant the homepage
+ * could never be cleared without unpublishing posts that /news should keep.
+ * Now the star is the switch, and nothing starred means the section is not
+ * rendered — the homepage says nothing rather than saying something stale.
+ *
+ * Within the starred rows, the natural order for the kind, which is NOT the
+ * same for all of them:
  *
  *   news  — newest first. It is news. Reading it by a sort order somebody set
  *           weeks ago is how the newest post ended up unreachable.
@@ -139,7 +149,9 @@ export function homepagePicks(
   kind: AnnouncementKind,
   now = new Date()
 ): Announcement[] {
-  const live = all.filter((r) => r.kind === kind && liveStateOf(r, now) === "live");
+  const live = all
+    .filter((r) => r.kind === kind && liveStateOf(r, now) === "live")
+    .filter((r) => r.pinned);
   const eligible = kind === "promo" ? live.filter(hasDetail) : live;
 
   const newest = (a: Announcement, b: Announcement) =>
@@ -150,18 +162,20 @@ export function homepagePicks(
       ? [...eligible].sort(newest)
       : [...eligible].sort((a, b) => a.sort_order - b.sort_order || newest(a, b));
 
-  return [
-    ...natural.filter((r) => r.pinned),
-    ...natural.filter((r) => !r.pinned),
-  ].slice(0, HOME_LIMIT[kind]);
+  return natural.slice(0, HOME_LIMIT[kind]);
 }
 
 /**
  * Why a row is, or isn't, on the homepage — in words the shop can act on.
  *
  * "Listed" is the one that did not exist before and needed to: live, correct,
- * and simply further down the queue than the homepage has room for. Calling
- * that "On the homepage" is what hid the bug for a fortnight.
+ * and simply not on the homepage. Calling that "On the homepage" is what hid
+ * the bug for a fortnight.
+ *
+ * Since the star became the switch, the commonest reason for a live row not
+ * to be on the homepage is that nobody starred it — so that is what these
+ * labels say, rather than "next up", which would send the owner away to wait
+ * for a slot that is never going to come free.
  */
 export type HomeState = LiveState | "listed" | "queued" | "strip";
 
@@ -184,9 +198,9 @@ export function homeStateOf(
 
 export const STATE_TONE: Record<HomeState, { label: string; chip: string }> = {
   live: { label: "On the homepage", chip: "bg-jade-600 text-cream-50" },
-  listed: { label: "In All news & promos", chip: "bg-ink-950/[0.07] text-ink-800/70" },
+  listed: { label: "Not starred — in All news & promos", chip: "bg-ink-950/[0.07] text-ink-800/70" },
   strip: { label: "In the scrolling strip", chip: "bg-ink-950/[0.07] text-ink-800/70" },
-  queued: { label: "Next up", chip: "bg-ink-950/[0.07] text-ink-800/70" },
+  queued: { label: "Not starred", chip: "bg-ink-950/[0.07] text-ink-800/70" },
   scheduled: { label: "Scheduled", chip: "bg-brand-600 text-cream-50" },
   finished: { label: "Finished", chip: "bg-ink-950/10 text-ink-800/60" },
   off: { label: "Off", chip: "bg-ink-950/10 text-ink-800/60" },
