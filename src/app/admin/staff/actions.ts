@@ -260,3 +260,87 @@ export async function cancelRoleOffer(profileId: string): Promise<Result> {
   revalidatePath("/admin/staff");
   return { error: null };
 }
+
+/**
+ * Delete an account for good.
+ *
+ * Only ever for somebody with no shop access — stand them down first. That
+ * is not bureaucracy: it forces the decision to be made twice, and the first
+ * one is reversible.
+ *
+ * What survives, and this is the part worth being clear about, because it is
+ * the opposite of what "delete" sounds like: every sale they rang up, every
+ * shift they worked and every line they left in the activity log stays
+ * exactly where it is. Those are the shop's records, not the person's. What
+ * goes is the ability to sign in, the name and number on the profile, and
+ * any device that was allowed.
+ *
+ * The consequence is honest rather than hidden: their old shifts will read
+ * "A former account" instead of their name. That is the true state of
+ * affairs once the account is gone, and it is why the dialog says so before
+ * anything happens.
+ */
+export async function deleteStaffAccount(input: {
+  profileId: string;
+  /** Typed by the owner and checked here — an accident cannot reach this. */
+  confirmName: string;
+}): Promise<Result> {
+  const owner = await requireOwner();
+  if (!owner) return { error: "Only the owner can delete an account." };
+  if (input.profileId === owner.profile?.id) {
+    return { error: "You can't delete your own account from here." };
+  }
+
+  const supabase = createAdminClient();
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("id, role, full_name")
+    .eq("id", input.profileId)
+    .maybeSingle();
+  if (!target) return { error: "That account is already gone." };
+
+  if (target.role === "owner") {
+    return { error: "An owner can't be deleted from here." };
+  }
+  if (target.role !== "customer") {
+    return {
+      error:
+        "Stand them down first. Removing access and deleting an account are two decisions, and the first one can be undone.",
+    };
+  }
+
+  // Typing the name is the last gate. A confirm button under a finger at the
+  // counter is one mis-tap; a name is not.
+  const expected = (target.full_name ?? "").trim().toLowerCase();
+  if (expected && input.confirmName.trim().toLowerCase() !== expected) {
+    return { error: `Type the name exactly — "${target.full_name}" — to confirm.` };
+  }
+
+  // An open shift would otherwise hang around with no owner, and its takings
+  // would belong to nobody.
+  await supabase
+    .from("staff_shifts")
+    .update({ ended_at: new Date().toISOString(), note: "Closed — account deleted" })
+    .eq("staff_id", input.profileId)
+    .is("ended_at", null);
+
+  await supabase.from("device_sessions").delete().eq("user_id", input.profileId);
+
+  // Logged BEFORE the delete, with the name spelled out, because afterwards
+  // there is nothing left to look the name up from.
+  await supabase.from("activity_log").insert({
+    category: "staff",
+    description: `Deleted the account of "${target.full_name ?? input.profileId}"`,
+    actor: owner.profile?.id ?? null,
+  });
+
+  // Deleting the auth user cascades to the profile row. Doing it the other
+  // way round leaves a sign-in that works and lands on a missing profile,
+  // which is a worse state than either.
+  const { error } = await supabase.auth.admin.deleteUser(input.profileId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin/staff");
+  revalidatePath("/admin", "layout");
+  return { error: null };
+}
