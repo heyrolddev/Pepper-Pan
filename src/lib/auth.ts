@@ -13,6 +13,8 @@ export type Profile = {
   address_lng: number | null;
   is_verified: boolean;
   is_blocked: boolean;
+  /** A role the owner has offered and this person has not accepted yet. */
+  pending_role: "manager" | "staff" | null;
 };
 
 export type Viewer = { email: string; profile: Profile | null } | null;
@@ -37,7 +39,7 @@ export async function getViewer(): Promise<Viewer> {
     const { data: profile } = await supabase
       .from("profiles")
       .select(
-        "id, role, full_name, phone, address, address_lat, address_lng, is_verified, is_blocked"
+        "id, role, full_name, phone, address, address_lat, address_lng, is_verified, is_blocked, pending_role"
       )
       .eq("id", user.id)
       .maybeSingle();

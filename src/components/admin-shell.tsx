@@ -93,7 +93,7 @@ const GROUPS: Group[] = [
       { href: "/admin/money", label: "Costs & cash", icon: "◆", needs: "business" },
       { href: "/admin/reviews", label: "Reviews", icon: "★", needs: "chat" },
       { href: "/admin/customers", label: "Customers", icon: "◑", needs: "business" },
-      { href: "/admin/staff", label: "Staff", icon: "◔", needs: "staff.manage" },
+      { href: "/admin/staff", label: "Staff", icon: "◔", badge: "staff", needs: "staff.manage" },
       { href: "/admin/faq", label: "Answers", icon: "?", needs: "faq" },
     ],
   },
@@ -281,7 +281,7 @@ export function AdminShell({
   shiftStartedAt: string | null;
 }) {
   const pathname = usePathname();
-  const waiting = badges.orders + badges.inbox + badges.payments;
+  const waiting = badges.orders + badges.inbox + badges.payments + badges.staff;
 
   // Subscribed here, in the shell, so *every* HQ screen stays current — and
   // with it the counts in the rail, which are fetched by the layout this sits
