@@ -5,6 +5,7 @@ import { peso } from "@/lib/costing";
 import { formatDateTime } from "@/lib/format-date";
 import { ROLE_BLURBS, ROLE_LABELS } from "@/lib/permissions";
 import { deleteStaffAccount, setStaffRole } from "@/app/admin/staff/actions";
+import { setStaffEmail } from "@/app/admin/me/actions";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import { hqTitle } from "@/lib/hq-theme";
 
@@ -241,6 +242,104 @@ function RoleButton({
  * the part people get wrong: "delete" sounds like the sales disappear, and
  * they do not. They are the shop's records.
  */
+/**
+ * Changing somebody's sign-in email, for them.
+ *
+ * Staff cannot do this themselves, and that is the design: an account able
+ * to move its own email is an account somebody can take over — change the
+ * address, then ask to reset the password. What actually happens in a shop
+ * is not "I would like a different email", it is "I have lost access to
+ * mine and cannot get in", and the owner standing at the counter is a faster
+ * and safer answer than any request flow.
+ */
+function EmailButton({ person }: { person: Person }) {
+  const [asking, setAsking] = useState(false);
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  return (
+    <>
+      <button
+        onClick={() => {
+          setAsking(true);
+          setEmail("");
+          setError(null);
+        }}
+        className="shrink-0 rounded-xl bg-ink-950/5 px-4 py-2 text-xs font-black uppercase tracking-wide text-ink-800/70 transition-colors hover:bg-ink-950 hover:text-cream-50"
+      >
+        Email
+      </button>
+
+      {asking && (
+        <AdminDialog
+          title={`Change the sign-in email for ${person.name ?? "this account"}`}
+          subtitle="They sign in with this, and password resets go here."
+          onClose={() => !busy && setAsking(false)}
+          busy={busy}
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-ink-800/80">
+              Use this when somebody has lost access to their old address. The
+              new one works immediately — there is no confirmation link,
+              because an inbox they cannot reach would leave the account
+              unreachable from both.
+            </p>
+            <p className="text-sm font-semibold text-brand-600">
+              Type it carefully. A typo here locks them out until you change it
+              again.
+            </p>
+
+            <Field label="New sign-in email">
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                inputMode="email"
+                autoFocus
+                placeholder="them@example.com"
+                className={inputClass}
+              />
+            </Field>
+
+            {error && (
+              <p className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-cream-50">
+                {error}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                disabled={busy || !email.trim()}
+                onClick={() =>
+                  startTransition(async () => {
+                    const r = await setStaffEmail({
+                      profileId: person.id,
+                      email,
+                    });
+                    if (r.error !== null) setError(r.error);
+                    else setAsking(false);
+                  })
+                }
+                className="rounded-full bg-ink-950 px-5 py-2.5 text-sm font-bold text-cream-50 transition-colors hover:bg-brand-600 disabled:opacity-60"
+              >
+                {busy ? "Changing…" : "Change it"}
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => setAsking(false)}
+                className="rounded-full px-5 py-2.5 text-sm font-bold text-ink-800/70 transition-colors hover:text-ink-950 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </AdminDialog>
+      )}
+    </>
+  );
+}
+
 function DeleteButton({ person }: { person: Person }) {
   const [asking, setAsking] = useState(false);
   const [typed, setTyped] = useState("");
@@ -450,6 +549,7 @@ export function StaffView({
 
                       Like every other role it is an offer: they accept it on
                       their own account, from their own sign-in. */}
+                  <EmailButton person={p} />
                   {p.role !== "customer" && (
                     <RoleButton person={p} to="owner" label="Make co-owner" tone="gold" />
                   )}

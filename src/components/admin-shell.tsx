@@ -104,6 +104,10 @@ const GROUPS: Group[] = [
       { href: "/admin/delivery", label: "Delivery", icon: "→", needs: "settings" },
       { href: "/admin/payments", label: "Payments", icon: "₱", badge: "payments", needs: "settings" },
       { href: "/admin/alerts", label: "Alerts", icon: "🔔", needs: "settings" },
+      // No capability, on purpose. This is the one row that belongs to the
+      // person rather than the shop, and what it carries — a role offer
+      // waiting to be accepted — arrives for whoever has the least access.
+      { href: "/admin/me", label: "My account", icon: "◐" },
     ],
   },
   {
