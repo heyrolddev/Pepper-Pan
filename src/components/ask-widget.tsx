@@ -173,19 +173,48 @@ export function AskWidget({ messengerUrl }: { messengerUrl: string | null }) {
     <>
       {/* Launcher — offset above the floating cart so the two never overlap.
 
-          On a phone it is a plain circle: the full pill is nearly half the
-          width of a small screen, and it sat on top of whatever was behind it.
-          The label comes back from `sm` up, where there is room for it. The
-          aria-label carries the name either way, so hiding the text costs a
-          screen reader nothing. */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label="Ask Pepper Pan"
-        className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center gap-2 rounded-full bg-ink-950 font-bold text-cream-50 shadow-2xl shadow-ink-950/40 ring-2 ring-gold-400/50 transition-transform hover:scale-105 sm:bottom-6 sm:h-auto sm:w-auto sm:py-3 sm:pl-4 sm:pr-5"
-      >
-        <span className="text-xl sm:text-lg">💬</span>
-        <span className="hidden text-sm sm:inline">Ask Pepper Pan</span>
-      </button>
+          A circle at every width now, not just on a phone. The pill was wide
+          enough to sit over whatever was behind it, and on the homepage that
+          is the carousel controls; on a laptop it covered the "next" arrow,
+          which is exactly where a mouse goes. A round button covers almost
+          nothing and is still the most recognisable shape on a page for
+          "talk to someone".
+
+          The name is not lost: `aria-label` carries it for a screen reader,
+          and the tooltip below shows it on hover for anyone who wonders.
+
+          The ring is what makes it noticeable without it being loud — a slow
+          pulse that reads as *live*, the way a lit sign does. It is one
+          element behind the button rather than an animation on the button
+          itself, so nothing under the pointer moves: a target that grows and
+          shrinks is a target that is harder to hit. Reduced motion stops it,
+          and what remains is a plain gold ring. */}
+      <div className="group fixed bottom-24 right-4 z-40 sm:bottom-6">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-full bg-gold-400/40 motion-safe:animate-ping"
+        />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -inset-1 rounded-full ring-2 ring-gold-400/30"
+        />
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Ask Pepper Pan"
+          className="relative flex h-14 w-14 items-center justify-center rounded-full bg-ink-950 text-cream-50 shadow-2xl shadow-ink-950/40 ring-2 ring-gold-400/60 transition-transform hover:scale-105"
+        >
+          <span className="text-2xl">💬</span>
+        </button>
+
+        {/* The name, on hover, for a pointer. Hidden from screen readers
+            because the button's own label already says it. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute right-full top-1/2 mr-3 hidden -translate-y-1/2 whitespace-nowrap rounded-full bg-ink-950 px-3 py-1.5 text-sm font-bold text-cream-50 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 sm:block"
+        >
+          Ask Pepper Pan
+        </span>
+      </div>
 
       <AnimatePresence>
         {open && (

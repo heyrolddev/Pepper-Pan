@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RoleOffer } from "@/components/role-offer";
 import { getViewer, isConfigured } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { AccountForm } from "@/components/account-form";
@@ -59,6 +60,16 @@ export default async function AccountPage() {
       />
 
       <section className="mx-auto max-w-md px-6 py-14">
+        {/* Above everything else on the page, including the blocked notice:
+            being offered a job is the most consequential thing that can be
+            waiting here, and it is the only one with a deadline attached to
+            somebody else's plans. */}
+        {p?.pending_role && (
+          <div className="mb-6">
+            <RoleOffer role={p.pending_role} />
+          </div>
+        )}
+
         {p?.is_blocked && (
           <div className="mb-6 rounded-2xl bg-brand-600 px-5 py-4 text-sm font-semibold text-cream-50">
             Ordering is paused on this account. Please contact us at

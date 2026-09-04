@@ -28,9 +28,17 @@ export type AdminBadges = {
   inbox: number;
   /** Money the shop hasn't got yet — receipts to check, and balances owed. */
   payments: number;
+  /**
+   * Devices asking to be let in.
+   *
+   * Belongs here by the rule above — somebody is standing at the counter
+   * unable to work until the owner taps Allow, which is as much a thing that
+   * has to be *done* as an order waiting on food.
+   */
+  staff: number;
 };
 
-const NONE: AdminBadges = { orders: 0, inbox: 0, payments: 0 };
+const NONE: AdminBadges = { orders: 0, inbox: 0, payments: 0, staff: 0 };
 
 export async function getAdminBadges(): Promise<AdminBadges> {
   try {
@@ -54,7 +62,7 @@ export async function getAdminBadges(): Promise<AdminBadges> {
       return n ?? 0;
     };
 
-    const [orders, inbox, payments] = await Promise.all([
+    const [orders, inbox, payments, staff] = await Promise.all([
       count("orders", () =>
         db
           .from("orders")
@@ -82,9 +90,15 @@ export async function getAdminBadges(): Promise<AdminBadges> {
           // it would sit on this badge forever.
           .neq("status", "cancelled")
       ),
+      count("staff", () =>
+        db
+          .from("device_sessions")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending")
+      ),
     ]);
 
-    return { orders, inbox, payments };
+    return { orders, inbox, payments, staff };
   } catch {
     // A missing migration must not take HQ down. No badges is a fair reading
     // of "we couldn't tell" — a wrong number would be worse than none.

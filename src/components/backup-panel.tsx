@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { RestorePanel } from "@/components/restore-panel";
 import { useRouter } from "next/navigation";
 import { hqTitle } from "@/lib/hq-theme";
 
@@ -357,14 +358,17 @@ export function BackupPanel({
           </li>
         </ol>
         <p className="mt-4 text-xs text-ink-800/50">
-          To put a backup back, a developer runs{" "}
+          Putting one back is below. The same thing can be done from a laptop
+          with{" "}
           <code className="rounded bg-ink-950/5 px-1.5 py-0.5 font-mono">
-            node --env-file=.env.local scripts/restore.mjs your-backup.json
-          </code>{" "}
-          — the script is in the project, so you never need us to get your data
-          back.
+            npm run restore your-backup.json
+          </code>
+          , which is worth knowing about for the case this screen is the thing
+          that is broken.
         </p>
       </section>
+
+      <RestorePanel />
     </div>
   );
 }

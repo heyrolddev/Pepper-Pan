@@ -1,5 +1,9 @@
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getViewer, isConfigured, isStaff } from "@/lib/auth";
+import { checkDevice } from "@/lib/devices-server";
+import { DEVICE_COOKIE } from "@/lib/devices";
+import { DeviceWaiting } from "@/components/device-waiting";
 import { AdminShell } from "@/components/admin-shell";
 import { getAdminBadges } from "@/lib/admin-badges";
 import { openShiftFor } from "@/lib/shifts-server";
@@ -22,6 +26,33 @@ export default async function AdminLayout({
   // protected by RLS — so a non-staff session can't read this data even if
   // it somehow reached the route.
   if (!isStaff(viewer)) redirect("/");
+
+  // One device per manager or staff member; the owner is never gated, or a
+  // new phone in their pocket would lock the whole shop out with nobody left
+  // who could let anyone back in.
+  //
+  // Checked in the layout rather than in middleware because it needs the
+  // person's role, and reading a role means reading the database — which
+  // middleware runs on every asset request and should not do.
+  const role = viewer.profile?.role ?? "staff";
+  if (viewer.profile?.id) {
+    const deviceId = (await cookies()).get(DEVICE_COOKIE)?.value;
+    const status = deviceId
+      ? await checkDevice(
+          viewer.profile.id,
+          deviceId,
+          (await headers()).get("user-agent"),
+          role
+        )
+      : // No cookie means cookies are blocked. Treated as "ask", not as
+        // "allow": the whole check would otherwise be skippable by refusing
+        // one cookie.
+        "pending";
+
+    if (status !== "approved") {
+      return <DeviceWaiting declined={status === "declined"} />;
+    }
+  }
 
   // Fetched in the layout rather than per page, so the counts are the same on
   // every screen — a sidebar that says "3 orders" on one page and "1" on the

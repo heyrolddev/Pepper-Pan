@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * The one dialog shape HQ uses.
@@ -10,7 +11,26 @@ import { useEffect } from "react";
  * corner radius, same way out. Escape closes it and so does the scrim,
  * because a dialog you can only leave by finding the right button is a trap —
  * and these open on a phone, one-handed, mid-service.
+ *
+ * It renders into `document.body` rather than where it is written, and that
+ * is load-bearing rather than tidy. `fixed inset-0 z-[60]` sounds like it
+ * should sit above everything, and it does not: z-index only ranks an element
+ * against its siblings inside the nearest stacking context, and
+ * `position: sticky` creates one of those unconditionally. The clock lives in
+ * HQ's sticky sidebar, so its "Clock out" dialog was ranked inside that
+ * sidebar — 60 or 6000, it could not climb over the page beside it, and the
+ * counter's menu drew straight over the top of it.
+ *
+ * A portal moves the markup out of that context entirely, so the dialog is
+ * ranked against the page itself. Every dialog in HQ goes through here, so
+ * this fixes the ones nobody has noticed yet as well as the one that was
+ * reported.
  */
+/** Nothing to subscribe to: whether we are in a browser never changes. */
+const neverChanges = () => () => {};
+const inBrowser = () => true;
+const onServer = () => false;
+
 export function AdminDialog({
   title,
   subtitle,
@@ -25,6 +45,16 @@ export function AdminDialog({
   busy?: boolean;
   children: React.ReactNode;
 }) {
+  // The portal target only exists in the browser, so the first render has to
+  // produce nothing — matching the server — and only then reach for
+  // document.body.
+  //
+  // Through useSyncExternalStore rather than a setState in an effect: the
+  // React Compiler rejects the latter outright, and it is right to. This says
+  // the same thing without a second render pass — "false on the server, true
+  // in a browser" is exactly the question the hook exists to answer.
+  const mounted = useSyncExternalStore(neverChanges, inBrowser, onServer);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onClose();
@@ -37,7 +67,9 @@ export function AdminDialog({
     };
   }, [busy, onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -69,7 +101,8 @@ export function AdminDialog({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

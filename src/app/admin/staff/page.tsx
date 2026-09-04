@@ -3,6 +3,8 @@ import { SHOP_ROLES } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shiftLength } from "@/lib/shifts-server";
 import { StaffView, type Person, type ShiftReport } from "@/components/staff-view";
+import { DeviceRequests, type DeviceEntry } from "@/components/device-requests";
+import { listDevices } from "@/lib/devices-server";
 import { hqTitle } from "@/lib/hq-theme";
 
 // Who is on shift right now is the first thing this page answers.
@@ -31,7 +33,7 @@ export default async function AdminStaffPage() {
   }
 
   const supabase = createAdminClient();
-  const [{ data: profiles }, { data: shifts }, { data: log }] = await Promise.all([
+  const [{ data: profiles }, { data: shifts }, { data: log }, devices] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, full_name, phone, role, created_at")
@@ -47,6 +49,7 @@ export default async function AdminStaffPage() {
       .select("id, at, category, description, actor")
       .order("at", { ascending: false })
       .limit(400),
+    listDevices(),
   ]);
 
   const shiftRows = (shifts ?? []) as {
@@ -146,12 +149,27 @@ export default async function AdminStaffPage() {
       shiftsWorked: 0,
     }));
 
+  // Reusing the map built above rather than joining in SQL: the profiles are
+  // already loaded, and a device belonging to an account that has since been
+  // deleted should still show, so its access can be taken away.
+  const deviceEntries: DeviceEntry[] = devices.map((d) => ({
+    id: d.id,
+    person: nameById.get(d.user_id) ?? "A former account",
+    label: d.label ?? "Unknown device",
+    status: d.status,
+    firstSeen: d.first_seen,
+    lastSeen: d.last_seen,
+  }));
+
   return (
-    <StaffView
-      people={people}
-      candidates={candidates}
-      reports={reports}
-      ownerId={viewer?.profile?.id ?? ""}
-    />
+    <div className="flex flex-col gap-8">
+      <StaffView
+        people={people}
+        candidates={candidates}
+        reports={reports}
+        ownerId={viewer?.profile?.id ?? ""}
+      />
+      <DeviceRequests devices={deviceEntries} />
+    </div>
   );
 }
