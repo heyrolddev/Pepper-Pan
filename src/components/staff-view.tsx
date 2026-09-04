@@ -4,7 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/costing";
 import { formatDateTime } from "@/lib/format-date";
 import { ROLE_BLURBS, ROLE_LABELS } from "@/lib/permissions";
-import { setStaffRole } from "@/app/admin/staff/actions";
+import { deleteStaffAccount, setStaffRole } from "@/app/admin/staff/actions";
+import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import { hqTitle } from "@/lib/hq-theme";
 
 export type Person = {
@@ -195,9 +196,9 @@ function RoleButton({
   tone,
 }: {
   person: Person;
-  to: "manager" | "staff" | "customer";
+  to: "owner" | "manager" | "staff" | "customer";
   label: string;
-  tone: "dark" | "red";
+  tone: "dark" | "red" | "gold";
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
@@ -214,13 +215,117 @@ function RoleButton({
         className={`shrink-0 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wide transition-colors disabled:opacity-60 ${
           tone === "red"
             ? "bg-ink-950/5 text-ink-800/70 hover:bg-brand-600 hover:text-cream-50"
-            : "bg-ink-950 text-cream-50 hover:bg-ink-800"
+            : tone === "gold"
+              ? "bg-gold-400 text-ink-950 ring-2 ring-ink-950 hover:bg-gold-300"
+              : "bg-ink-950 text-cream-50 hover:bg-ink-800"
         }`}
       >
         {busy ? "…" : label}
       </button>
       {error && (
         <p className="w-full text-xs font-semibold text-brand-600">{error}</p>
+      )}
+    </>
+  );
+}
+
+/**
+ * Deleting an account, with the name typed out.
+ *
+ * A confirm button under a thumb at the counter is one mis-tap. A name is
+ * not, and it also makes the person read who they are about to delete —
+ * which is the actual failure this guards against, deleting the wrong row on
+ * a list of similar-looking ones.
+ *
+ * The dialog leads with what survives rather than what goes, because that is
+ * the part people get wrong: "delete" sounds like the sales disappear, and
+ * they do not. They are the shop's records.
+ */
+function DeleteButton({ person }: { person: Person }) {
+  const [asking, setAsking] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  return (
+    <>
+      <button
+        onClick={() => {
+          setAsking(true);
+          setTyped("");
+          setError(null);
+        }}
+        className="shrink-0 rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wide text-brand-600 ring-1 ring-brand-600/30 transition-colors hover:bg-brand-600 hover:text-cream-50"
+      >
+        Delete
+      </button>
+
+      {asking && (
+        <AdminDialog
+          title={`Delete ${person.name ?? "this account"}?`}
+          subtitle="This cannot be undone."
+          onClose={() => !busy && setAsking(false)}
+          busy={busy}
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-ink-800/80">
+              <strong className="text-ink-950">What stays:</strong> every sale
+              they rang up, every shift they worked, and every line in the
+              activity log. Those are the shop&apos;s records, not theirs.
+            </p>
+            <p className="text-sm text-ink-800/80">
+              <strong className="text-ink-950">What goes:</strong> their
+              sign-in, their name and number, and any device they were allowed.
+              Their old shifts will read &ldquo;A former account&rdquo; from
+              then on.
+            </p>
+
+            <Field
+              label="Type their name to confirm"
+              hint={person.name ?? "This account has no name saved."}
+            >
+              <input
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoFocus
+                placeholder={person.name ?? ""}
+                className={inputClass}
+              />
+            </Field>
+
+            {error && (
+              <p className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-cream-50">
+                {error}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                disabled={busy}
+                onClick={() =>
+                  startTransition(async () => {
+                    const r = await deleteStaffAccount({
+                      profileId: person.id,
+                      confirmName: typed,
+                    });
+                    if (r.error !== null) setError(r.error);
+                    else setAsking(false);
+                  })
+                }
+                className="rounded-full bg-brand-600 px-5 py-2.5 text-sm font-bold text-cream-50 transition-colors hover:bg-brand-700 disabled:opacity-60"
+              >
+                {busy ? "Deleting…" : "Delete for good"}
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => setAsking(false)}
+                className="rounded-full px-5 py-2.5 text-sm font-bold text-ink-800/70 transition-colors hover:text-ink-950 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </AdminDialog>
       )}
     </>
   );
@@ -239,12 +344,29 @@ export function StaffView({
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [who, setWho] = useState<string>("all");
+  // Three shifts is what the owner actually looks at: today's, and the two
+  // either side of it. Everything before that is a question you go looking
+  // for an answer to, not something to scroll past on the way to the top.
+  const [showAll, setShowAll] = useState(false);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
 
   const onShift = people.filter((p) => p.onShift);
-  const shown = useMemo(
-    () => (who === "all" ? reports : reports.filter((r) => r.staffId === who)),
-    [reports, who]
-  );
+  const matching = useMemo(() => {
+    let rows = who === "all" ? reports : reports.filter((r) => r.staffId === who);
+    // Dates are read as whole Manila days: "from the 3rd" includes the 3rd,
+    // and "to the 5th" includes everything that happened on the 5th rather
+    // than stopping at midnight as it began.
+    if (from) rows = rows.filter((r) => r.startedAt.slice(0, 10) >= from);
+    if (to) rows = rows.filter((r) => r.startedAt.slice(0, 10) <= to);
+    return rows;
+  }, [reports, who, from, to]);
+
+  // A date range is a deliberate question, so it answers in full — collapsing
+  // a range somebody just typed back to three rows would look broken.
+  const ranged = Boolean(from || to);
+  const shown = showAll || ranged ? matching : matching.slice(0, 3);
+  const hidden = matching.length - shown.length;
 
   return (
     <div className="flex flex-col gap-8">
@@ -320,6 +442,17 @@ export function StaffView({
                   {p.role !== "manager" && (
                     <RoleButton person={p} to="manager" label="Manager" tone="dark" />
                   )}
+                  {/* Co-owner. Gold, and last, because it is the heaviest
+                      button on the screen — and it is here at all because
+                      one owner account means every recovery runs through the
+                      database dashboard, and if that is lost too there is no
+                      way back in. Two owners can always restore each other.
+
+                      Like every other role it is an offer: they accept it on
+                      their own account, from their own sign-in. */}
+                  {p.role !== "customer" && (
+                    <RoleButton person={p} to="owner" label="Make co-owner" tone="gold" />
+                  )}
                   {p.role !== "customer" && (
                     <RoleButton person={p} to="customer" label="Stand down" tone="red" />
                   )}
@@ -340,6 +473,10 @@ export function StaffView({
               shares a login, so every shift and every sale belongs to a real
               person.
             </p>
+            <p className="mt-3 text-sm text-ink-800/60">
+              Anybody you stand down appears here too, without access — so
+              this is also where an account gets deleted for good.
+            </p>
             {candidates.length === 0 ? (
               <p className="mt-3 text-sm text-ink-800/50">
                 No other accounts yet.
@@ -357,9 +494,13 @@ export function StaffView({
                       </p>
                       <p className="text-xs text-ink-800/50">{p.phone ?? "No number"}</p>
                     </div>
-                    <div className="flex shrink-0 gap-1.5">
+                    <div className="flex shrink-0 flex-wrap gap-1.5">
                       <RoleButton person={p} to="staff" label="Make staff" tone="dark" />
                       <RoleButton person={p} to="manager" label="Make manager" tone="dark" />
+                      {/* Deleting is only offered here, on accounts with no
+                          access — so it is always two decisions: stand them
+                          down, then delete. The first one can be undone. */}
+                      <DeleteButton person={p} />
                     </div>
                   </li>
                 ))}
@@ -406,10 +547,57 @@ export function StaffView({
           </div>
         </div>
 
+        {/* Pick a stretch of days.
+            
+            Below the person pills rather than beside them, because the two
+            narrow different things and stacking them reads as "who, then
+            when". Native date inputs on purpose: every phone already knows
+            how to show a calendar, and the one it shows is the one the
+            person is used to. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <label className="flex items-center gap-2 font-bold text-ink-800/60">
+            From
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+              className="rounded-xl border-2 border-ink-950/10 bg-cream-100 px-3 py-1.5 font-semibold text-ink-950 outline-none focus:border-gold-400"
+            />
+          </label>
+          <label className="flex items-center gap-2 font-bold text-ink-800/60">
+            to
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+              className="rounded-xl border-2 border-ink-950/10 bg-cream-100 px-3 py-1.5 font-semibold text-ink-950 outline-none focus:border-gold-400"
+            />
+          </label>
+          {ranged && (
+            <button
+              onClick={() => {
+                setFrom("");
+                setTo("");
+              }}
+              className="rounded-full bg-ink-950/5 px-3 py-1.5 font-bold text-ink-800/70 transition-colors hover:bg-brand-600 hover:text-cream-50"
+            >
+              Clear dates
+            </button>
+          )}
+          {ranged && (
+            <span className="font-semibold text-ink-800/50">
+              {matching.length} shift{matching.length === 1 ? "" : "s"} in range
+            </span>
+          )}
+        </div>
+
         {shown.length === 0 ? (
           <p className="mt-4 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-            No shifts recorded yet. They start appearing the first time someone
-            clocks in from the sidebar.
+            {ranged
+              ? "No shifts in those dates. Try a wider range, or clear the dates."
+              : "No shifts recorded yet. They start appearing the first time someone clocks in from the sidebar."}
           </p>
         ) : (
           <ul className="mt-4 flex flex-col gap-3">
@@ -417,6 +605,25 @@ export function StaffView({
               <ShiftCard key={r.id} r={r} />
             ))}
           </ul>
+        )}
+
+        {/* Only when there is actually more. A "see more" that reveals
+            nothing is a button that teaches people not to press buttons. */}
+        {!ranged && hidden > 0 && (
+          <button
+            onClick={() => setShowAll(true)}
+            className="mt-4 rounded-full bg-cream-100 px-5 py-2.5 text-sm font-bold text-ink-800/75 ring-1 ring-ink-950/10 transition-colors hover:bg-ink-950 hover:text-cream-50"
+          >
+            See more history — {hidden} older shift{hidden === 1 ? "" : "s"}
+          </button>
+        )}
+        {!ranged && showAll && matching.length > 3 && (
+          <button
+            onClick={() => setShowAll(false)}
+            className="mt-4 rounded-full px-5 py-2.5 text-sm font-bold text-ink-800/60 transition-colors hover:text-ink-950"
+          >
+            Show fewer
+          </button>
         )}
       </section>
 

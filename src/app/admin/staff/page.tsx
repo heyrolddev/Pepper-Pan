@@ -124,8 +124,14 @@ export default async function AdminStaffPage() {
     };
   });
 
+  // Who works here *now*. It used to keep anybody with a line in the
+  // activity log, which meant standing somebody down left them sitting in
+  // The team reading "No access" — a row the owner cannot act on, next to
+  // rows they can. Their history is not lost by leaving: their name still
+  // resolves in the shift reports below, because that comes from the whole
+  // profile list rather than from this one.
   const people: Person[] = ((profiles ?? []) as ProfileRow[])
-    .filter((p) => p.role !== "customer" || logRows.some((l) => l.actor === p.id))
+    .filter((p) => p.role !== "customer")
     .map((p) => ({
       id: p.id,
       name: p.full_name,
