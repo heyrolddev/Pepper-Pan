@@ -14,6 +14,11 @@
 // first, deliberately.
 import { readFile } from 'node:fs/promises';
 import { createClient } from '@supabase/supabase-js';
+// The same list HQ's restore screen uses. Node strips the types on import, so
+// there is one order rather than two that can drift — and the day they drift
+// is the day somebody is restoring a backup, which is the worst possible day
+// to find out.
+import { RESTORE_ORDER, RESTORE_CHUNK } from '../src/lib/restore-order.ts';
 
 const path = process.argv[2];
 if (!path) {
@@ -39,49 +44,20 @@ if (backup.failed?.length) {
   console.warn(`⚠ These tables failed to export and will be empty: ${backup.failed.join(', ')}`);
 }
 
-// Parents before children, because a foreign key does not care what order the
-// JSON keys happened to be in.
-const ORDER = [
-  'settings',
-  'shop_settings', 'shop_hours', 'shop_closures',
-  'delivery_settings', 'payment_settings', 'chat_settings',
-  'profiles',
-  'ingredients', 'ingredient_lots',
-  'batches', 'batch_ingredients',
-  // Categories before meals: nothing enforces it with a foreign key, but a
-  // menu that comes back before its own vocabulary shows every dish
-  // uncoloured until the next table lands.
-  'menu_categories',
-  'meals', 'meal_ingredients', 'meal_components',
-  'meal_packaging', 'order_packaging',
-  // Shifts before orders: an order carries `shift_id`.
-  'staff_shifts',
-  'orders', 'order_lines',
-  'purchase_log', 'consumption_log', 'waste_log',
-  'cash_ledger', 'receivables', 'cycle_counts', 'oe_templates',
-  'fixed_costs', 'assets',
-  'reviews', 'chat_threads', 'chat_messages', 'faq_entries',
-  'activity_log',
-  // Stands alone — nothing references it, and it references nothing.
-  'announcements',
-];
 
-// Big tables in one statement can exceed the request size, so they go in
-// pieces. 500 is comfortably under it for rows this shape.
-const CHUNK = 500;
 const problems = [];
 
-for (const table of ORDER) {
+for (const table of RESTORE_ORDER) {
   const rows = backup.data?.[table];
   if (!Array.isArray(rows)) continue;
   if (rows.length === 0) { console.log(`- ${table}: empty`); continue; }
 
   let done = 0;
   let failed = null;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const { error } = await supabase.from(table).upsert(rows.slice(i, i + CHUNK));
+  for (let i = 0; i < rows.length; i += RESTORE_CHUNK) {
+    const { error } = await supabase.from(table).upsert(rows.slice(i, i + RESTORE_CHUNK));
     if (error) { failed = error.message; break; }
-    done += Math.min(CHUNK, rows.length - i);
+    done += Math.min(RESTORE_CHUNK, rows.length - i);
   }
 
   if (failed) {
@@ -96,10 +72,10 @@ for (const table of ORDER) {
   }
 }
 
-const unknown = Object.keys(backup.data ?? {}).filter((t) => !ORDER.includes(t));
+const unknown = Object.keys(backup.data ?? {}).filter((t) => !RESTORE_ORDER.includes(t));
 if (unknown.length) {
   console.warn(`\n⚠ Not restored — this script doesn't know these tables: ${unknown.join(', ')}`);
-  console.warn('  Add them to ORDER in this file, in an order that respects their foreign keys.');
+  console.warn('  Add them to RESTORE_ORDER in src/lib/restore-order.ts, in an order that respects their foreign keys.');
 }
 
 if (problems.length) {
