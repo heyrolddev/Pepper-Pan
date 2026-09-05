@@ -207,6 +207,16 @@ export function InventoryView({
     [stock]
   );
 
+  // Which tag is being looked at, if any. One at a time rather than several:
+  // "show me the meats" is the question people actually ask standing at the
+  // shelf, and a multi-select turns one tap into a small task.
+  const [tag, setTag] = useState<string | null>(null);
+
+  // The shopping list is long on a stall that carries a lot, and the top of
+  // it is the part that matters — it is sorted by how soon each thing runs
+  // out. Five is what fits on a phone at 5am without scrolling.
+  const [showAllBuy, setShowAllBuy] = useState(false);
+
   // Everything a recipe line can point at, priced. Ingredients only — a batch
   // made of batches is a recursion nobody at the stall asked for.
   const ingredientOptions: RecipeOption[] = useMemo(
@@ -241,6 +251,7 @@ export function InventoryView({
     return stock
       .filter((s) => {
         if (lowOnly && !s.low) return false;
+        if (tag && !s.categories.includes(tag)) return false;
         if (!q) return true;
         return (
           s.name.toLowerCase().includes(q) ||
@@ -250,7 +261,7 @@ export function InventoryView({
       // Low first — the only ordering that makes the list actionable rather
       // than merely complete.
       .sort((a, b) => Number(b.low) - Number(a.low) || a.name.localeCompare(b.name));
-  }, [stock, query, lowOnly]);
+  }, [stock, query, lowOnly, tag]);
 
   const shownBatches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -418,7 +429,7 @@ export function InventoryView({
               : `Worked out from what you've actually used over the last ${usageDays} days.`}
           </p>
           <ul className="mt-4 flex flex-col gap-2">
-            {suggestions.map((s) => (
+            {(showAllBuy ? suggestions : suggestions.slice(0, 5)).map((s) => (
               <li
                 key={s.id}
                 className="rounded-2xl bg-cream-50/10 px-4 py-3 ring-1 ring-cream-50/15"
@@ -465,6 +476,20 @@ export function InventoryView({
               </li>
             ))}
           </ul>
+          {/* No date range here, deliberately. This is not history — it is
+              what to buy before tonight, sorted by how soon each thing runs
+              out. A date picker on a list about the future would be a
+              control that answers nothing. */}
+          {suggestions.length > 5 && (
+            <button
+              onClick={() => setShowAllBuy((v) => !v)}
+              className="mt-4 rounded-full bg-cream-50/10 px-4 py-2 text-xs font-bold text-cream-100/80 ring-1 ring-cream-50/20 transition-colors hover:bg-cream-50 hover:text-ink-950"
+            >
+              {showAllBuy
+                ? "Show fewer"
+                : `See the rest — ${suggestions.length - 5} more`}
+            </button>
+          )}
         </section>
       )}
 
@@ -513,6 +538,50 @@ export function InventoryView({
             </button>
           )}
         </div>
+
+        {/* The tags, as buttons.
+            
+            They were already on every ingredient and already searchable by
+            typing — which is a fine feature and the wrong shape for the
+            question being asked. Standing at the shelf you do not want to
+            recall what the tag is called and spell it; you want to see what
+            the tags ARE and press one. Search finds a thing you can name;
+            these answer "what have I got". */}
+        {tab === "stock" && allCategories.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => setTag(null)}
+              aria-pressed={tag === null}
+              className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                tag === null
+                  ? "bg-ink-950 text-cream-50"
+                  : "bg-cream-100 text-ink-800/60 ring-1 ring-ink-950/10 hover:bg-cream-200"
+              }`}
+            >
+              All
+            </button>
+            {allCategories.map((c) => {
+              const n = stock.filter((s) => s.categories.includes(c)).length;
+              return (
+                <button
+                  key={c}
+                  onClick={() => setTag((v) => (v === c ? null : c))}
+                  aria-pressed={tag === c}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                    tag === c
+                      ? "bg-ink-950 text-cream-50"
+                      : "bg-cream-100 text-ink-800/60 ring-1 ring-ink-950/10 hover:bg-cream-200"
+                  }`}
+                >
+                  {c}
+                  {/* The count is what makes the row scannable — an empty tag
+                      is worth knowing about before you press it. */}
+                  <span className="ml-1.5 tabular-nums opacity-50">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {tab === "stock" ? (

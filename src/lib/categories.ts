@@ -131,3 +131,25 @@ export function colourOf(
 export function categoryOf(categories: string[] | null | undefined): string {
   return categories?.[0]?.trim() || "Menu";
 }
+
+/**
+ * Tidy the list a dish is saved with.
+ *
+ * Trims, drops blanks, and removes case-insensitive duplicates while keeping
+ * the first spelling — so a dish tagged "Chicken" and "chicken" ends up with
+ * one category rather than two that look identical on the customer's filter
+ * bar and behave as separate things.
+ *
+ * Order survives, because the first one leads: it is what the dish reads as
+ * anywhere there is only room for one.
+ */
+export function cleanCategories(input: string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const raw of input ?? []) {
+    const name = raw.trim();
+    if (!name) continue;
+    if (out.some((v) => v.toLowerCase() === name.toLowerCase())) continue;
+    out.push(name);
+  }
+  return out;
+}

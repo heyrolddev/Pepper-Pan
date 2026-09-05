@@ -14,7 +14,7 @@ export function NewMealForm({ categories }: { categories: MenuCategory[] }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
-  const [category, setCategory] = useState("");
+  const [chosen, setChosen] = useState<string[]>([]);
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,13 +27,13 @@ export function NewMealForm({ categories }: { categories: MenuCategory[] }) {
       const res = await createMeal({
         name,
         price: Number(price),
-        category,
+        categories: chosen,
         description,
       });
       if (res.error) return setError(res.error);
       setName("");
       setPrice("");
-      setCategory("");
+      setChosen([]);
       setDescription("");
       setOpen(false);
       router.refresh();
@@ -78,8 +78,8 @@ export function NewMealForm({ categories }: { categories: MenuCategory[] }) {
           className={fieldClass}
         />
         <CategoryPicker
-          value={category}
-          onChange={setCategory}
+          value={chosen}
+          onChange={setChosen}
           categories={categories}
         />
       </div>

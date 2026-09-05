@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/format-date";
 import { ROLE_BLURBS, ROLE_LABELS } from "@/lib/permissions";
 import { deleteStaffAccount, setStaffRole } from "@/app/admin/staff/actions";
 import { setStaffEmail } from "@/app/admin/me/actions";
+import { HistoryList } from "@/components/history-list";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import { hqTitle } from "@/lib/hq-theme";
 
@@ -60,6 +61,13 @@ function Money({ n, tone }: { n: number; tone?: "good" | "bad" }) {
   );
 }
 
+/**
+ * One shift, foldable.
+ *
+ * A <div>, not an <li>: HistoryList owns the list and provides the item, and
+ * an <li> inside an <li> is invalid markup that browsers repair differently.
+ * Where the list semantics live is the list's business, not the card's.
+ */
 function ShiftCard({ r }: { r: ShiftReport }) {
   const [open, setOpen] = useState(false);
   const running = r.endedAt === null;
@@ -68,7 +76,7 @@ function ShiftCard({ r }: { r: ShiftReport }) {
   const square = diff !== null && Math.abs(diff) < 0.005;
 
   return (
-    <li className="overflow-hidden rounded-3xl bg-cream-100 ring-1 ring-ink-950/10">
+    <div className="overflow-hidden rounded-3xl bg-cream-100 ring-1 ring-ink-950/10">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
@@ -186,7 +194,7 @@ function ShiftCard({ r }: { r: ShiftReport }) {
           )}
         </div>
       )}
-    </li>
+    </div>
   );
 }
 
@@ -443,29 +451,15 @@ export function StaffView({
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [who, setWho] = useState<string>("all");
-  // Three shifts is what the owner actually looks at: today's, and the two
-  // either side of it. Everything before that is a question you go looking
-  // for an answer to, not something to scroll past on the way to the top.
-  const [showAll, setShowAll] = useState(false);
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
 
   const onShift = people.filter((p) => p.onShift);
-  const matching = useMemo(() => {
-    let rows = who === "all" ? reports : reports.filter((r) => r.staffId === who);
-    // Dates are read as whole Manila days: "from the 3rd" includes the 3rd,
-    // and "to the 5th" includes everything that happened on the 5th rather
-    // than stopping at midnight as it began.
-    if (from) rows = rows.filter((r) => r.startedAt.slice(0, 10) >= from);
-    if (to) rows = rows.filter((r) => r.startedAt.slice(0, 10) <= to);
-    return rows;
-  }, [reports, who, from, to]);
-
-  // A date range is a deliberate question, so it answers in full — collapsing
-  // a range somebody just typed back to three rows would look broken.
-  const ranged = Boolean(from || to);
-  const shown = showAll || ranged ? matching : matching.slice(0, 3);
-  const hidden = matching.length - shown.length;
+  // Just the person filter now. The recent/see-more/date-range behaviour is
+  // HistoryList's, shared with the money ledger and whatever wants it next —
+  // it was written here first and copied once, which is one copy too many.
+  const mine = useMemo(
+    () => (who === "all" ? reports : reports.filter((r) => r.staffId === who)),
+    [reports, who]
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -647,84 +641,16 @@ export function StaffView({
           </div>
         </div>
 
-        {/* Pick a stretch of days.
-            
-            Below the person pills rather than beside them, because the two
-            narrow different things and stacking them reads as "who, then
-            when". Native date inputs on purpose: every phone already knows
-            how to show a calendar, and the one it shows is the one the
-            person is used to. */}
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <label className="flex items-center gap-2 font-bold text-ink-800/60">
-            From
-            <input
-              type="date"
-              value={from}
-              max={to || undefined}
-              onChange={(e) => setFrom(e.target.value)}
-              className="rounded-xl border-2 border-ink-950/10 bg-cream-100 px-3 py-1.5 font-semibold text-ink-950 outline-none focus:border-gold-400"
-            />
-          </label>
-          <label className="flex items-center gap-2 font-bold text-ink-800/60">
-            to
-            <input
-              type="date"
-              value={to}
-              min={from || undefined}
-              onChange={(e) => setTo(e.target.value)}
-              className="rounded-xl border-2 border-ink-950/10 bg-cream-100 px-3 py-1.5 font-semibold text-ink-950 outline-none focus:border-gold-400"
-            />
-          </label>
-          {ranged && (
-            <button
-              onClick={() => {
-                setFrom("");
-                setTo("");
-              }}
-              className="rounded-full bg-ink-950/5 px-3 py-1.5 font-bold text-ink-800/70 transition-colors hover:bg-brand-600 hover:text-cream-50"
-            >
-              Clear dates
-            </button>
-          )}
-          {ranged && (
-            <span className="font-semibold text-ink-800/50">
-              {matching.length} shift{matching.length === 1 ? "" : "s"} in range
-            </span>
-          )}
-        </div>
-
-        {shown.length === 0 ? (
-          <p className="mt-4 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-            {ranged
-              ? "No shifts in those dates. Try a wider range, or clear the dates."
-              : "No shifts recorded yet. They start appearing the first time someone clocks in from the sidebar."}
-          </p>
-        ) : (
-          <ul className="mt-4 flex flex-col gap-3">
-            {shown.map((r) => (
-              <ShiftCard key={r.id} r={r} />
-            ))}
-          </ul>
-        )}
-
-        {/* Only when there is actually more. A "see more" that reveals
-            nothing is a button that teaches people not to press buttons. */}
-        {!ranged && hidden > 0 && (
-          <button
-            onClick={() => setShowAll(true)}
-            className="mt-4 rounded-full bg-cream-100 px-5 py-2.5 text-sm font-bold text-ink-800/75 ring-1 ring-ink-950/10 transition-colors hover:bg-ink-950 hover:text-cream-50"
-          >
-            See more history — {hidden} older shift{hidden === 1 ? "" : "s"}
-          </button>
-        )}
-        {!ranged && showAll && matching.length > 3 && (
-          <button
-            onClick={() => setShowAll(false)}
-            className="mt-4 rounded-full px-5 py-2.5 text-sm font-bold text-ink-800/60 transition-colors hover:text-ink-950"
-          >
-            Show fewer
-          </button>
-        )}
+        <HistoryList
+          className="mt-4"
+          items={mine}
+          keyOf={(r) => r.id}
+          dateOf={(r) => r.startedAt}
+          initial={3}
+          noun="shifts"
+          empty="No shifts recorded yet. They start appearing the first time someone clocks in from the sidebar."
+          render={(r) => <ShiftCard r={r} />}
+        />
       </section>
 
       <p className="text-xs text-ink-800/45">
