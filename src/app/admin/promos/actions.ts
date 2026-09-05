@@ -248,41 +248,68 @@ async function removeStored(supabase: Supabase, publicUrl: string) {
  * one that actually holds, because a request does not have to come from our
  * own form.
  */
-export async function uploadMedia(
-  formData: FormData
-): Promise<{ ok: true; url: string; kind: MediaKind } | { ok: false; error: string }> {
+/**
+ * Permission to upload one file, and nothing more.
+ *
+ * WHY THE FILE NO LONGER PASSES THROUGH THE SERVER
+ *
+ * It used to arrive here inside a Server Action, and that quietly capped
+ * every video at whatever `serverActions.bodySizeLimit` happened to be — 10MB
+ * — while `media.ts` allowed 25MB. Anything in between was refused by the
+ * framework before a line of this code ran, so the owner saw a failure with
+ * no explanation, and the limit the app told them about was not the limit
+ * they hit. That is the same trap the comment in `next.config.ts` describes
+ * for meal photos, met a second time.
+ *
+ * Raising the number would have moved the wall rather than removed it: a
+ * request body big enough for a phone video is a request body that platforms
+ * cap for their own reasons, and none of those caps are ours to raise.
+ *
+ * So the browser uploads straight to storage, and this hands out a token that
+ * allows exactly one file at exactly one path. The server still decides who
+ * may upload and where it lands; it just stops being a courier for 25MB of
+ * video it has no use for. Faster, and it cannot hit a body limit that does
+ * not exist.
+ *
+ * WHAT THIS TRADES
+ *
+ * Size and type are checked against what the browser reports, and the token
+ * does not verify what is finally sent. The previous version was no stricter
+ * about type — `file.type` is the browser's word either way — but it did see
+ * the true size. Acceptable here because a token is only ever issued to an
+ * owner or a manager: this is not a door the public can reach. The bucket's
+ * own file-size limit in Supabase is the backstop if that ever changes.
+ */
+export async function signMediaUpload(input: {
+  type: string;
+  size: number;
+}): Promise<
+  | { ok: true; path: string; token: string; url: string; kind: MediaKind }
+  | { ok: false; error: string }
+> {
   if (!(await mayPost())) {
     return { ok: false, error: "Only the owner or a manager can add photos here." };
   }
 
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { ok: false, error: "No file came through. Try picking it again." };
-  }
-
-  const checked = checkMedia(file.type, file.size);
+  const checked = checkMedia(input.type, input.size);
   if (!checked.ok) return { ok: false, error: checked.error };
 
   const supabase = createAdminClient();
   const path = `${MEDIA_PREFIX}/${crypto.randomUUID()}.${checked.ext}`;
 
-  try {
-    const { error } = await supabase.storage
-      .from(MEDIA_BUCKET)
-      .upload(path, await file.arrayBuffer(), { contentType: file.type, upsert: false });
+  const { data, error } = await supabase.storage
+    .from(MEDIA_BUCKET)
+    .createSignedUploadUrl(path);
 
-    if (error) {
-      // Named, because the two likely causes have completely different fixes:
-      // a bucket that does not exist is a setup problem, and a file over the
-      // project's own limit is a "make it smaller" problem.
-      return { ok: false, error: `Upload failed: ${error.message}` };
-    }
-
-    const { data } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path);
-    return { ok: true, url: data.publicUrl, kind: checked.kind };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  if (error || !data) {
+    return {
+      ok: false,
+      error: `Could not start the upload: ${error?.message ?? "no token came back"}`,
+    };
   }
+
+  const { data: pub } = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+  return { ok: true, path, token: data.token, url: pub.publicUrl, kind: checked.kind };
 }
 
 /** Drop a file that was uploaded but never saved onto a row. */
