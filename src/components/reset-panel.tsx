@@ -27,6 +27,8 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
     menu: false,
     chat: false,
     staffOrders: true,
+    inventory: false,
+    money: false,
   });
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -65,9 +67,23 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
       detail: "Every dish, so you can type the real menu from scratch.",
       count: counts.meals,
     },
+    {
+      key: "inventory",
+      label: "Inventory, batches and recipes",
+      detail:
+        "Every ingredient and its stock lots, every batch, and the recipes built on them \u2014 plus the purchase, consumption and waste records that describe them. Dishes stay; they are left with no recipe.",
+      count: counts.ingredients + counts.batches,
+    },
+    {
+      key: "money",
+      label: "Money records",
+      detail:
+        "The cash ledger, monthly bills, assets and utang. Your payment settings and GCash details are not touched.",
+      count: counts.cashEntries,
+    },
   ];
 
-  const chose = scope.orders || scope.menu || scope.chat || scope.staffOrders;
+  const chose = ITEMS.some((i) => scope[i.key]);
   const ready = chose && password.length > 0 && confirmation.trim().toUpperCase() === "RESET";
 
   async function run() {

@@ -6,9 +6,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   RESTORE_CHUNK,
   RESTORE_ORDER,
+  parentsToClear,
   readBackup,
   unknownTables,
 } from "@/lib/restore-order";
+import { convertLegacyBackup, detectBackupKind } from "@/lib/legacy-import";
 
 export type TableOutcome = {
   table: string;
@@ -26,6 +28,12 @@ export type RestoreResult =
       skipped: string[];
       /** Tables the backup itself failed to export — they will be empty. */
       wereEmpty: string[];
+      /** Which system wrote the file, so the result can say what it read. */
+      kind: "legacy" | "native";
+      /** Facts in a legacy file this schema has no column for. */
+      dropped: string[];
+      /** Rows a legacy file could not supply, and why. */
+      unusable: string[];
     };
 
 /**
@@ -51,8 +59,16 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     return { error: "Only the owner can restore a backup." };
   }
 
-  const file = readBackup(text);
-  if ("error" in file) return { error: file.error };
+  const parsed = readBackup(text);
+  if ("error" in parsed) return { error: parsed.error };
+
+  // Which of the two shapes this is, decided from the file's own table names
+  // rather than from anything the owner had to know. Both say
+  // `app: "PepperPan"`, because both are this shop's; only the old phone app
+  // writes `inventory` and `cashLedger`.
+  const kind = detectBackupKind(parsed) === "legacy" ? "legacy" : "native";
+  const converted = kind === "legacy" ? convertLegacyBackup(parsed) : null;
+  const file = converted ? converted.backup : parsed;
 
   const db = createAdminClient();
   const outcomes: TableOutcome[] = [];
@@ -64,9 +80,33 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     let restored = 0;
     let failed: string | null = null;
 
-    for (let i = 0; i < rows.length; i += RESTORE_CHUNK) {
+    // Child rows with no id of their own replace their parent's whole set
+    // rather than adding to it — see `parentsToClear`. Without this, a second
+    // import would leave every recipe listing each ingredient twice, and the
+    // costing built on those recipes would be wrong in a way that looks
+    // plausible.
+    const parents = parentsToClear(table, rows);
+    if (parents) {
+      for (let i = 0; i < parents.ids.length; i += RESTORE_CHUNK) {
+        const { error } = await db
+          .from(table)
+          .delete()
+          .in(parents.column, parents.ids.slice(i, i + RESTORE_CHUNK));
+        if (error) {
+          failed = `could not clear existing rows: ${error.message}`;
+          break;
+        }
+      }
+    }
+
+    for (let i = 0; !failed && i < rows.length; i += RESTORE_CHUNK) {
       const slice = rows.slice(i, i + RESTORE_CHUNK);
-      const { error } = await db.from(table).upsert(slice);
+      // Insert rather than upsert when the rows have no id: their primary key
+      // is generated, and an upsert with no conflict target is just an insert
+      // with extra steps.
+      const { error } = parents
+        ? await db.from(table).insert(slice)
+        : await db.from(table).upsert(slice);
       if (error) {
         failed = error.message;
         break;
@@ -85,7 +125,9 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     category: "backup",
     description: `${
       viewer?.profile?.full_name?.trim() || viewer?.email || "The owner"
-    } restored a backup from ${file.exportedAt ?? "an unknown date"} (${
+    } restored ${
+      kind === "legacy" ? "records from the old phone app" : "a backup"
+    } from ${file.exportedAt ?? "an unknown date"} (${
       outcomes.reduce((n, o) => n + o.restored, 0)
     } rows)`,
     actor: viewer?.profile?.id ?? null,
@@ -98,7 +140,14 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     error: null,
     exportedAt: file.exportedAt ?? null,
     outcomes,
-    skipped: unknownTables(file),
-    wereEmpty: file.failed ?? [],
+    // A converted file has no unknown tables by construction — the converter
+    // reports what it could not carry, in its own words.
+    skipped: converted ? [] : unknownTables(file),
+    // Only this system's own backup records which tables failed to export;
+    // a converted file reports its gaps through `dropped` instead.
+    wereEmpty: converted ? [] : parsed.failed ?? [],
+    kind,
+    dropped: converted?.report.dropped ?? [],
+    unusable: converted?.report.skipped ?? [],
   };
 }
