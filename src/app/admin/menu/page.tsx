@@ -1,10 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import type { AdminMeal } from "@/components/meal-editor";
-import { AdminMenuList } from "@/components/admin-menu-list";
+import { MenuWorkspace } from "@/components/menu-workspace";
 import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
-import { CategoryBar } from "@/components/category-bar";
 import { TakeoutMergePanel } from "@/components/takeout-merge-panel";
 import { planTakeoutMerge } from "@/lib/takeout-merge";
 import { categoryOf, type MenuCategory } from "@/lib/categories";
@@ -89,10 +88,8 @@ export default async function AdminMenuPage() {
           button on the screen. */}
       {canEdit && <TakeoutMergePanel plan={merge} />}
 
-      {canEdit && <CategoryBar categories={categories} counts={counts} />}
-
       {canEdit ? (
-        <AdminMenuList meals={meals} categories={categories} />
+        <MenuWorkspace meals={meals} categories={categories} counts={counts} />
       ) : (
         // Prices stripped on the server, not just left unrendered. Props to a
         // client component are serialised into the page, so a price that is
