@@ -58,7 +58,7 @@ export function MealEditor({
   const [name, setName] = useState(meal.name);
   const [price, setPrice] = useState(String(meal.price));
   const [description, setDescription] = useState(meal.description ?? "");
-  const [category, setCategory] = useState(meal.categories?.[0] ?? "");
+  const [chosen, setChosen] = useState<string[]>(meal.categories ?? []);
   const [isPublic, setIsPublic] = useState(meal.is_public);
   const [isAvailable, setIsAvailable] = useState(meal.is_available);
   const [imageUrl, setImageUrl] = useState(meal.image_url);
@@ -97,7 +97,7 @@ export function MealEditor({
         name,
         price: Number(price),
         description,
-        category,
+        categories: chosen,
         isPublic,
         isAvailable,
       });
@@ -199,8 +199,8 @@ export function MealEditor({
             className={fieldClass}
           />
           <CategoryPicker
-            value={category}
-            onChange={setCategory}
+            value={chosen}
+            onChange={setChosen}
             categories={categories}
           />
         </div>

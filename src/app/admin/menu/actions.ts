@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { CATEGORY_COLOURS, fallbackColour } from "@/lib/categories";
+import { CATEGORY_COLOURS, cleanCategories, fallbackColour } from "@/lib/categories";
 import { applyTakeoutMerge } from "@/lib/takeout-merge";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 
@@ -64,7 +64,7 @@ export async function saveMeal(input: {
   name: string;
   price: number;
   description: string;
-  category: string;
+  categories: string[];
   isPublic: boolean;
   isAvailable: boolean;
 }): Promise<{ error: string | null }> {
@@ -87,7 +87,7 @@ export async function saveMeal(input: {
       name: input.name.trim(),
       price: input.price,
       description: input.description.trim() || null,
-      categories: input.category.trim() ? [input.category.trim()] : [],
+      categories: cleanCategories(input.categories),
       is_public: input.isPublic,
       is_available: input.isAvailable,
     })
@@ -97,7 +97,7 @@ export async function saveMeal(input: {
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
-  await rememberCategory(input.category);
+  for (const c of cleanCategories(input.categories)) await rememberCategory(c);
   revalidateMenu();
   return { error: null };
 }
@@ -105,7 +105,7 @@ export async function saveMeal(input: {
 export async function createMeal(input: {
   name: string;
   price: number;
-  category: string;
+  categories: string[];
   description?: string;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
@@ -123,7 +123,7 @@ export async function createMeal(input: {
     .insert({
       name: input.name.trim(),
       price: input.price,
-      categories: input.category.trim() ? [input.category.trim()] : [],
+      categories: cleanCategories(input.categories),
       description: input.description?.trim() || null,
       is_public: true,
       is_available: true,
@@ -133,7 +133,7 @@ export async function createMeal(input: {
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
-  await rememberCategory(input.category);
+  for (const c of cleanCategories(input.categories)) await rememberCategory(c);
   revalidateMenu();
   return { error: null };
 }

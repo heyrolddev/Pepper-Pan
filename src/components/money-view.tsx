@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { HistoryList } from "@/components/history-list";
 import { peso } from "@/lib/costing";
 import { formatDate } from "@/lib/format-date";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
@@ -32,28 +33,66 @@ import { hqTitle } from "@/lib/hq-theme";
  * shop has to take in a day to have covered everything.
  */
 
+/**
+ * One card on the money screen, foldable when it wants to be.
+ *
+ * `<details>` rather than a `useState` toggle, and that is a deliberate
+ * choice rather than a lazy one: the browser gives keyboard support, the
+ * correct ARIA, and Ctrl-F finding text inside a closed section for free —
+ * and all of it works before any JavaScript has run, which on stall wifi is
+ * a real moment rather than a hypothetical one.
+ *
+ * The summary keeps the hint visible while closed. A fold whose label is
+ * only "Monthly bills" makes you open it to find out whether anything is
+ * due; one that says "₱4,200 a month across 5 bills" often means you do not
+ * have to.
+ */
 function Panel({
   title,
   hint,
   action,
+  fold = false,
   children,
 }: {
   title: string;
   hint?: string;
   action?: React.ReactNode;
+  /** Collapsed by default, with the hint still readable on the summary. */
+  fold?: boolean;
   children: React.ReactNode;
 }) {
-  return (
-    <section className="rounded-3xl bg-cream-100 p-6 ring-1 ring-ink-950/10">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-display text-lg font-black text-ink-950">{title}</h3>
-          {hint && <p className="mt-1 max-w-xl text-sm text-ink-800/55">{hint}</p>}
-        </div>
-        {action}
+  const head = (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h3 className="font-display text-lg font-black text-ink-950">{title}</h3>
+        {hint && <p className="mt-1 max-w-xl text-sm text-ink-800/55">{hint}</p>}
       </div>
-      <div className="mt-4">{children}</div>
-    </section>
+      {action}
+    </div>
+  );
+
+  if (!fold) {
+    return (
+      <section className="rounded-3xl bg-cream-100 p-6 ring-1 ring-ink-950/10">
+        {head}
+        <div className="mt-4">{children}</div>
+      </section>
+    );
+  }
+
+  return (
+    <details className="group rounded-3xl bg-cream-100 p-6 ring-1 ring-ink-950/10">
+      <summary className="flex cursor-pointer list-none items-start gap-3 [&::-webkit-details-marker]:hidden">
+        <span
+          aria-hidden
+          className="mt-1 shrink-0 text-sm font-black text-ink-800/40 transition-transform group-open:rotate-90"
+        >
+          ▸
+        </span>
+        <div className="min-w-0 flex-1">{head}</div>
+      </summary>
+      <div className="mt-4 pl-7">{children}</div>
+    </details>
   );
 }
 
@@ -221,6 +260,7 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
 
       {/* ---- fixed costs ---- */}
       <Panel
+        fold
         title="Monthly bills"
         hint={`Spread across the ${money.openDays} days a month you're open — ${peso(money.dailyOE)} a day.`}
         action={
@@ -311,27 +351,35 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
             <p className="font-display text-3xl font-black tabular-nums text-ink-950">
               {peso(money.cash.onHand)}
             </p>
-            <div className="mt-4">
-              {money.ledger.slice(0, 8).map((l) => (
+            {/* Five, newest first, and the rest a button away.
+                
+                It was a hard `.slice(0, 8)` — eight rows, and everything
+                before that simply gone, with nothing on screen to say so.
+                The drawer not balancing is exactly when somebody needs to go
+                back further than the last eight entries. */}
+            <HistoryList
+              className="mt-4"
+              items={money.ledger}
+              keyOf={(l) => l.id}
+              dateOf={(l) => l.date}
+              initial={5}
+              noun="entries"
+              empty="Nothing recorded yet. Cash sales are counted automatically."
+              render={(l) => (
                 <Row
-                  key={l.id}
                   label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Cash in" : "Cash out")}`}
                   value={`${l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
                   tone={l.type === "in" ? "good" : "bad"}
                 />
-              ))}
-              {money.ledger.length === 0 && (
-                <p className="text-sm text-ink-800/50">
-                  Nothing recorded yet. Cash sales are counted automatically.
-                </p>
               )}
-            </div>
+            />
           </>
         )}
       </Panel>
 
       {/* ---- utang ---- */}
       <Panel
+        fold
         title="Utang"
         hint={
           money.owed > 0
@@ -383,6 +431,7 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
 
       {/* ---- payback ---- */}
       <Panel
+        fold
         title="What you put in"
         hint="The pans, the freezer, the cart. Not an expense — money that turned into things, and the question is how much has come back."
         action={
