@@ -81,37 +81,84 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     let failed: string | null = null;
 
     // Child rows with no id of their own replace their parent's whole set
-    // rather than adding to it — see `parentsToClear`. Without this, a second
+    // rather than adding to it — see `parentsToClear`. Without that, a second
     // import would leave every recipe listing each ingredient twice, and the
-    // costing built on those recipes would be wrong in a way that looks
+    // costing built on those recipes would be wrong in a way that still looks
     // plausible.
+    //
+    // The ORDER of the replacement is the part worth being careful about, and
+    // the obvious order is the wrong one. Clearing first and inserting second
+    // means a failure between the two — a constraint, a dropped connection
+    // halfway through a chunk — leaves the shop with no recipes at all and
+    // nothing to put back. That is a worse outcome than the duplication this
+    // is here to prevent: duplicates can be seen and fixed, silence cannot.
+    //
+    // So the old rows are noted, the new rows go in alongside them, and only
+    // once every new row has landed are the old ones removed. There is a
+    // moment when both sets exist, which is a moment of duplicate rows — but
+    // it is a moment inside one server action, and every way out of it leaves
+    // the shop with a complete set of recipes rather than none:
+    //
+    //   insert fails  -> the new rows are removed, the old set is untouched
+    //   delete fails  -> both sets are there, reported, and importing again
+    //                    converges because the second run notes both and
+    //                    replaces them together
+    //
+    // PostgREST has no transaction across separate requests, so this is what
+    // "atomic enough" looks like without moving the whole restore into a
+    // database function. The remaining gap is stated in the return value: a
+    // failure at the tenth table does not undo the nine before it.
     const parents = parentsToClear(table, rows);
+    let oldIds: (string | number)[] = [];
+    const newIds: (string | number)[] = [];
+
     if (parents) {
-      for (let i = 0; i < parents.ids.length; i += RESTORE_CHUNK) {
-        const { error } = await db
-          .from(table)
-          .delete()
-          .in(parents.column, parents.ids.slice(i, i + RESTORE_CHUNK));
-        if (error) {
-          failed = `could not clear existing rows: ${error.message}`;
-          break;
-        }
-      }
+      const { data, error } = await db
+        .from(table)
+        .select("id")
+        .in(parents.column, parents.ids);
+      if (error) failed = `could not read the existing rows: ${error.message}`;
+      else oldIds = (data ?? []).map((r) => (r as { id: string | number }).id);
     }
 
     for (let i = 0; !failed && i < rows.length; i += RESTORE_CHUNK) {
       const slice = rows.slice(i, i + RESTORE_CHUNK);
-      // Insert rather than upsert when the rows have no id: their primary key
-      // is generated, and an upsert with no conflict target is just an insert
-      // with extra steps.
-      const { error } = parents
-        ? await db.from(table).insert(slice)
-        : await db.from(table).upsert(slice);
-      if (error) {
-        failed = error.message;
-        break;
+      if (parents) {
+        // `select` so the new rows can be identified and taken back out if a
+        // later chunk fails. Their keys are generated, so this is the only
+        // moment they can be known.
+        const { data, error } = await db.from(table).insert(slice).select("id");
+        if (error) {
+          failed = error.message;
+          break;
+        }
+        for (const r of data ?? []) newIds.push((r as { id: string | number }).id);
+      } else {
+        const { error } = await db.from(table).upsert(slice);
+        if (error) {
+          failed = error.message;
+          break;
+        }
       }
       restored += slice.length;
+    }
+
+    if (parents) {
+      // Which set to remove depends entirely on whether the insert finished.
+      const doomed = failed ? newIds : oldIds;
+      for (let i = 0; i < doomed.length; i += RESTORE_CHUNK) {
+        const { error } = await db
+          .from(table)
+          .delete()
+          .in("id", doomed.slice(i, i + RESTORE_CHUNK));
+        if (error) {
+          failed = failed
+            ? `${failed} (and the half-written rows could not be taken back out: ${error.message})`
+            : `the new rows are in, but the old ones could not be removed: ${error.message} — import again to clear the duplicates`;
+          break;
+        }
+      }
+      if (failed) restored = 0;
     }
 
     // Recorded and carried on, never thrown. One table that will not load —
