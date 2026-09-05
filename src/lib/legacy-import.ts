@@ -342,6 +342,29 @@ export function convertLegacyBackup(file: LegacyFile): ConvertResult {
   out.meal_ingredients = mealIngredients;
   out.meal_components = mealComponents;
 
+  // The vocabulary behind the menu's filter pills, built from the categories
+  // the dishes actually use.
+  //
+  // The old app has no equivalent table — a category there is just a string on
+  // a dish — so without this an import leaves `menu_categories` empty. The
+  // customer menu survives that now (it builds its pills from the dishes), but
+  // the table is what carries the colour and the sort order, and an owner who
+  // wants Drinks last and green has nowhere to say so until a row exists.
+  //
+  // `sort_order` follows first appearance rather than the alphabet, because
+  // the order dishes were entered in is closer to how the owner thinks about
+  // the menu than A-to-Z is. `colour` is left at the column default, which
+  // `colourOf` turns into a stable per-name fallback — so the pills are
+  // coloured and distinguishable from the first minute, and every one of them
+  // is still the owner's to change.
+  const seen = new Map<string, number>();
+  for (const m of meals as { categories: string[] }[]) {
+    for (const name of m.categories) {
+      if (!seen.has(name)) seen.set(name, seen.size);
+    }
+  }
+  out.menu_categories = [...seen].map(([name, sort_order]) => ({ name, sort_order }));
+
   /* ---------------- orders and their lines ---------------- */
 
   const orders: unknown[] = [];

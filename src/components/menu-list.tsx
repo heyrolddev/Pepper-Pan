@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { Stars } from "@/components/stars";
 import { LOW_STOCK_SERVINGS } from "@/lib/costing";
-import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
+import { colourOf, type MenuCategory } from "@/lib/categories";
 
 export type Meal = {
   id: string;
@@ -188,10 +188,34 @@ export function MenuList({
   );
 
   const categories = useMemo(() => {
-    // Ordered by the shop's own sort order first, then anything a dish names
-    // that has no row yet — so the owner controls the order of the pills, and
-    // a category they haven't got round to still appears rather than vanishing.
-    const used = new Set(meals.map((m) => categoryOf(m.categories)));
+    // EVERY category a visible dish names, not just its first.
+    //
+    // This used to read `categoryOf(m.categories)`, which returns the first
+    // entry — the "main" one that decides the dish's colour. That was right
+    // when a dish had exactly one category and wrong the moment it could have
+    // several: a dish tagged Mains and Noodles appeared under Mains alone, so
+    // "Noodles" was a pill nobody could reach anything through, or no pill at
+    // all. The owner types those tags to help a customer find things, and all
+    // of them have to work.
+    //
+    // The second thing this fixes is worse and was invisible from the code
+    // alone. The list used to be built from `known` — the `menu_categories`
+    // table, which is the shop's *vocabulary*: names, colours, sort order. A
+    // menu imported from elsewhere has categories on its dishes and no rows
+    // in that table, so `known` was empty, so the list was just ["All"], so
+    // the whole filter bar hid itself and the customer got 51 dishes in one
+    // undifferentiated column with nothing but a search box.
+    //
+    // Now the dishes are the source of truth for WHICH pills exist, and
+    // `known` only decides what order they come in and what colour they are.
+    // The vocabulary can lag; a category the owner typed cannot disappear.
+    const used = new Set<string>();
+    for (const m of meals) {
+      for (const raw of m.categories ?? []) {
+        const name = raw.trim();
+        if (name) used.add(name);
+      }
+    }
     const ordered = known.map((c) => c.name).filter((n) => used.has(n));
     const rest = [...used].filter((n) => !ordered.includes(n)).sort();
     return ["All", ...ordered, ...rest];
@@ -200,8 +224,12 @@ export function MenuList({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return meals.filter((m) => {
-      const category = categoryOf(m.categories);
-      const matchesCategory = activeCategory === "All" || category === activeCategory;
+      // Matches on ANY of the dish's categories, for the same reason the pill
+      // list is built from all of them: a pill that shows nothing is worse
+      // than no pill.
+      const matchesCategory =
+        activeCategory === "All" ||
+        (m.categories ?? []).some((c) => c.trim() === activeCategory);
       const matchesQuery =
         !q ||
         m.name.toLowerCase().includes(q) ||
