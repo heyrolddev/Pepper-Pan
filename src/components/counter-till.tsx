@@ -3,7 +3,12 @@
 import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/costing";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
-import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
+import {
+  categoriesUsed,
+  colourOf,
+  inCategory,
+  type MenuCategory,
+} from "@/lib/categories";
 import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
 import { ReceiptPrinter } from "@/components/receipt-printer";
@@ -84,16 +89,16 @@ export function CounterTill({
     // big: someone standing at the counter is finding things by position and
     // colour, not by reading. Two screens that disagree about where Drinks
     // sits cost a second every order.
-    const used = new Set(meals.map((m) => categoryOf(m.categories)));
-    const ordered = known.map((c) => c.name).filter((n) => used.has(n));
-    const rest = [...used].filter((n) => !ordered.includes(n)).sort();
-    return ["All", ...ordered, ...rest];
+    return ["All", ...categoriesUsed(meals, known)];
   }, [meals, known]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return meals.filter((m) => {
-      if (category !== "All" && categoryOf(m.categories) !== category) return false;
+      // ANY of the dish's categories. Reading only the first meant a dish
+      // tagged Mains and Ji Wings was unreachable under Ji Wings — at the
+      // counter, mid-order, with somebody waiting.
+      if (category !== "All" && !inCategory(m, category)) return false;
       return !q || m.name.toLowerCase().includes(q);
     });
   }, [meals, query, category]);

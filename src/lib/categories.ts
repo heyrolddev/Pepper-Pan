@@ -153,3 +153,70 @@ export function cleanCategories(input: string[] | undefined): string[] {
   }
   return out;
 }
+
+/**
+ * A dish, as far as its categories are concerned.
+ *
+ * Every screen that groups dishes reads this shape and nothing more, so the
+ * three rules below can be shared without any of them depending on which
+ * screen is asking.
+ */
+export type Categorised = { categories: string[] | null | undefined };
+
+/**
+ * Is this dish in that category?
+ *
+ * ANY of its categories, not just the first. `categoryOf` returns the first
+ * one — the "main" that decides the dish's colour — and using that to answer
+ * this question is the bug these three functions exist to stop coming back.
+ * A dish tagged Mains and Ji Wings is in Ji Wings; a filter that says
+ * otherwise is a pill that shows nothing.
+ */
+export function inCategory(item: Categorised, name: string): boolean {
+  return (item.categories ?? []).some((c) => c.trim() === name);
+}
+
+/**
+ * Every category actually in use, in the shop's own order first.
+ *
+ * The dishes decide WHICH categories exist; `known` — the `menu_categories`
+ * table — only decides what order they come in. That way a menu imported from
+ * somewhere with no vocabulary rows still gets its filters, and a category
+ * with a row but no dish never becomes a pill that shows nothing.
+ */
+export function categoriesUsed(
+  items: Categorised[],
+  known: { name: string }[] = []
+): string[] {
+  const used = new Set<string>();
+  for (const item of items) {
+    for (const raw of item.categories ?? []) {
+      const name = raw.trim();
+      if (name) used.add(name);
+    }
+  }
+  const ordered = known.map((c) => c.name).filter((n) => used.has(n));
+  const rest = [...used].filter((n) => !ordered.includes(n)).sort();
+  return [...ordered, ...rest];
+}
+
+/**
+ * How many dishes are in each category.
+ *
+ * A dish in two categories counts in both, so these deliberately sum to more
+ * than the number of dishes. That is the honest answer to what a chip asks —
+ * "how many dishes are in here" — and the alternative, counting each dish
+ * once under its first category, is what made a category holding a dish
+ * display as zero.
+ */
+export function countByCategory(items: Categorised[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) {
+    for (const raw of item.categories ?? []) {
+      const name = raw.trim();
+      if (!name) continue;
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
+  }
+  return counts;
+}

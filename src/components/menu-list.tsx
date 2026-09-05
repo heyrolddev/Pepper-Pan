@@ -6,7 +6,12 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { Stars } from "@/components/stars";
 import { LOW_STOCK_SERVINGS } from "@/lib/costing";
-import { colourOf, type MenuCategory } from "@/lib/categories";
+import {
+  categoriesUsed,
+  colourOf,
+  inCategory,
+  type MenuCategory,
+} from "@/lib/categories";
 
 export type Meal = {
   id: string;
@@ -187,49 +192,19 @@ export function MenuList({
     [known]
   );
 
-  const categories = useMemo(() => {
-    // EVERY category a visible dish names, not just its first.
-    //
-    // This used to read `categoryOf(m.categories)`, which returns the first
-    // entry — the "main" one that decides the dish's colour. That was right
-    // when a dish had exactly one category and wrong the moment it could have
-    // several: a dish tagged Mains and Noodles appeared under Mains alone, so
-    // "Noodles" was a pill nobody could reach anything through, or no pill at
-    // all. The owner types those tags to help a customer find things, and all
-    // of them have to work.
-    //
-    // The second thing this fixes is worse and was invisible from the code
-    // alone. The list used to be built from `known` — the `menu_categories`
-    // table, which is the shop's *vocabulary*: names, colours, sort order. A
-    // menu imported from elsewhere has categories on its dishes and no rows
-    // in that table, so `known` was empty, so the list was just ["All"], so
-    // the whole filter bar hid itself and the customer got 51 dishes in one
-    // undifferentiated column with nothing but a search box.
-    //
-    // Now the dishes are the source of truth for WHICH pills exist, and
-    // `known` only decides what order they come in and what colour they are.
-    // The vocabulary can lag; a category the owner typed cannot disappear.
-    const used = new Set<string>();
-    for (const m of meals) {
-      for (const raw of m.categories ?? []) {
-        const name = raw.trim();
-        if (name) used.add(name);
-      }
-    }
-    const ordered = known.map((c) => c.name).filter((n) => used.has(n));
-    const rest = [...used].filter((n) => !ordered.includes(n)).sort();
-    return ["All", ...ordered, ...rest];
-  }, [meals, known]);
+  // The dishes decide which pills exist; `known` only decides their order.
+  // See `categoriesUsed` — this was written inline here first, which is
+  // exactly why the same bug survived in two other screens.
+  const categories = useMemo(
+    () => ["All", ...categoriesUsed(meals, known)],
+    [meals, known]
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return meals.filter((m) => {
-      // Matches on ANY of the dish's categories, for the same reason the pill
-      // list is built from all of them: a pill that shows nothing is worse
-      // than no pill.
       const matchesCategory =
-        activeCategory === "All" ||
-        (m.categories ?? []).some((c) => c.trim() === activeCategory);
+        activeCategory === "All" || inCategory(m, activeCategory);
       const matchesQuery =
         !q ||
         m.name.toLowerCase().includes(q) ||

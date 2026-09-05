@@ -6,7 +6,7 @@ import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
 import { TakeoutMergePanel } from "@/components/takeout-merge-panel";
 import { planTakeoutMerge } from "@/lib/takeout-merge";
-import { categoryOf, type MenuCategory } from "@/lib/categories";
+import { countByCategory, type MenuCategory } from "@/lib/categories";
 import { hqTitle } from "@/lib/hq-theme";
 
 export default async function AdminMenuPage() {
@@ -54,11 +54,11 @@ export default async function AdminMenuPage() {
   const categories = (catRows ?? []) as MenuCategory[];
 
   // How many dishes are in each, so deleting one can say what's in the way.
-  const counts: Record<string, number> = {};
-  for (const m of meals) {
-    const c = categoryOf(m.categories);
-    counts[c] = (counts[c] ?? 0) + 1;
-  }
+  // Counts every category a dish carries, not just its first. Counting by
+  // first category made "Ji Wings 0" sit next to a Ji Wings dish, because
+  // that dish's first category was Mains — the chip and the filter beside it
+  // were answering two different questions.
+  const counts = countByCategory(meals);
   const hidden = meals.filter((m) => !m.is_public || !m.is_available).length;
 
   return (
