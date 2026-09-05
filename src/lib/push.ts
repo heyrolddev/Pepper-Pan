@@ -170,3 +170,28 @@ export async function pushToStaff(payload: PushPayload): Promise<number> {
     return 0;
   }
 }
+
+/**
+ * The owner alone.
+ *
+ * Separate from `pushToStaff` because the audiences are genuinely different.
+ * A waiting order is everybody's problem — a shop where only one phone rings
+ * has moved the single point of failure rather than removed it. A page
+ * throwing an exception is not: staff cannot fix it, cannot act on it, and a
+ * notification they can only ignore is training to ignore the next one.
+ */
+export async function pushToOwners(payload: PushPayload): Promise<number> {
+  if (!pushConfigured()) return 0;
+  try {
+    const db = createAdminClient();
+    const { data: owners } = await db
+      .from("profiles")
+      .select("id")
+      .eq("role", "owner");
+
+    const ids = (owners ?? []).map((o) => o.id as string);
+    return await deliver(await subscriptionsFor(ids), payload);
+  } catch {
+    return 0;
+  }
+}

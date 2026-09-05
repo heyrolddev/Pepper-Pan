@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { pushToOwners } from "@/lib/push";
 
 /**
  * Writing down what broke.
@@ -112,7 +113,7 @@ export async function recordError(input: {
         : null;
 
     const db = createAdminClient();
-    const { error } = await db.rpc("record_error", {
+    const { data: isNew, error } = await db.rpc("record_error", {
       p_fingerprint: fingerprintOf(message, input.route),
       p_message: message,
       p_route: input.route,
@@ -120,13 +121,68 @@ export async function recordError(input: {
       p_digest: digest,
       p_stack: stack,
     });
-    if (error) console.error(`[error-log] could not record: ${error.message}`);
+    if (error) {
+      console.error(`[error-log] could not record: ${error.message}`);
+      return;
+    }
+
+    // Only the first time. The fiftieth customer hitting the same broken
+    // checkout is not fifty pieces of news — it is one piece of news and a
+    // counter, and a phone that buzzes fifty times gets its notifications
+    // switched off, including for the next fault.
+    //
+    // Awaited rather than fired and forgotten: this runs inside a serverless
+    // invocation that is torn down the moment the response is sent, so an
+    // un-awaited send is a send that usually does not happen.
+    if (isNew === true) await alertOwners(message, input.route, input.kind);
   } catch (e) {
     // Never rethrown. See the note at the top of this file.
     console.error(
       `[error-log] the reporter itself failed: ${
         e instanceof Error ? e.message : String(e)
       }`
+    );
+  }
+}
+
+/**
+ * The notification, in the words of somebody standing at a stall.
+ *
+ * Not the exception message on its own — "Cannot read properties of
+ * undefined" tells the owner nothing they can act on. What they need is
+ * WHERE, and whether a customer was in the middle of something, because that
+ * decides whether this interrupts service or waits until closing.
+ *
+ * Swallows its own failures for the same reason as everything else in this
+ * file: it is running on the error path.
+ */
+async function alertOwners(
+  message: string,
+  route: string | null,
+  kind: ErrorKind
+): Promise<void> {
+  try {
+    const where = route ? ` on ${route}` : "";
+    const who =
+      kind === "client"
+        ? "Someone's browser hit an error"
+        : kind === "action"
+          ? "Saving something failed"
+          : "A page failed to load";
+
+    await pushToOwners({
+      title: `${who}${where}`,
+      body: message.slice(0, 140),
+      // Straight to the panel that lists it, so the notification is one tap
+      // from the detail rather than a prompt to go looking.
+      url: "/admin",
+      // Deliberately no `tag`. A collapse key would make a second, unrelated
+      // fault replace the first on the lock screen — and two different things
+      // breaking is two pieces of news, not a corrected version of one.
+    });
+  } catch (e) {
+    console.error(
+      `[error-log] could not alert: ${e instanceof Error ? e.message : String(e)}`
     );
   }
 }
