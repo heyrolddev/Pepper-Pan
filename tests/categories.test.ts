@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanCategories } from "../src/lib/categories.ts";
+import {
+  categoriesUsed,
+  cleanCategories,
+  countByCategory,
+  inCategory,
+} from "../src/lib/categories.ts";
 
 /**
  * What a dish is actually saved with.
@@ -54,74 +59,76 @@ test("trailing space does not create a second category", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * Which pills the customer menu shows, and what each one matches
+ * Grouping dishes by category
  *
- * The rules live inside `MenuList`, which is a React component and not worth
- * mounting for this. They are copied here as the two pure functions the
- * component computes, so a change to either of them fails a test rather than
- * quietly emptying the customer's filter bar again.
+ * Three screens ask these questions — the customer's menu, the till, and the
+ * chip counts in HQ — and each of them once answered with `categoryOf`, which
+ * returns only a dish's FIRST category. That produced a chip reading
+ * "Ji Wings 0" beside a Ji Wings dish, and a till where that dish could not
+ * be found under Ji Wings mid-order.
+ *
+ * These test the shared functions rather than a copy, which is the point:
+ * the bug survived two screens because the fix was written inline in the
+ * third.
  * ------------------------------------------------------------------ */
 
-type Dish = { categories: string[] };
+/** The dish that started it: a Ji Wings dish whose first category is Mains. */
+const jiWings = { categories: ["Mains", "Ji Wings"] };
 
-/** Every category any visible dish names, ordered by the shop's vocabulary. */
-function pillsFor(meals: Dish[], known: { name: string }[]): string[] {
-  const used = new Set<string>();
-  for (const m of meals) {
-    for (const raw of m.categories ?? []) {
-      const name = raw.trim();
-      if (name) used.add(name);
-    }
-  }
-  const ordered = known.map((c) => c.name).filter((n) => used.has(n));
-  const rest = [...used].filter((n) => !ordered.includes(n)).sort();
-  return ["All", ...ordered, ...rest];
-}
+test("a dish is in every category it carries, not just the first", () => {
+  assert.equal(inCategory(jiWings, "Mains"), true);
+  assert.equal(inCategory(jiWings, "Ji Wings"), true, "the reported bug");
+  assert.equal(inCategory(jiWings, "Drinks"), false);
+});
 
-function matches(meal: Dish, active: string): boolean {
-  return active === "All" || (meal.categories ?? []).some((c) => c.trim() === active);
-}
+test("a category holding a dish never counts zero", () => {
+  const counts = countByCategory([jiWings]);
+  assert.equal(counts["Ji Wings"], 1, "counted 0 before this");
+  assert.equal(counts["Mains"], 1);
+});
+
+test("counts deliberately sum to more than the number of dishes", () => {
+  // A dish in two categories is in both. The chip asks "how many dishes are
+  // in here", and that is the honest answer to it.
+  const counts = countByCategory([jiWings, { categories: ["Drinks"] }]);
+  const total = Object.values(counts).reduce((n, c) => n + c, 0);
+  assert.equal(total, 3, "two dishes, three memberships");
+});
+
+test("an untagged dish counts nowhere and matches nothing but All", () => {
+  assert.deepEqual(countByCategory([{ categories: [] }]), {});
+  assert.equal(inCategory({ categories: null }, "Mains"), false);
+});
 
 test("pills come from the dishes, not from the categories table", () => {
-  // The bug this exists to stop coming back: a menu imported from elsewhere
-  // has categories on its dishes and nothing in `menu_categories`, and the
-  // filter bar used to hide itself entirely.
-  const meals = [{ categories: ["Mains"] }, { categories: ["Drinks"] }];
-  assert.deepEqual(pillsFor(meals, []), ["All", "Drinks", "Mains"]);
+  // A menu imported from elsewhere has categories on its dishes and no rows
+  // in `menu_categories`; the filter bar used to hide itself entirely.
+  assert.deepEqual(
+    categoriesUsed([{ categories: ["Mains"] }, { categories: ["Drinks"] }]),
+    ["Drinks", "Mains"]
+  );
 });
 
 test("the shop's own order wins, and the rest follow alphabetically", () => {
   const meals = [
+    { categories: ["Sides"] },
     { categories: ["Drinks"] },
     { categories: ["Mains"] },
-    { categories: ["Sides"] },
   ];
   const known = [{ name: "Mains" }, { name: "Drinks" }];
-  assert.deepEqual(pillsFor(meals, known), ["All", "Mains", "Drinks", "Sides"]);
+  assert.deepEqual(categoriesUsed(meals, known), ["Mains", "Drinks", "Sides"]);
 });
 
 test("a category with a row but no dish does not become a pill", () => {
   // An empty pill is a promise the menu cannot keep.
-  const pills = pillsFor([{ categories: ["Mains"] }], [{ name: "Mains" }, { name: "Desserts" }]);
-  assert.deepEqual(pills, ["All", "Mains"]);
+  assert.deepEqual(
+    categoriesUsed([{ categories: ["Mains"] }], [{ name: "Mains" }, { name: "Desserts" }]),
+    ["Mains"]
+  );
 });
 
-test("a dish appears under every one of its categories, not just the first", () => {
-  const dish = { categories: ["Mains", "Noodles"] };
-  assert.equal(matches(dish, "Mains"), true);
-  assert.equal(matches(dish, "Noodles"), true, "the second category has to work too");
-  assert.equal(matches(dish, "Drinks"), false);
-  assert.equal(matches(dish, "All"), true);
-});
-
-test("an untagged dish is reachable only through All", () => {
-  // Which is exactly why the menu screen offers to tag them in bulk.
-  const dish = { categories: [] };
-  assert.equal(matches(dish, "All"), true);
-  assert.equal(matches(dish, "Mains"), false);
-});
-
-test("blank and whitespace categories never become pills", () => {
-  const pills = pillsFor([{ categories: ["  ", "", " Mains "] }], []);
-  assert.deepEqual(pills, ["All", "Mains"]);
+test("blank and whitespace categories are ignored everywhere", () => {
+  assert.deepEqual(categoriesUsed([{ categories: ["  ", "", " Mains "] }]), ["Mains"]);
+  assert.deepEqual(countByCategory([{ categories: ["  ", "Mains"] }]), { Mains: 1 });
+  assert.equal(inCategory({ categories: [" Mains "] }, "Mains"), true);
 });
