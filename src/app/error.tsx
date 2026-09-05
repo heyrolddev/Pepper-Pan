@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
+import { reportClientError } from "@/app/report-error";
 import Link from "next/link";
 
 /**
@@ -21,9 +23,18 @@ export default function AppError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const pathname = usePathname();
+
+  // Reported as well as logged. The console line helps whoever is looking at
+  // this browser; the report is the only way it reaches the owner, who is not.
   useEffect(() => {
     console.error("[shop]", error);
-  }, [error]);
+    void reportClientError({
+      message: error.message,
+      route: pathname,
+      digest: error.digest,
+    });
+  }, [error, pathname]);
 
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-24">

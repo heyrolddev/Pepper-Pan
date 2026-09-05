@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
+import { reportClientError } from "@/app/report-error";
 import Link from "next/link";
 
 /**
@@ -29,11 +31,20 @@ export default function AdminError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const pathname = usePathname();
+
   useEffect(() => {
     // Into the browser console as well as the server's, so a screenshot of the
     // console is enough to work from when somebody reports this from a phone.
     console.error("[HQ]", error);
-  }, [error]);
+    // And into the error log, which is the copy the owner will actually find
+    // — nobody screenshots a console unless they are already being asked to.
+    void reportClientError({
+      message: error.message,
+      route: pathname,
+      digest: error.digest,
+    });
+  }, [error, pathname]);
 
   return (
     <div className="rounded-3xl bg-cream-100 p-8 ring-1 ring-ink-950/10">

@@ -13,6 +13,8 @@ import { formatDateTime, shopToday } from "@/lib/format-date";
 import { StatTile, Delta } from "@/components/stat-tile";
 import { pesoRound } from "@/lib/costing";
 import { hqTitle } from "@/lib/hq-theme";
+import { ErrorLogPanel } from "@/components/error-log-panel";
+import { listErrors } from "@/lib/error-log";
 
 // Shop-timezone day labels, so a bar is filed under the day the shop had,
 // not the day the viewer's device thinks it was.
@@ -175,9 +177,19 @@ export default async function AdminDashboard({
     (o) => o.payment_status === "submitted" && o.status !== "cancelled"
   );
 
+  // Read here rather than inside the panel: this is the owner's dashboard and
+  // it is already a server component, so one more query costs a round trip
+  // and no client bundle. `listErrors` returns [] rather than throwing, so a
+  // broken error log cannot break the page about broken things.
+  const errors = await listErrors();
+
   return (
     <div className="flex flex-col gap-10">
       <LiveOrdersBanner />
+
+      {/* Above the takings on purpose. Money is what the owner came to look
+          at; a broken checkout is why the money is wrong. */}
+      <ErrorLogPanel errors={errors} />
 
       {/* KPI row */}
       <section className="flex flex-col gap-4">
