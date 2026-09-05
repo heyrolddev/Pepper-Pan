@@ -411,12 +411,25 @@ export default async function Home() {
                       <Reveal delay={i * 0.06}>
                         <Link
                           href={`/news/${n.id}`}
-                          className="group flex gap-4 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10 transition-colors hover:bg-gold-50 hover:ring-gold-400"
+                          className="group flex items-center gap-4 rounded-2xl bg-cream-100 p-4 ring-1 ring-ink-950/10 transition-colors hover:bg-gold-50 hover:ring-gold-400 sm:gap-5 sm:p-5"
                         >
+                          {/* Twice the size it was.
+                              
+                              A 64px square is a favicon, not a photograph:
+                              at that scale a bowl of noodles and a poster of
+                              text are the same beige rectangle, so it added
+                              nothing to the decision to tap. 128px is enough
+                              to tell what the picture is of, which is the
+                              only job it has here.
+                              
+                              It also gets the border and offset shadow the
+                              promo cards use, so the two kinds of card read
+                              as the same family rather than as one styled
+                              and one left plain. */}
                           {hasMedia(n) && (
                             <AnnouncementMedia
                               row={n}
-                              className="h-16 w-16 shrink-0 rounded-xl bg-ink-950 object-cover"
+                              className="h-24 w-24 shrink-0 rounded-xl border-2 border-ink-950 bg-ink-950 object-cover shadow-[3px_3px_0_0_theme(colors.ink.950)] sm:h-32 sm:w-32"
                             />
                           )}
                           <div className="min-w-0">

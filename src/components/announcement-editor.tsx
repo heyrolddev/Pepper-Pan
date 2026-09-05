@@ -455,14 +455,30 @@ function Editor({
             <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-ink-800/40">
               {kind === "news" ? "What happened" : "The detail (optional)"}
             </span>
+            {/* No maxLength, and no rows={3}.
+                
+                It had a 500-character cap, which a browser enforces by simply
+                refusing further keystrokes — no message, no counter, nothing
+                to tell the owner why the sentence they are typing has stopped
+                appearing. Nothing else agreed with it either: the database
+                has no limit, the save action never checked one, and the
+                detail page already renders the whole thing. It was one
+                attribute quietly overruling every other decision.
+                
+                Eight rows because the field is now for writing in rather
+                than filling in, and `resize-y` so a longer notice can be
+                given the room it needs without leaving the page. */}
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={3}
-              maxLength={500}
+              rows={8}
               placeholder={PLACEHOLDER_BODY[kind]}
-              className={field}
+              className={`${field} resize-y leading-relaxed`}
             />
+            <span className="mt-1 block text-[10px] font-semibold text-ink-800/40">
+              As long as it needs to be. The homepage shows the first few
+              lines; the full post is on its own page.
+            </span>
           </label>
 
           <MediaField
