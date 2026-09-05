@@ -387,3 +387,63 @@ export async function runTakeoutMerge(): Promise<{
   revalidatePath("/admin/costing");
   return result;
 }
+
+/**
+ * Put one category onto several dishes at once.
+ *
+ * Written the day a menu arrived from elsewhere with 42 of its 51 dishes
+ * carrying no category at all. Every one of those is invisible to the filter
+ * pills a customer uses to find food, and the only way to fix it was to open
+ * each dish, add a tag, save, and close — 42 times, for one category. Nobody
+ * does that, so the menu stays untagged, so the pills stay useless, so the
+ * work that went into them is wasted.
+ *
+ * Adds rather than replaces. A dish already tagged Mains that gets Noodles
+ * ends up with both, because these categories are how a customer searches and
+ * a dish is legitimately several things at once. Replacing would also make
+ * this a destructive operation, and a destructive operation over a
+ * multi-select is exactly the kind of thing that goes wrong quietly.
+ *
+ * One statement per dish rather than one for all of them: appending to a
+ * `text[]` needs to read what is there first, and a dish that has since been
+ * given the tag by someone else must not end up with it twice.
+ */
+export async function addCategoryToMeals(input: {
+  ids: string[];
+  category: string;
+}): Promise<{ error: string | null; changed: number }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change a dish's categories.", changed: 0 };
+  }
+
+  const name = input.category.trim();
+  if (!name) return { error: "Choose or type a category first.", changed: 0 };
+  if (input.ids.length === 0) return { error: "Pick at least one dish.", changed: 0 };
+
+  const supabase = createAdminClient();
+  const { data: rows, error } = await supabase
+    .from("meals")
+    .select("id, categories")
+    .in("id", input.ids);
+  if (error) return { error: error.message, changed: 0 };
+
+  let changed = 0;
+  for (const row of (rows ?? []) as { id: string; categories: string[] | null }[]) {
+    const current = row.categories ?? [];
+    // Case-insensitive, matching `rememberCategory`: "chicken" must not sit
+    // beside "Chicken" on the same dish.
+    if (current.some((c) => c.trim().toLowerCase() === name.toLowerCase())) continue;
+    const { error: writeError } = await supabase
+      .from("meals")
+      .update({ categories: [...current, name] })
+      .eq("id", row.id);
+    if (writeError) return { error: writeError.message, changed };
+    changed += 1;
+  }
+
+  await rememberCategory(name);
+  revalidatePath("/admin/menu");
+  revalidatePath("/menu");
+  return { error: null, changed };
+}

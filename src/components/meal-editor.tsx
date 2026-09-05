@@ -64,8 +64,47 @@ export function MealEditor({
   const [imageUrl, setImageUrl] = useState(meal.image_url);
 
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * What the database holds, as far as this form knows.
+   *
+   * The button used to say "Save", then "Saved ✓" for two seconds, then
+   * "Save" again — which reads as *you still have work to do* on a form
+   * that is already identical to what is stored. Pressing it again writes
+   * the same row a second time, and every so often someone sits there
+   * pressing it because the label keeps asking them to.
+   *
+   * So the button reports the form's state rather than the last thing that
+   * happened to it. Nothing to save and it says so, greyed out; change one
+   * character and it turns back into a live Save. The photo is not in here:
+   * it uploads and saves on its own the moment it is chosen, so counting it
+   * would leave the button asking to save something already saved.
+   */
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    JSON.stringify({
+      name: meal.name,
+      price: String(meal.price),
+      description: meal.description ?? "",
+      chosen: meal.categories ?? [],
+      isPublic: meal.is_public,
+      isAvailable: meal.is_available,
+    })
+  );
+
+  const snapshot = JSON.stringify({
+    name,
+    price,
+    description,
+    chosen,
+    isPublic,
+    isAvailable,
+  });
+  // Compared as JSON rather than field by field so that adding a field to the
+  // form cannot quietly leave it out of the comparison. Category order is
+  // part of the value on purpose — the first one is the dish's main category
+  // and decides its colour, so reordering is a real change.
+  const dirty = snapshot !== savedSnapshot;
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   async function handleDelete() {
@@ -89,7 +128,6 @@ export function MealEditor({
     e.preventDefault();
     setBusy(true);
     setError(null);
-    setSaved(false);
 
     try {
       const res = await saveMeal({
@@ -102,9 +140,10 @@ export function MealEditor({
         isAvailable,
       });
       if (res.error) return setError(res.error);
-      setSaved(true);
+      // The form is now what the database holds, so the button goes quiet
+      // until something actually changes again.
+      setSavedSnapshot(snapshot);
       router.refresh();
-      setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       // Without this a thrown Server Action would leave the button stuck.
       setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
@@ -251,14 +290,14 @@ export function MealEditor({
 
               <button
                 type="submit"
-                disabled={busy}
-                className={`rounded-full px-5 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
-                  saved
-                    ? "bg-jade-600 text-cream-50"
-                    : "bg-brand-600 text-cream-50 hover:bg-brand-700"
+                disabled={busy || !dirty}
+                className={`rounded-full px-5 py-2 text-sm font-bold transition-colors ${
+                  dirty
+                    ? "bg-brand-600 text-cream-50 hover:bg-brand-700 disabled:opacity-60"
+                    : "cursor-default bg-jade-600/15 text-jade-700"
                 }`}
               >
-                {busy ? "Saving…" : saved ? "Saved ✓" : "Save"}
+                {busy ? "Saving…" : dirty ? "Save changes" : "Saved ✓"}
               </button>
             </>
           )}

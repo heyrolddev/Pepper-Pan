@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { AdminSearch } from "@/components/admin-search";
+import { BulkCategory } from "@/components/bulk-category";
 import { MealEditor, type AdminMeal } from "@/components/meal-editor";
 import type { MenuCategory } from "@/lib/categories";
 
@@ -28,7 +29,11 @@ export function AdminMenuList({
   );
 
   return (
-    <AdminSearch
+    <div className="flex flex-col gap-4">
+      {/* Above the list, because it is about the list as a whole and because
+          it vanishes once the job is done. */}
+      <BulkCategory meals={meals} categories={categories} />
+      <AdminSearch
       rows={meals}
       searchText={searchText}
       noun="item"
@@ -49,6 +54,7 @@ export function AdminMenuList({
           </ul>
         )
       }
-    </AdminSearch>
+      </AdminSearch>
+    </div>
   );
 }
