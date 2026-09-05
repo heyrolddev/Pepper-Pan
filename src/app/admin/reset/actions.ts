@@ -4,6 +4,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer } from "@/lib/auth";
 import { SHOP_ROLES } from "@/lib/permissions";
+import { takeSafetyNet } from "@/lib/safety-net";
 
 /**
  * Clearing the practice data before the shop goes live for real.
@@ -171,6 +172,30 @@ export async function resetShopData(input: {
   });
   if (check.error) {
     return { ok: false, error: "That password doesn't match. Nothing was deleted." };
+  }
+
+  // The same net as the restore, for the same reason and with more force:
+  // this button only deletes. There is no version of "the reset went wrong"
+  // that is recoverable without a copy taken beforehand.
+  const net = await takeSafetyNet(
+    `Before clearing ${
+      [
+        input.scope.orders && "orders",
+        input.scope.menu && "the menu",
+        input.scope.chat && "chat",
+        input.scope.staffOrders && "staff test orders",
+        input.scope.inventory && "inventory",
+        input.scope.money && "money records",
+      ]
+        .filter(Boolean)
+        .join(", ") || "nothing"
+    }`
+  );
+  if (!net.ok) {
+    return {
+      ok: false,
+      error: `Stopped before deleting anything: the safety copy could not be taken (${net.error}). Nothing has changed.`,
+    };
   }
 
   const db = createAdminClient();

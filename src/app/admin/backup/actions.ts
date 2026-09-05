@@ -11,6 +11,7 @@ import {
   unknownTables,
 } from "@/lib/restore-order";
 import { convertLegacyBackup, detectBackupKind } from "@/lib/legacy-import";
+import { takeSafetyNet } from "@/lib/safety-net";
 
 export type TableOutcome = {
   table: string;
@@ -34,6 +35,8 @@ export type RestoreResult =
       dropped: string[];
       /** Rows a legacy file could not supply, and why. */
       unusable: string[];
+      /** The copy taken automatically before any of this was written. */
+      safetyNet: { rows: number; bytes: number } | null;
     };
 
 /**
@@ -69,6 +72,22 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
   const kind = detectBackupKind(parsed) === "legacy" ? "legacy" : "native";
   const converted = kind === "legacy" ? convertLegacyBackup(parsed) : null;
   const file = converted ? converted.backup : parsed;
+
+  // Before a single row is written. Refusing to continue when this fails is
+  // the whole point rather than an over-reaction: a restore is undertaken
+  // because something is already wrong, and the case that matters is the one
+  // where the restore turns out to be wrong too. Without a copy there is
+  // nothing to go back to, and "it seemed fine at the time" is not a plan.
+  const net = await takeSafetyNet(
+    kind === "legacy"
+      ? "Before bringing in the old phone app's records"
+      : "Before putting a backup back"
+  );
+  if (!net.ok) {
+    return {
+      error: `Stopped before writing anything: the safety copy could not be taken (${net.error}). Nothing has changed. Download a backup by hand and try again, or check that migration 0031 has been run.`,
+    };
+  }
 
   const db = createAdminClient();
   const outcomes: TableOutcome[] = [];
@@ -196,5 +215,6 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     kind,
     dropped: converted?.report.dropped ?? [],
     unusable: converted?.report.skipped ?? [],
+    safetyNet: { rows: net.rows, bytes: net.bytes },
   };
 }

@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { collectSnapshot, snapshotToJson, toCsv } from "@/lib/backup";
+import { readSafetyNet } from "@/lib/safety-net";
 import {
   costBatches,
   costMeals,
@@ -93,6 +94,23 @@ export async function GET(request: NextRequest) {
   const kind = request.nextUrl.searchParams.get("file") ?? "full.json";
   const at = stamp();
   const supabase = createAdminClient();
+
+  // A safety copy, taken automatically before a restore or a reset. Served
+  // from here rather than through a server action for the same reason as the
+  // rest of this file: half a megabyte of JSON does not belong in a React
+  // payload, and this hands the browser a real file with a real name.
+  //
+  // The id is a `gen_random_uuid()` primary key looked up with `eq`, so there
+  // is nothing to traverse and nothing to inject — but it is only reachable
+  // at all because of the owner check at the top of this handler, which is
+  // the check that matters: these rows are the whole business.
+  if (kind === "safety-net") {
+    const id = request.nextUrl.searchParams.get("id");
+    if (!id) return new NextResponse("Not found", { status: 404 });
+    const payload = await readSafetyNet(id);
+    if (!payload) return new NextResponse("Not found", { status: 404 });
+    return file(payload, `pepperpan-safety-copy_${at}.json`, "application/json");
+  }
 
   if (kind === "full.json") {
     const snapshot = await collectSnapshot();

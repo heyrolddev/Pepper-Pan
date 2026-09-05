@@ -93,6 +93,7 @@ export function BackupPanel({
   brokenTables,
   lastBackup,
   health,
+  safetyNets,
 }: {
   files: BackupFile[];
   counts: Count[];
@@ -102,6 +103,14 @@ export function BackupPanel({
   lastBackup: string | null;
   /** Recipes pointing at things that no longer exist, and duplicate names. */
   health: HealthIssue[];
+  /**
+   * The safety-copy list, rendered on the server and passed in.
+   *
+   * A slot rather than an import: this file is a client component, and the
+   * list reads the database. Handing it in as a child keeps the query on the
+   * server where it belongs instead of inventing an endpoint for it.
+   */
+  safetyNets?: React.ReactNode;
 }) {
   const { download, busy, error } = useDownloader();
   const age = ageOf(lastBackup);
@@ -369,6 +378,7 @@ export function BackupPanel({
       </section>
 
       <RestorePanel />
+      {safetyNets}
     </div>
   );
 }

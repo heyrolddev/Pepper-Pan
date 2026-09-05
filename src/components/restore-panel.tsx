@@ -128,10 +128,10 @@ export function RestorePanel() {
         Put a backup back
       </h3>
       <p className="mt-2 max-w-2xl text-sm text-ink-800/70">
-        Choose a backup file \u2014 either one downloaded from here, or one
+        Choose a backup file — either one downloaded from here, or one
         exported from the phone app this system replaced. It works out which
-        it is by itself, and shows you what it found before anything is
-        written. Safe to run twice.
+        it is by itself, shows you what it found before anything is written,
+        and takes a safety copy of what is here now. Safe to run twice.
       </p>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -283,7 +283,7 @@ export function RestorePanel() {
                 </p>
                 <p className="mt-2 text-sm text-ink-800/75">
                   Dishes arrive <strong>hidden</strong> from the customer menu,
-                  and every order arrives marked <strong>completed</strong> \u2014
+                  and every order arrives marked <strong>completed</strong> —
                   so nothing lands in the live queue and nothing appears on the
                   public menu until you say so.
                 </p>
@@ -298,7 +298,7 @@ export function RestorePanel() {
                 <ul className="mt-1.5 flex flex-col gap-1">
                   {preview.dropped.map((d) => (
                     <li key={d} className="text-xs text-ink-800/65">
-                      \u2022 {d}
+                      • {d}
                     </li>
                   ))}
                 </ul>
@@ -313,7 +313,7 @@ export function RestorePanel() {
                 <ul className="mt-1.5 flex flex-col gap-1">
                   {preview.unusable.map((d) => (
                     <li key={d} className="text-xs text-ink-800/65">
-                      \u2022 {d}
+                      • {d}
                     </li>
                   ))}
                 </ul>
