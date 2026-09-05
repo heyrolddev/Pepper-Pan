@@ -4,6 +4,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getViewer } from "@/lib/auth";
 import { SHOP_ROLES } from "@/lib/permissions";
+import { takeSafetyNet } from "@/lib/safety-net";
 
 /**
  * Clearing the practice data before the shop goes live for real.
@@ -39,6 +40,16 @@ export type ResetScope = {
   chat: boolean;
   /** Orders placed from an owner or staff account while testing. */
   staffOrders: boolean;
+  /**
+   * Ingredients, their stock lots, batches, and every recipe built on them.
+   *
+   * Absent until the owner cleared the shop before a real import and found
+   * the practice inventory still sitting there. The screen had promised to
+   * clear "the practice data" and had quietly meant four kinds of it.
+   */
+  inventory: boolean;
+  /** The cash ledger, purchases, consumption, waste, bills and assets. */
+  money: boolean;
 };
 
 export type ResetCounts = {
@@ -47,6 +58,9 @@ export type ResetCounts = {
   reviews: number;
   chats: number;
   staffOrders: number;
+  ingredients: number;
+  batches: number;
+  cashEntries: number;
 };
 
 /**
@@ -71,7 +85,10 @@ async function staffAccountIds(
 export async function countResettable(): Promise<ResetCounts> {
   const viewer = await getViewer();
   if (viewer?.profile?.role !== "owner") {
-    return { orders: 0, meals: 0, reviews: 0, chats: 0, staffOrders: 0 };
+    return {
+      orders: 0, meals: 0, reviews: 0, chats: 0, staffOrders: 0,
+      ingredients: 0, batches: 0, cashEntries: 0,
+    };
   }
 
   const db = createAdminClient();
@@ -82,13 +99,17 @@ export async function countResettable(): Promise<ResetCounts> {
     return n ?? 0;
   };
 
-  const [orders, meals, reviews, chats, staffIds] = await Promise.all([
-    count("orders"),
-    count("meals"),
-    count("reviews"),
-    count("chat_threads"),
-    staffAccountIds(db),
-  ]);
+  const [orders, meals, reviews, chats, ingredients, batches, cashEntries, staffIds] =
+    await Promise.all([
+      count("orders"),
+      count("meals"),
+      count("reviews"),
+      count("chat_threads"),
+      count("ingredients"),
+      count("batches"),
+      count("cash_ledger"),
+      staffAccountIds(db),
+    ]);
 
   const { count: staffOrders } = staffIds.length
     ? await db
@@ -97,7 +118,10 @@ export async function countResettable(): Promise<ResetCounts> {
         .in("customer_id", staffIds)
     : { count: 0 };
 
-  return { orders, meals, reviews, chats, staffOrders: staffOrders ?? 0 };
+  return {
+    orders, meals, reviews, chats, ingredients, batches, cashEntries,
+    staffOrders: staffOrders ?? 0,
+  };
 }
 
 export type ResetResult =
@@ -125,7 +149,9 @@ export async function resetShopData(input: {
     !input.scope.orders &&
     !input.scope.menu &&
     !input.scope.chat &&
-    !input.scope.staffOrders
+    !input.scope.staffOrders &&
+    !input.scope.inventory &&
+    !input.scope.money
   ) {
     return { ok: false, error: "Choose at least one thing to clear." };
   }
@@ -146,6 +172,30 @@ export async function resetShopData(input: {
   });
   if (check.error) {
     return { ok: false, error: "That password doesn't match. Nothing was deleted." };
+  }
+
+  // The same net as the restore, for the same reason and with more force:
+  // this button only deletes. There is no version of "the reset went wrong"
+  // that is recoverable without a copy taken beforehand.
+  const net = await takeSafetyNet(
+    `Before clearing ${
+      [
+        input.scope.orders && "orders",
+        input.scope.menu && "the menu",
+        input.scope.chat && "chat",
+        input.scope.staffOrders && "staff test orders",
+        input.scope.inventory && "inventory",
+        input.scope.money && "money records",
+      ]
+        .filter(Boolean)
+        .join(", ") || "nothing"
+    }`
+  );
+  if (!net.ok) {
+    return {
+      ok: false,
+      error: `Stopped before deleting anything: the safety copy could not be taken (${net.error}). Nothing has changed.`,
+    };
   }
 
   const db = createAdminClient();
@@ -248,6 +298,85 @@ export async function resetShopData(input: {
       const meals = await db.from("meals").delete().neq("id", all).select("id");
       if (meals.error) throw new Error(`menu: ${meals.error.message}`);
       deleted.push(`${meals.data?.length ?? 0} dishes`);
+    }
+
+    if (input.scope.inventory) {
+      // Order matters here in a way it does not elsewhere in this function,
+      // because these tables point at each other and only some of those
+      // pointers cascade. `ingredient_lots`, `purchase_log` and
+      // `consumption_log` would follow their ingredient out on their own;
+      // `batch_ingredients` and `waste_log` would not, and would instead
+      // refuse the delete with a foreign-key error. So everything that points
+      // at an ingredient goes first, by hand, in the order that keeps every
+      // reference valid at every step.
+      //
+      // Recipes go too. A recipe line naming an ingredient that no longer
+      // exists is not a recipe — it is a dish that silently costs nothing,
+      // which is worse than a dish with no recipe at all, because it still
+      // adds up.
+      const ri = await db.from("meal_ingredients").delete().neq("meal_id", all).select("id");
+      if (ri.error) throw new Error(`recipes: ${ri.error.message}`);
+
+      const rp = await db.from("meal_packaging").delete().neq("meal_id", all).select("id");
+      if (rp.error) throw new Error(`packaging: ${rp.error.message}`);
+
+      const w = await db.from("waste_log").delete().neq("id", all).select("id");
+      if (w.error) throw new Error(`waste log: ${w.error.message}`);
+
+      const bi = await db.from("batch_ingredients").delete().neq("batch_id", all).select("id");
+      if (bi.error) throw new Error(`batch recipes: ${bi.error.message}`);
+
+      const b = await db.from("batches").delete().neq("id", all).select("id");
+      if (b.error) throw new Error(`batches: ${b.error.message}`);
+
+      // These three cascade from `ingredients` anyway. Deleted explicitly all
+      // the same: relying on a cascade means a later schema change could drop
+      // it and leave orphans that nobody thinks to look for.
+      const lots = await db.from("ingredient_lots").delete().neq("id", all).select("id");
+      if (lots.error) throw new Error(`stock lots: ${lots.error.message}`);
+
+      const pl = await db.from("purchase_log").delete().neq("id", all).select("id");
+      if (pl.error) throw new Error(`purchase log: ${pl.error.message}`);
+
+      const cl = await db.from("consumption_log").delete().neq("id", all).select("id");
+      if (cl.error) throw new Error(`consumption log: ${cl.error.message}`);
+
+      const cc = await db.from("cycle_counts").delete().neq("id", all).select("id");
+      if (cc.error) throw new Error(`stock counts: ${cc.error.message}`);
+
+      const ing = await db.from("ingredients").delete().neq("id", all).select("id");
+      if (ing.error) throw new Error(`ingredients: ${ing.error.message}`);
+
+      deleted.push(`${ing.data?.length ?? 0} ingredients`);
+      deleted.push(`${b.data?.length ?? 0} batches`);
+      deleted.push(`${w.data?.length ?? 0} waste entries`);
+      deleted.push(`${pl.data?.length ?? 0} purchases`);
+    }
+
+    if (input.scope.money) {
+      // Nothing here references anything else, so the order is only the order
+      // it reads in. Kept separate from inventory because the two answer
+      // different questions — "what is on the shelf" and "what is in the
+      // till" — and someone redoing a stock count has no reason to lose a
+      // month of takings.
+      const cash = await db.from("cash_ledger").delete().neq("id", all).select("id");
+      if (cash.error) throw new Error(`cash ledger: ${cash.error.message}`);
+      deleted.push(`${cash.data?.length ?? 0} cash entries`);
+
+      const fc = await db.from("fixed_costs").delete().neq("id", all).select("id");
+      if (fc.error) throw new Error(`monthly bills: ${fc.error.message}`);
+      deleted.push(`${fc.data?.length ?? 0} monthly bills`);
+
+      const a = await db.from("assets").delete().neq("id", all).select("id");
+      if (a.error) throw new Error(`assets: ${a.error.message}`);
+      deleted.push(`${a.data?.length ?? 0} assets`);
+
+      const r = await db.from("receivables").delete().neq("id", all).select("id");
+      if (r.error) throw new Error(`utang: ${r.error.message}`);
+      deleted.push(`${r.data?.length ?? 0} utang records`);
+
+      const oe = await db.from("oe_templates").delete().neq("id", all).select("id");
+      if (oe.error) throw new Error(`cost templates: ${oe.error.message}`);
     }
   } catch (err) {
     return {

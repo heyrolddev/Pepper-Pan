@@ -110,3 +110,56 @@ export function unknownTables(file: BackupFile): string[] {
   const known = new Set<string>(RESTORE_ORDER);
   return Object.keys(file.data ?? {}).filter((t) => !known.has(t));
 }
+
+/**
+ * Child tables, and the column naming their parent.
+ *
+ * These tables have `bigserial` primary keys, so their ids live only in the
+ * database — a backup of this system carries them and upserts cleanly, but a
+ * file converted from the old phone app cannot know them. Inserting such rows
+ * a second time would not replace the first set, it would add to it: every
+ * recipe would list each ingredient twice, and every cost computed from a
+ * recipe would silently double.
+ *
+ * So the rule is written in terms of the rows themselves rather than in terms
+ * of where the file came from: a child row that carries an `id` is upserted
+ * by that id, and a child row without one means "these are all of this
+ * parent's lines" — clear the parent's existing lines, then insert. That
+ * makes importing twice produce exactly what importing once produced, which
+ * is the property that makes an import safe to retry when something looks
+ * wrong.
+ */
+export const CHILD_PARENT: Record<string, string> = {
+  meal_ingredients: "meal_id",
+  meal_components: "meal_id",
+  meal_packaging: "meal_id",
+  batch_ingredients: "batch_id",
+  order_lines: "order_id",
+};
+
+/**
+ * The parent ids whose children must be cleared before these rows go in, or
+ * null when the rows carry their own ids and can simply be upserted.
+ *
+ * Null rather than an empty list, because "nothing to clear" and "clear
+ * nothing" are different instructions and confusing them deletes rows nobody
+ * asked to delete.
+ */
+export function parentsToClear(
+  table: string,
+  rows: unknown[]
+): { column: string; ids: string[] } | null {
+  const column = CHILD_PARENT[table];
+  if (!column) return null;
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    // One row carrying an id is enough to say this file has them: they come
+    // from a single export, so they are all present or all absent.
+    if (r.id !== undefined && r.id !== null) return null;
+    const parent = r[column];
+    if (typeof parent === "string" && parent) ids.add(parent);
+  }
+  return ids.size > 0 ? { column, ids: [...ids] } : null;
+}

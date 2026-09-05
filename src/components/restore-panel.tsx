@@ -36,6 +36,14 @@ export function RestorePanel() {
   const [text, setText] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [asking, setAsking] = useState(false);
+  /** What the file turned out to be, worked out before anything is uploaded. */
+  const [preview, setPreview] = useState<{
+    kind: "legacy" | "native";
+    counts: Record<string, number>;
+    dropped: string[];
+    unusable: string[];
+    total: number;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RestoreResult | null>(null);
@@ -58,6 +66,34 @@ export function RestorePanel() {
       setError(parsed.error);
       return;
     }
+
+    // Worked out in the browser, from the file's own table names, so the
+    // owner never has to know which of the two shapes they are holding. The
+    // moment they have to choose is the moment they can choose wrong.
+    const { convertLegacyBackup, detectBackupKind } = await import("@/lib/legacy-import");
+    const kind = detectBackupKind(parsed) === "legacy" ? "legacy" : "native";
+    const counts: Record<string, number> = {};
+    let dropped: string[] = [];
+    let unusable: string[] = [];
+
+    if (kind === "legacy") {
+      const { report } = convertLegacyBackup(parsed);
+      Object.assign(counts, report.counts);
+      dropped = report.dropped;
+      unusable = report.skipped;
+    } else {
+      for (const [table, rows] of Object.entries(parsed.data ?? {})) {
+        if (Array.isArray(rows) && rows.length > 0) counts[table] = rows.length;
+      }
+    }
+
+    const total = Object.values(counts).reduce((n, c) => n + c, 0);
+    if (total === 0) {
+      setError("That file has no records in it.");
+      return;
+    }
+
+    setPreview({ kind, counts, dropped, unusable, total });
     setText(body);
     setName(file.name);
     setAsking(true);
@@ -71,6 +107,7 @@ export function RestorePanel() {
     setBusy(false);
     setAsking(false);
     setText(null);
+    setPreview(null);
     if (input.current) input.current.value = "";
     if ("error" in r && r.error) setError(r.error);
     else setResult(r);
@@ -91,9 +128,10 @@ export function RestorePanel() {
         Put a backup back
       </h3>
       <p className="mt-2 max-w-2xl text-sm text-ink-800/70">
-        Choose a backup file you downloaded from here. Rows in the file
-        overwrite rows with the same id; anything added since is left alone.
-        It is safe to run twice.
+        Choose a backup file — either one downloaded from here, or one
+        exported from the phone app this system replaced. It works out which
+        it is by itself, shows you what it found before anything is written,
+        and takes a safety copy of what is here now. Safe to run twice.
       </p>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -108,7 +146,8 @@ export function RestorePanel() {
           />
         </label>
         <span className="text-xs text-ink-800/50">
-          The file HQ gave you — <code className="font-mono">.json</code>
+          From HQ, or from the old phone app —{" "}
+          <code className="font-mono">.json</code>
         </span>
       </div>
 
@@ -186,17 +225,101 @@ export function RestorePanel() {
 
       {asking && (
         <AdminDialog
-          title="Restore this backup?"
+          title={
+            preview?.kind === "legacy"
+              ? "Bring in the old app's records?"
+              : "Restore this backup?"
+          }
           subtitle={name}
           onClose={() => {
             if (busy) return;
             setAsking(false);
             setText(null);
+            setPreview(null);
             if (input.current) input.current.value = "";
           }}
           busy={busy}
         >
           <div className="flex flex-col gap-4">
+            {preview && (
+              <div className="rounded-2xl bg-cream-50 p-4 ring-1 ring-ink-950/10">
+                <p className="text-sm font-bold text-ink-950">
+                  {preview.kind === "legacy"
+                    ? "Read as a backup from the old phone app"
+                    : "Read as a backup from this website"}
+                </p>
+                <p className="mt-1 text-xs text-ink-800/60">
+                  {preview.total.toLocaleString()} records in{" "}
+                  {Object.keys(preview.counts).length} tables
+                </p>
+                {/* The counts before the button, not after it. A decision made
+                    against real numbers is a different decision from one made
+                    against a filename. */}
+                <ul className="mt-3 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  {Object.entries(preview.counts).map(([table, n]) => (
+                    <li
+                      key={table}
+                      className="flex items-baseline justify-between gap-3 text-xs"
+                    >
+                      <code className="font-mono text-ink-800/70">{table}</code>
+                      <span className="shrink-0 tabular-nums text-ink-800/55">
+                        {n.toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {preview?.kind === "legacy" && (
+              <div className="rounded-2xl bg-gold-300/25 px-4 py-3">
+                <p className="text-sm font-semibold text-ink-950">
+                  Stock levels will be set to what this file says.
+                </p>
+                <p className="mt-1 text-sm text-ink-800/75">
+                  This is not a merge of the two systems. If you have counted
+                  or sold anything here since this file was exported, those
+                  changes are replaced by the old app&apos;s numbers.
+                </p>
+                <p className="mt-2 text-sm text-ink-800/75">
+                  Dishes arrive <strong>hidden</strong> from the customer menu,
+                  and every order arrives marked <strong>completed</strong> —
+                  so nothing lands in the live queue and nothing appears on the
+                  public menu until you say so.
+                </p>
+              </div>
+            )}
+
+            {preview && preview.dropped.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-ink-800/50">
+                  Not carried over
+                </p>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {preview.dropped.map((d) => (
+                    <li key={d} className="text-xs text-ink-800/65">
+                      • {d}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {preview && preview.unusable.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-brand-600">
+                  Skipped
+                </p>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {preview.unusable.map((d) => (
+                    <li key={d} className="text-xs text-ink-800/65">
+                      • {d}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <p className="text-sm text-ink-800/80">
               Rows in this file will <strong>overwrite</strong> rows with the
               same id — prices, recipes, stock levels and orders included.
@@ -223,6 +346,7 @@ export function RestorePanel() {
                 onClick={() => {
                   setAsking(false);
                   setText(null);
+                  setPreview(null);
                   if (input.current) input.current.value = "";
                 }}
                 disabled={busy}
