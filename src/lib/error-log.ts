@@ -95,6 +95,18 @@ export async function recordError(input: {
   error: unknown;
   route: string | null;
   kind: ErrorKind;
+  /**
+   * The browser's own stack, for a fault that happened there.
+   *
+   * Passed in rather than read off `input.error`, because a client fault is
+   * rebuilt as an Error on the server before it reaches here — and an Error
+   * constructed on the server captures the SERVER's stack. That produced a
+   * log entry labelled "in someone's browser" whose trace pointed at
+   * `/var/task/.next/server/…`: the reporting function itself, sending
+   * whoever reads it to the wrong file entirely. A wrong stack is worse than
+   * none, because none is obviously missing.
+   */
+  stack?: string | null;
 }): Promise<void> {
   try {
     if (isControlFlow(input.error)) return;
@@ -107,10 +119,11 @@ export async function recordError(input: {
         ? String((input.error as { digest: unknown }).digest).slice(0, 200)
         : null;
 
-    const stack =
-      input.error instanceof Error && input.error.stack
-        ? input.error.stack.slice(0, MAX_STACK)
-        : null;
+    const stack = (
+      input.stack ??
+      (input.error instanceof Error ? input.error.stack : null) ??
+      null
+    )?.slice(0, MAX_STACK) ?? null;
 
     const db = createAdminClient();
     const { data: isNew, error } = await db.rpc("record_error", {

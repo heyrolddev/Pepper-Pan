@@ -58,8 +58,8 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-ink-800/70">
             {open.length > 0
-              ? "Recorded automatically when a page or a button fails — for you or for a customer. Tick one off once it's sorted; if it happens again it comes back on its own."
-              : "Everything here has been ticked off."}
+              ? "Recorded automatically when a page or a button fails — for you or for a customer. Mark one fixed once you have dealt with it; if the same fault happens again it reopens itself."
+              : "Everything here has been marked fixed."}
           </p>
         </div>
 
@@ -70,8 +70,8 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
               className="rounded-full bg-cream-50 px-3.5 py-1.5 text-xs font-bold text-ink-800/70 ring-1 ring-ink-950/10 transition-colors hover:bg-ink-950 hover:text-cream-50"
             >
               {showResolved
-                ? `Back to the ${open.length} open`
-                : `${resolved.length} sorted`}
+                ? `Back to the ${open.length} still broken`
+                : `${resolved.length} fixed`}
             </button>
             {showResolved && (
               <button
@@ -85,7 +85,7 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
                 disabled={pending}
                 className="rounded-full px-3.5 py-1.5 text-xs font-bold text-ink-800/60 transition-colors hover:text-brand-600 disabled:opacity-60"
               >
-                Clear them
+                Delete these
               </button>
             )}
           </div>
@@ -124,6 +124,13 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
                   <span>last {formatDateTime(e.last_seen)}</span>
                 </p>
               </div>
+              {/* "Mark fixed" moves it out of the open list and nothing
+                  more — it does not delete it, and it does not fix anything.
+                  It is the owner saying "I have dealt with this", so the list
+                  above stays a list of things that still need attention. If
+                  the same fault happens again the database reopens the row by
+                  itself, which is how "I thought I fixed that" becomes
+                  visible instead of assumed. */}
               <button
                 onClick={() => toggle(e.id, !e.resolved)}
                 disabled={pending}
@@ -133,7 +140,7 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
                     : "bg-jade-600 text-cream-50 hover:bg-jade-700"
                 }`}
               >
-                {e.resolved ? "Reopen" : "Sorted"}
+                {e.resolved ? "Not fixed" : "Mark fixed"}
               </button>
             </div>
 
