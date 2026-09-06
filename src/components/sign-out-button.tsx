@@ -18,10 +18,10 @@ import { createClient } from "@/lib/supabase/client";
  * once you're being asked a question, the question should look like itself.
  */
 export function SignOutButton({
-  scrolled = true,
+  solid = true,
   variant = "nav",
 }: {
-  scrolled?: boolean;
+  solid?: boolean;
   /** How the trigger is styled. The dialog never changes. */
   variant?: "nav" | "rail" | "block";
 }) {
@@ -53,7 +53,7 @@ export function SignOutButton({
       : variant === "block"
         ? "rounded-full bg-ink-950/5 px-5 py-2.5 text-sm font-bold text-ink-800 ring-1 ring-ink-950/10 transition-colors hover:bg-brand-600 hover:text-cream-50"
         : `rounded-full px-3 py-2 transition-colors ${
-            scrolled
+            solid
               ? "text-ink-800 hover:text-brand-600"
               : "text-cream-100/80 hover:text-gold-400"
           }`;

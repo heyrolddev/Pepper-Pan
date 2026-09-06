@@ -33,6 +33,7 @@ export default function AppError({
       message: error.message,
       route: pathname,
       digest: error.digest,
+      stack: error.stack,
     });
   }, [error, pathname]);
 

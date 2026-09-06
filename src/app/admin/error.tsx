@@ -43,6 +43,7 @@ export default function AdminError({
       message: error.message,
       route: pathname,
       digest: error.digest,
+      stack: error.stack,
     });
   }, [error, pathname]);
 

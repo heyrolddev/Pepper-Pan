@@ -90,10 +90,27 @@ export function Nav({
     setScrolled(latest > 24);
   });
 
-  // Every page opens with a dark hero/masthead, so the transparent
-  // (unscrolled) nav sits on dark and needs light type; once it gains its
-  // cream background on scroll it flips to dark type.
-  const linkClass = scrolled
+  /**
+   * Whether the nav is floating over something dark right now.
+   *
+   * This used to be `!solid`, on the assumption — written into the comment
+   * that was here — that every page opens with a dark hero. That stopped
+   * being true, and it fails in the worst way available: pale cream type on a
+   * cream page. On a news post the Sign out button was present, clickable and
+   * completely invisible.
+   *
+   * So the pale treatment is opt-in now and the solid one is the default,
+   * chosen on how the two fail. Defaulting to solid on a page that does have
+   * a dark hero looks slightly early. Defaulting to pale on a page that does
+   * not makes controls vanish. Only one of those is a bug, and a page added
+   * next year gets the safe answer without anybody remembering this comment.
+   *
+   * `solid` rather than `solid` everywhere below, because that is the
+   * question each of those colours is actually asking.
+   */
+  const solid = scrolled || pathname !== "/";
+
+  const linkClass = solid
     ? "text-ink-800 hover:text-brand-600"
     : "text-cream-100/80 hover:text-gold-400";
 
@@ -104,7 +121,7 @@ export function Nav({
       // Opaque rather than translucent+blur: a backdrop-filter over
       // scrolling content costs a GPU pass every frame.
       className={`sticky top-0 z-40 transition-colors duration-300 ${
-        scrolled
+        solid
           ? "bg-cream-50 shadow-[inset_0_-1px_0_rgb(28_17_14/0.12)]"
           : "bg-transparent"
       }`}
@@ -148,14 +165,14 @@ export function Nav({
               href="/admin"
               title="You're signed in as shop staff — open Pepper Pan HQ"
               className={`group flex items-center gap-1.5 rounded-full py-1.5 pl-2 pr-3 font-bold ring-2 transition-all hover:scale-105 ${
-                scrolled
+                solid
                   ? "bg-ink-950 text-gold-400 ring-gold-400/40"
                   : "bg-brand-600 text-cream-50 ring-gold-400/60"
               }`}
             >
               <span
                 className={`grid h-6 w-6 place-items-center rounded-full ${
-                  scrolled ? "bg-brand-600 text-cream-50" : "bg-ink-950 text-gold-400"
+                  solid ? "bg-brand-600 text-cream-50" : "bg-ink-950 text-gold-400"
                 }`}
               >
                 <ChefHatIcon className="h-3.5 w-3.5" />
@@ -244,7 +261,7 @@ export function Nav({
               className={`flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 font-bold transition-all hover:scale-105 min-[880px]:pr-3 ${
                 onAccount
                   ? "bg-brand-600 text-cream-50 ring-2 ring-gold-400"
-                  : scrolled
+                  : solid
                     ? "bg-ink-950/5 text-ink-950 ring-1 ring-ink-950/10"
                     : "bg-cream-50/10 text-cream-50 ring-1 ring-cream-50/20"
               }`}
@@ -269,13 +286,13 @@ export function Nav({
             // It lives on the account page instead, which is where the
             // account chip beside it already leads.
             <span className="hidden min-[880px]:block">
-              <SignOutButton scrolled={scrolled} />
+              <SignOutButton solid={solid} />
             </span>
           ) : (
             <Link
               href="/login"
               className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 font-bold transition-colors ${
-                scrolled
+                solid
                   ? "bg-ink-950 text-cream-50 hover:bg-brand-600"
                   : "bg-brand-600 text-cream-50 hover:bg-brand-700"
               }`}

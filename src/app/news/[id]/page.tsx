@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnnouncementMedia, hasMedia } from "@/components/announcement-media";
+import { Chili, NoodleBowl } from "@/components/spot-art";
 import { getAnnouncement } from "@/lib/announcements-server";
 import { longDate, windowText } from "@/lib/announcement-format";
 
@@ -52,8 +53,50 @@ export default async function AnnouncementPage({ params }: PageProps<"/news/[id]
   const kind = badge[row.kind] ?? badge.news;
 
   return (
-    <main className="under-nav flex-1 bg-cream-50">
-      <article className="mx-auto max-w-3xl px-6 py-14">
+    /**
+     * A sheet on a textured ground, rather than text on a blank page.
+     *
+     * This was a column of type centred on flat cream, which reads as an
+     * unfinished draft however good the writing is. The brief was "graphics,
+     * but do not slow the site down", so nothing here is a photograph, a font
+     * or a request:
+     *
+     *   The speckle is one CSS radial-gradient tiled at 22px. No image, no
+     *   file, no bytes beyond the rule itself.
+     *
+     *   The two marks are the shop's own inline SVG line art, already in the
+     *   bundle and used on the homepage. A few hundred bytes each, drawn in
+     *   `currentColor`, so tinting them is one class.
+     *
+     *   The post itself sits on a bordered, offset-shadow sheet — the same
+     *   construction as the cards that link here, so arriving from one does
+     *   not feel like arriving at a different website.
+     *
+     * All of it is `pointer-events-none` and `aria-hidden`: decoration that
+     * can be clicked, or read aloud, has stopped being decoration.
+     */
+    <main className="under-nav relative flex-1 overflow-hidden bg-cream-100">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgb(18 10 8 / 0.055) 1px, transparent 0)",
+          backgroundSize: "22px 22px",
+        }}
+      />
+      {/* Bleeding off the edges on purpose — a mark fully inside the page
+          reads as a sticker, one that runs off reads as printed stock. */}
+      <Chili
+        aria-hidden
+        className="pointer-events-none absolute -right-20 -top-16 h-80 w-80 rotate-12 text-brand-600/[0.07]"
+      />
+      <NoodleBowl
+        aria-hidden
+        className="pointer-events-none absolute -bottom-24 -left-24 hidden h-96 w-96 -rotate-12 text-ink-950/[0.05] lg:block"
+      />
+
+      <article className="relative mx-auto max-w-3xl px-6 py-14">
         <Link
           href="/news"
           className="text-xs font-black uppercase tracking-widest text-ink-800/50 transition-colors hover:text-brand-600"
@@ -61,7 +104,8 @@ export default async function AnnouncementPage({ params }: PageProps<"/news/[id]
           ← News &amp; promos
         </Link>
 
-        <p className="mt-8 flex flex-wrap items-center gap-2">
+        <div className="mt-6 rounded-3xl border-4 border-ink-950 bg-cream-50 p-6 shadow-[8px_8px_0_0_theme(colors.ink.950)] sm:p-10">
+        <p className="flex flex-wrap items-center gap-2">
           <span
             className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest ${kind.chip}`}
           >
@@ -96,7 +140,7 @@ export default async function AnnouncementPage({ params }: PageProps<"/news/[id]
           </div>
         )}
 
-        <div className="mt-12 flex flex-wrap gap-3 border-t border-ink-950/10 pt-8">
+        <div className="mt-10 flex flex-wrap gap-3 border-t-2 border-ink-950/10 pt-8">
           <Link
             href="/menu"
             className="rounded-full bg-ink-950 px-7 py-3.5 font-bold text-gold-400 transition-transform hover:scale-105"
@@ -109,6 +153,7 @@ export default async function AnnouncementPage({ params }: PageProps<"/news/[id]
           >
             Everything else
           </Link>
+        </div>
         </div>
       </article>
     </main>

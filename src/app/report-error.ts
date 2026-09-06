@@ -33,6 +33,8 @@ export async function reportClientError(input: {
   message: string;
   route: string;
   digest?: string;
+  /** The browser's stack. See `recordError` for why it has to travel. */
+  stack?: string;
 }): Promise<void> {
   const head = await headers();
   const ip = head.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -53,5 +55,7 @@ export async function reportClientError(input: {
     error,
     route: String(input.route ?? "").slice(0, 200) || null,
     kind: "client",
+    // The browser's, or nothing. Never the one this function would capture.
+    stack: input.stack ? String(input.stack).slice(0, 4000) : null,
   });
 }
