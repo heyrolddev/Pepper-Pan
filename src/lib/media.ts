@@ -82,7 +82,9 @@ export function checkMedia(type: string, size: number): MediaCheck {
     return {
       ok: false,
       error:
-        "Save that video as MP4 — it's the one every phone and browser can play. Most editors have it under Export or Share.",
+        "That video needs to be MP4 — the one every phone and browser can play. " +
+        "On an iPhone: open the clip in Photos, tap Edit then Done to save a copy, " +
+        "and pick that. On Android it is already MP4.",
     };
   }
   return {

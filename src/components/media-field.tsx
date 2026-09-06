@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { discardUpload, uploadMedia } from "@/app/admin/promos/actions";
-import { ACCEPT_ATTR, checkMedia, humanBytes } from "@/lib/media";
+import { discardUpload, signMediaUpload } from "@/app/admin/promos/actions";
+import { createClient } from "@/lib/supabase/client";
+import { ACCEPT_ATTR, MEDIA_BUCKET, checkMedia, humanBytes } from "@/lib/media";
 
 /**
  * Pick a photo or a video, see it, change your mind.
@@ -39,12 +40,30 @@ export function MediaField({
       return setError(checked.error);
     }
 
-    const form = new FormData();
-    form.set("file", file);
     startTransition(async () => {
-      const r = await uploadMedia(form);
+      // Two steps, and the file only moves in the second one.
+      //
+      // The server says who may upload and where it goes, and hands back a
+      // token for that one path. The bytes then go straight from this phone
+      // to storage — never through the server, so a 25MB video cannot be
+      // stopped by a request-body limit that exists for requests carrying
+      // JSON, not films.
+      const r = await signMediaUpload({ type: file.type, size: file.size });
+      if (!r.ok) {
+        if (input.current) input.current.value = "";
+        return setError(r.error);
+      }
+
+      const { error: uploadError } = await createClient()
+        .storage.from(MEDIA_BUCKET)
+        .uploadToSignedUrl(r.path, r.token, file, { contentType: file.type });
+
       if (input.current) input.current.value = "";
-      if (!r.ok) return setError(r.error);
+      if (uploadError) {
+        return setError(
+          `Upload failed: ${uploadError.message}. If it is a long video, try a shorter clip.`
+        );
+      }
       // One at a time: a card shows a photo or a video, never both, and
       // holding two would only raise the question of which one wins.
       if (current) void discardUpload(current);
