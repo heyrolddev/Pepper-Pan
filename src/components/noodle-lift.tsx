@@ -60,7 +60,8 @@ import { usePrefersReducedMotion } from "@/lib/reduced-motion";
  * Rigid things can be photographs; things that change shape have to be drawn.
  * Neither the chopsticks nor the hand changes shape during the lift — both
  * only ride up — so a cut-out of a real hand holding a real pair would drop
- * straight in. The noodles cannot, for the reason above.
+ * straight in where the hand is drawn. The noodles cannot, for the reason
+ * above.
  *
  * GEOMETRY, so the numbers are not magic
  *   viewBox        0 -160 1200 640 — the frame starts 160 above the origin.
@@ -308,14 +309,15 @@ export function NoodleLift() {
             <stop offset="1" stopColor="#1d1108" />
           </linearGradient>
 
-          {/* The forearm has to end somewhere, and the top edge of the band
-              cuts it off mid-air — an arm sliced flat across is the one thing
-              worse than no arm at all. So it fades into the cream instead,
-              over the same colour the section above ends on. The mirror of
-              the dusk below. */}
+          {/* The forearm has to end somewhere. Level, it crossed 660 units of
+              band before reaching the edge — at the hand's own scale that is
+              most of a whole arm, and it read as a log. Angled up, only about
+              240 units of it are ever on screen, which is a forearm. It leaves
+              through the top, so it fades into the cream there rather than
+              being cut flat across. The mirror of the dusk below. */}
           <linearGradient id="nl-haze" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#fffaf2" stopOpacity="1" />
-            <stop offset="0.45" stopColor="#fffaf2" stopOpacity="0.82" />
+            <stop offset="0.5" stopColor="#fffaf2" stopOpacity="0.85" />
             <stop offset="1" stopColor="#fffaf2" stopOpacity="0" />
           </linearGradient>
 
@@ -365,45 +367,43 @@ export function NoodleLift() {
         </defs>
 
         {/* ---- the forearm, behind the haze ---- */}
-          {/*
-            A hand can be a photograph — it does not change shape during the
-            lift, it only rides up with the chopsticks — so a cut-out would
-            drop into this group unchanged. Drawn, it is built the same way as
-            the noodles: flat fill, one dark contour, one highlight.
+        {/*
+          The grip is the real one: the hand is level, the chopsticks hang
+          vertically through it, the fingers curl down behind them and the
+          thumb presses from the front. The forearm angles up from a bent
+          wrist, which is both what a hand reaching into a pan does and what
+          keeps the visible stretch of arm down to a forearm's worth.
 
-            Two things had to move for it to fit. The sticks got thinner (14
-            rather than 22): the hand grips 150 units above the tips, and at 22
-            wide that is a stubby 7:1 shaft that reads as holding a pencil by
-            the nib. At 14 it is 14:1, which reads as chopsticks.
-
-            And the forearm leans away from the sticks rather than running
-            along them. Drawn on the same axis it would swallow the ends that
-            protrude past the fist, and a chopstick with no visible top end
-            stops looking like a chopstick. It is painted first, so those ends
-            sit in front of it — which is where they are.
-          */}
+          The fade is why the arm is its own motion group: it belongs to the
+          band, not to the arm, so inside the moving group it would travel
+          with the thing it is meant to fade. Painted between the two groups,
+          it catches the arm on its way out of the top and leaves the hand —
+          drawn after it — crisp.
+        */}
         <motion.g style={{ ...moving, transformOrigin: "610px 280px" }}>
-          <g transform="rotate(-26 610 96)">
-            <path
-              d="M566 -168 L494 -600 L592 -616 L678 -172 Z"
-              fill="#d99a6b"
-              stroke="#2b1b10"
-              strokeWidth={2.6}
-              strokeLinejoin="round"
-            />
-            <path d="M566 -168 L494 -600 L530 -606 L596 -170 Z" fill="#f6cfae" opacity="0.5" />
-
-          </g>
+          <path
+            d="M476 -138 L-92 -466 L-145 -374 L423 -46 Z"
+            fill="#e0aa7e"
+            stroke="#2b1b10"
+            strokeWidth={2.6}
+            strokeLinejoin="round"
+          />
+          <path d="M476 -138 L-92 -466 L-118 -420 L450 -92 Z" fill="#f7d6b4" opacity="0.5" />
         </motion.g>
 
-        {/* The cream the forearm dissolves into. Static, because it belongs
-            to the band rather than to the arm — inside the moving group it
-            would travel with the thing it is meant to fade. The hand is
-            painted after it and stays crisp; only the arm above the wrist
-            goes. */}
-        <rect x="-60" y="-210" width="1320" height="110" fill="url(#nl-haze)" />
+        <rect x="-60" y="-210" width="1320" height="60" fill="url(#nl-haze)" />
 
         {/* ---- the pull, the chopsticks, and the hand ---- */}
+        {/*
+          Painting order is the pose: hand, then the far stick, then the
+          fingers, then the near stick, then the thumb. The sticks straddle the
+          index finger that way, which is where they actually sit.
+
+          A hand can be a photograph — it does not change shape during the
+          lift, it only rides up with the chopsticks — so a cut-out would drop
+          straight in here. Drawn, it is built like the noodles: flat fill, one
+          dark contour, one highlight.
+        */}
         <motion.g style={{ ...moving, transformOrigin: "610px 280px" }}>
           {PULL_ART.map((a, i) => (
             <Noodle key={i} art={a} />
@@ -412,65 +412,66 @@ export function NoodleLift() {
             <rect x="490" y="0" width="230" height="920" filter="url(#nl-pepper)" opacity="0.9" />
           </g>
 
-          <g transform="rotate(-26 610 96)">
-            {/* the chopsticks */}
-            <rect x="598" y="-246" width="14" height="342" rx="3" fill="url(#nl-wood)" />
-            <rect x="598" y="-246" width="5" height="342" fill="#ffffff" opacity="0.24" />
-            <path d="M598 96 h14 l-4 24 h-6 Z" fill="#8a5f2c" />
+          {/* the back of the hand — its left edge runs along the wrist, so it
+              meets the forearm flush and the contour there reads as a crease */}
+          <path
+            d="M486 -148 C 528 -156, 578 -144, 606 -116 C 626 -96, 630 -62, 618 -44
+               C 606 -28, 566 -22, 530 -26 L406 -40 Z"
+            fill="#e8b489"
+            stroke="#2b1b10"
+            strokeWidth={2.6}
+            strokeLinejoin="round"
+          />
+          <path d="M486 -148 C 528 -156, 578 -144, 606 -116 L 556 -106 L 462 -118 Z" fill="#f7d6b4" opacity="0.55" />
 
-            <rect x="624" y="-250" width="14" height="338" rx="3" fill="url(#nl-wood)" />
-            <rect x="624" y="-250" width="5" height="338" fill="#ffffff" opacity="0.24" />
-            <path d="M624 88 h14 l-4 24 h-6 Z" fill="#8a5f2c" />
+          {/* the far chopstick */}
+          <rect x="594" y="-300" width="12" height="396" rx="3" fill="#1b2233" />
+          <rect x="594" y="-300" width="4" height="396" fill="#4d5a76" opacity="0.7" />
+          <path d="M594 96 h12 l-4 26 h-4 Z" fill="#1b2233" />
 
-            {/* The hand, in three pieces: the mass, the fingers, the thumb.
-                The silhouette is what identifies a hand — a rounded box with
-                bars across it is a waffle. */}
-            <path
-              d="M560 -200 C 542 -174, 534 -142, 540 -112 L 544 -34
-                 C 548 -16, 566 -4, 588 -6 L 642 -10 C 662 -14, 672 -32, 670 -52
-                 L 674 -194 Z"
-              fill="#dda173"
-              stroke="#2b1b10"
-              strokeWidth={2.6}
-              strokeLinejoin="round"
-            />
-
-            {/* Four fingers as ONE shape with scalloped tips, not four bars.
-                Separate outlined bars read as sausages; a silhouette with
-                creases in it reads as a hand. The tips step back as they go
-                down, because an index finger is longer than a little one. */}
-            <path
-              d="M588 -166
-                 L646 -162 Q668 -160 668 -143 Q668 -126 646 -126
-                 L650 -124 Q672 -122 672 -105 Q672 -88 650 -88
-                 L644 -86 Q664 -84 664 -68 Q664 -52 644 -52
-                 L634 -50 Q652 -48 652 -33 Q652 -18 632 -18
-                 L588 -22 Z"
-              fill="#eab288"
-              stroke="#2b1b10"
-              strokeWidth={2.4}
-              strokeLinejoin="round"
-            />
-            <g stroke="#2b1b10" strokeWidth={1.8} strokeOpacity={0.55} fill="none">
-              <path d="M646 -126 L600 -130" />
-              <path d="M650 -88 L602 -92" />
-              <path d="M644 -52 L602 -56" />
-            </g>
-
-            {/* The thumb, over the fingers and pressing toward the sticks —
-                which is the half of a chopstick grip that people read. */}
-            <rect
-              x="570"
-              y="-136"
-              width="42"
-              height="86"
-              rx="21"
-              transform="rotate(26 591 -93)"
-              fill="#f2c096"
-              stroke="#2b1b10"
-              strokeWidth={2.4}
-            />
+          {/* Four fingers curling down behind the sticks. One shape with
+              scalloped tips and creases cut into it — separately outlined bars
+              read as sausages — and the middle finger is the longest. */}
+          <path
+            d="M470 -46 L612 -52
+               L612 4 Q612 36 592 36 Q572 36 572 4
+               L568 6 Q568 48 551 48 Q534 48 534 6
+               L530 8 Q530 38 515 38 Q500 38 500 8
+               L496 10 Q496 32 483 32 Q470 32 470 10 Z"
+            fill="#efc39c"
+            stroke="#2b1b10"
+            strokeWidth={2.4}
+            strokeLinejoin="round"
+          />
+          <g stroke="#2b1b10" strokeWidth={1.8} strokeOpacity={0.5} fill="none">
+            <path d="M572 4 L570 -50" />
+            <path d="M534 6 L532 -48" />
+            <path d="M500 8 L498 -46" />
           </g>
+
+          {/* the near chopstick */}
+          <rect x="620" y="-306" width="12" height="394" rx="3" fill="#1b2233" />
+          <rect x="620" y="-306" width="4" height="394" fill="#4d5a76" opacity="0.7" />
+          <path d="M620 88 h12 l-4 26 h-4 Z" fill="#1b2233" />
+
+          {/* The thumb, in front of both sticks — that is the half of a
+              chopstick grip people actually read. */}
+          <path
+            d="M602 -100 C 624 -94, 636 -68, 634 -38 C 632 -12, 622 8, 606 10
+               C 592 12, 584 -2, 584 -22 C 584 -50, 590 -82, 602 -100 Z"
+            fill="#f5cfa9"
+            stroke="#2b1b10"
+            strokeWidth={2.4}
+            strokeLinejoin="round"
+          />
+          <path
+            d="M604 -30 C 618 -32, 626 -22, 624 -10 C 622 0, 612 5, 604 2
+               C 598 -2, 598 -28, 604 -30 Z"
+            fill="#fae3c8"
+            stroke="#2b1b10"
+            strokeWidth={1.5}
+            strokeOpacity={0.6}
+          />
         </motion.g>
 
         {/* ---- the pan, painted last so it covers the pull ---- */}
