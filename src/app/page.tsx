@@ -171,6 +171,17 @@ export default async function Home() {
     },
   ];
 
+  /**
+   * News with nothing beside it.
+   *
+   * Named once and read twice — by the column layout and by the card shape —
+   * so the two cannot disagree about whether News is sharing the row. When it
+   * is alone, a row card stretches the full page and becomes a letterbox with
+   * a stamp in the corner; it takes the boxed shape instead.
+   */
+  const newsAlone =
+    announcements.news.length > 0 && announcements.promoCards.length === 0;
+
   return (
     <main className="flex-1">
       {/* Hours, address, phone and rating for search engines — read from
@@ -338,7 +349,7 @@ export default async function Home() {
               with something missing beside it. */}
           <div
             className={`grid gap-8 ${
-              announcements.promoCards.length > 0 && announcements.news.length > 0
+              !newsAlone && announcements.promoCards.length > 0
                 ? "lg:grid-cols-[1.4fr_1fr]"
                 : ""
             }`}
@@ -405,47 +416,89 @@ export default async function Home() {
                     News
                   </h2>
                 </Reveal>
-                <ul className="flex flex-col gap-3">
+                {/* Two shapes, because the column they sit in is two
+                    different widths.
+                    
+                    Beside What's on, News is the narrow track: a row — small
+                    picture, title, two lines — fits and a boxed card would be
+                    cramped. Alone, that same row stretches the full page and
+                    becomes a letterbox with a stamp in the corner, which is
+                    what it looked like. So on its own it takes the shape of
+                    the promo cards: picture on top, text under, in a grid
+                    that fills the width instead of one item spanning it.
+                    
+                    Both shapes carry the same thick border and offset shadow
+                    as What's on, so the whole section reads as one family
+                    rather than as two components that met on a page. */}
+                <ul
+                  className={
+                    newsAlone
+                      ? "grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+                      : "flex flex-col gap-3"
+                  }
+                >
                   {announcements.news.map((n, i) => (
-                    <li key={n.id}>
-                      <Reveal delay={i * 0.06}>
-                        <Link
-                          href={`/news/${n.id}`}
-                          className="group flex items-center gap-4 rounded-2xl bg-cream-100 p-4 ring-1 ring-ink-950/10 transition-colors hover:bg-gold-50 hover:ring-gold-400 sm:gap-5 sm:p-5"
-                        >
-                          {/* Twice the size it was.
-                              
-                              A 64px square is a favicon, not a photograph:
-                              at that scale a bowl of noodles and a poster of
-                              text are the same beige rectangle, so it added
-                              nothing to the decision to tap. 128px is enough
-                              to tell what the picture is of, which is the
-                              only job it has here.
-                              
-                              It also gets the border and offset shadow the
-                              promo cards use, so the two kinds of card read
-                              as the same family rather than as one styled
-                              and one left plain. */}
-                          {hasMedia(n) && (
-                            <AnnouncementMedia
-                              row={n}
-                              className="h-24 w-24 shrink-0 rounded-xl border-2 border-ink-950 bg-ink-950 object-cover shadow-[3px_3px_0_0_theme(colors.ink.950)] sm:h-32 sm:w-32"
-                            />
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/40">
-                              {manilaDate(n.starts_at ?? n.created_at)}
-                            </p>
-                            <h3 className="mt-1 font-display text-lg font-black text-ink-950 group-hover:underline">
-                              {n.title}
-                            </h3>
-                            {n.body && (
-                              <p className="mt-1 line-clamp-2 text-sm text-ink-800/70">
-                                {n.body}
-                              </p>
+                    <li key={n.id} className={newsAlone ? "h-full" : undefined}>
+                      <Reveal delay={i * 0.06} className={newsAlone ? "h-full" : undefined}>
+                        {newsAlone ? (
+                          <Link
+                            href={`/news/${n.id}`}
+                            className="group flex h-full flex-col overflow-hidden rounded-3xl border-4 border-ink-950 bg-cream-100 shadow-[6px_6px_0_0_theme(colors.ink.950)] transition-transform hover:-translate-y-1"
+                          >
+                            {hasMedia(n) && (
+                              <AnnouncementMedia
+                                row={n}
+                                className="h-44 w-full bg-ink-950 object-cover"
+                              />
                             )}
-                          </div>
-                        </Link>
+                            <div className="flex flex-1 flex-col p-6">
+                              <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/40">
+                                {manilaDate(n.starts_at ?? n.created_at)}
+                              </p>
+                              <h3 className="mt-1.5 font-display text-2xl font-black leading-tight tracking-tight text-ink-950">
+                                {n.title}
+                              </h3>
+                              {n.body && (
+                                <p className="mt-2 line-clamp-3 text-sm text-ink-800/70">
+                                  {n.body}
+                                </p>
+                              )}
+                              <p className="mt-auto pt-4 text-xs font-black uppercase tracking-widest text-brand-600 group-hover:underline">
+                                Read more →
+                              </p>
+                            </div>
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/news/${n.id}`}
+                            className="group flex items-center gap-4 rounded-2xl border-2 border-ink-950 bg-cream-100 p-4 shadow-[4px_4px_0_0_theme(colors.ink.950)] transition-transform hover:-translate-y-0.5 sm:gap-5 sm:p-5"
+                          >
+                            {/* Twice the size it was. A 64px square is a
+                                favicon, not a photograph: at that scale a bowl
+                                of noodles and a poster of text are the same
+                                beige rectangle. 128px is enough to tell what
+                                the picture is of, which is its only job. */}
+                            {hasMedia(n) && (
+                              <AnnouncementMedia
+                                row={n}
+                                className="h-24 w-24 shrink-0 rounded-xl border-2 border-ink-950 bg-ink-950 object-cover sm:h-32 sm:w-32"
+                              />
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/40">
+                                {manilaDate(n.starts_at ?? n.created_at)}
+                              </p>
+                              <h3 className="mt-1 font-display text-lg font-black text-ink-950 group-hover:underline">
+                                {n.title}
+                              </h3>
+                              {n.body && (
+                                <p className="mt-1 line-clamp-2 text-sm text-ink-800/70">
+                                  {n.body}
+                                </p>
+                              )}
+                            </div>
+                          </Link>
+                        )}
                       </Reveal>
                     </li>
                   ))}
