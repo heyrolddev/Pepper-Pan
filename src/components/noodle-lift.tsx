@@ -58,13 +58,17 @@ import { usePrefersReducedMotion } from "@/lib/reduced-motion";
  * WHAT COULD BE PHOTOGRAPHED
  *
  * Rigid things can be photographs; things that change shape have to be drawn.
- * Chopsticks never bend, so a cut-out of a real pair would drop straight into
- * <g id="sticks">. The noodles cannot be, for the reason above.
+ * Neither the chopsticks nor the hand changes shape during the lift — both
+ * only ride up — so a cut-out of a real hand holding a real pair would drop
+ * straight in. The noodles cannot, for the reason above.
  *
  * GEOMETRY, so the numbers are not magic
- *   viewBox        0 -60 1200 580 — the frame starts 60 above the origin, and
- *                  that headroom keeps the chopsticks on screen at full lift
- *   pan surface    y ~= 300; bands run to 492, then dusk takes them to ink-950
+ *   viewBox        0 -160 1200 640 — the frame starts 160 above the origin.
+ *                  That headroom is what the hand costs: it grips 150 units
+ *                  above the chopstick tips, and at full lift that is well
+ *                  above where the old frame ended
+ *   pan surface    y ~= 260 on screen; the pan is drawn at 300 and shifted up
+ *                  40, which pays for part of the headroom
  *   noodles drawn  y = 74 (gripped) down to y = 900 (deep in the pan)
  *   lift travel    y +240 (buried) to y -40 (fully lifted)
  */
@@ -287,9 +291,9 @@ export function NoodleLift() {
   return (
     <div ref={ref} aria-hidden className="relative overflow-hidden bg-cream-50">
       <svg
-        viewBox="0 -60 1200 580"
+        viewBox="0 -210 1200 690"
         preserveAspectRatio="xMidYMax slice"
-        className="block h-[48.3vw] max-h-[660px] min-h-[340px] w-full"
+        className="block h-[57.5vw] max-h-[800px] min-h-[400px] w-full"
       >
         <defs>
           <linearGradient id="nl-wood" x1="0" y1="0" x2="1" y2="1">
@@ -302,6 +306,17 @@ export function NoodleLift() {
           <linearGradient id="nl-sauce" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#4b2d11" />
             <stop offset="1" stopColor="#1d1108" />
+          </linearGradient>
+
+          {/* The forearm has to end somewhere, and the top edge of the band
+              cuts it off mid-air — an arm sliced flat across is the one thing
+              worse than no arm at all. So it fades into the cream instead,
+              over the same colour the section above ends on. The mirror of
+              the dusk below. */}
+          <linearGradient id="nl-haze" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#fffaf2" stopOpacity="1" />
+            <stop offset="0.45" stopColor="#fffaf2" stopOpacity="0.82" />
+            <stop offset="1" stopColor="#fffaf2" stopOpacity="0" />
           </linearGradient>
 
           {/* The hand-off into the section below. Ends on the exact ink-950 of
@@ -349,7 +364,46 @@ export function NoodleLift() {
           </mask>
         </defs>
 
-        {/* ---- the pull, behind the pan ---- */}
+        {/* ---- the forearm, behind the haze ---- */}
+          {/*
+            A hand can be a photograph — it does not change shape during the
+            lift, it only rides up with the chopsticks — so a cut-out would
+            drop into this group unchanged. Drawn, it is built the same way as
+            the noodles: flat fill, one dark contour, one highlight.
+
+            Two things had to move for it to fit. The sticks got thinner (14
+            rather than 22): the hand grips 150 units above the tips, and at 22
+            wide that is a stubby 7:1 shaft that reads as holding a pencil by
+            the nib. At 14 it is 14:1, which reads as chopsticks.
+
+            And the forearm leans away from the sticks rather than running
+            along them. Drawn on the same axis it would swallow the ends that
+            protrude past the fist, and a chopstick with no visible top end
+            stops looking like a chopstick. It is painted first, so those ends
+            sit in front of it — which is where they are.
+          */}
+        <motion.g style={{ ...moving, transformOrigin: "610px 280px" }}>
+          <g transform="rotate(-26 610 96)">
+            <path
+              d="M566 -168 L494 -600 L592 -616 L678 -172 Z"
+              fill="#d99a6b"
+              stroke="#2b1b10"
+              strokeWidth={2.6}
+              strokeLinejoin="round"
+            />
+            <path d="M566 -168 L494 -600 L530 -606 L596 -170 Z" fill="#f6cfae" opacity="0.5" />
+
+          </g>
+        </motion.g>
+
+        {/* The cream the forearm dissolves into. Static, because it belongs
+            to the band rather than to the arm — inside the moving group it
+            would travel with the thing it is meant to fade. The hand is
+            painted after it and stays crisp; only the arm above the wrist
+            goes. */}
+        <rect x="-60" y="-210" width="1320" height="110" fill="url(#nl-haze)" />
+
+        {/* ---- the pull, the chopsticks, and the hand ---- */}
         <motion.g style={{ ...moving, transformOrigin: "610px 280px" }}>
           {PULL_ART.map((a, i) => (
             <Noodle key={i} art={a} />
@@ -358,22 +412,71 @@ export function NoodleLift() {
             <rect x="490" y="0" width="230" height="920" filter="url(#nl-pepper)" opacity="0.9" />
           </g>
 
-          {/* ---- the chopsticks ---- */}
-          {/* Rigid, so this is the one part a photograph would improve: swap
-              these shapes for a cut-out and nothing else changes. */}
-          <g id="sticks" transform="rotate(-26 610 96)">
-            <rect x="594" y="-420" width="22" height="516" rx="3" fill="url(#nl-wood)" />
-            <rect x="594" y="-420" width="7" height="516" fill="#ffffff" opacity="0.24" />
-            <path d="M594 96 h22 l-6 28 h-10 Z" fill="#8a5f2c" />
+          <g transform="rotate(-26 610 96)">
+            {/* the chopsticks */}
+            <rect x="598" y="-246" width="14" height="342" rx="3" fill="url(#nl-wood)" />
+            <rect x="598" y="-246" width="5" height="342" fill="#ffffff" opacity="0.24" />
+            <path d="M598 96 h14 l-4 24 h-6 Z" fill="#8a5f2c" />
 
-            <rect x="626" y="-428" width="22" height="514" rx="3" fill="url(#nl-wood)" />
-            <rect x="626" y="-428" width="7" height="514" fill="#ffffff" opacity="0.24" />
-            <path d="M626 86 h22 l-6 28 h-10 Z" fill="#8a5f2c" />
+            <rect x="624" y="-250" width="14" height="338" rx="3" fill="url(#nl-wood)" />
+            <rect x="624" y="-250" width="5" height="338" fill="#ffffff" opacity="0.24" />
+            <path d="M624 88 h14 l-4 24 h-6 Z" fill="#8a5f2c" />
+
+            {/* The hand, in three pieces: the mass, the fingers, the thumb.
+                The silhouette is what identifies a hand — a rounded box with
+                bars across it is a waffle. */}
+            <path
+              d="M560 -200 C 542 -174, 534 -142, 540 -112 L 544 -34
+                 C 548 -16, 566 -4, 588 -6 L 642 -10 C 662 -14, 672 -32, 670 -52
+                 L 674 -194 Z"
+              fill="#dda173"
+              stroke="#2b1b10"
+              strokeWidth={2.6}
+              strokeLinejoin="round"
+            />
+
+            {/* Four fingers as ONE shape with scalloped tips, not four bars.
+                Separate outlined bars read as sausages; a silhouette with
+                creases in it reads as a hand. The tips step back as they go
+                down, because an index finger is longer than a little one. */}
+            <path
+              d="M588 -166
+                 L646 -162 Q668 -160 668 -143 Q668 -126 646 -126
+                 L650 -124 Q672 -122 672 -105 Q672 -88 650 -88
+                 L644 -86 Q664 -84 664 -68 Q664 -52 644 -52
+                 L634 -50 Q652 -48 652 -33 Q652 -18 632 -18
+                 L588 -22 Z"
+              fill="#eab288"
+              stroke="#2b1b10"
+              strokeWidth={2.4}
+              strokeLinejoin="round"
+            />
+            <g stroke="#2b1b10" strokeWidth={1.8} strokeOpacity={0.55} fill="none">
+              <path d="M646 -126 L600 -130" />
+              <path d="M650 -88 L602 -92" />
+              <path d="M644 -52 L602 -56" />
+            </g>
+
+            {/* The thumb, over the fingers and pressing toward the sticks —
+                which is the half of a chopstick grip that people read. */}
+            <rect
+              x="570"
+              y="-136"
+              width="42"
+              height="86"
+              rx="21"
+              transform="rotate(26 591 -93)"
+              fill="#f2c096"
+              stroke="#2b1b10"
+              strokeWidth={2.4}
+            />
           </g>
         </motion.g>
 
         {/* ---- the pan, painted last so it covers the pull ---- */}
-        <g>
+        {/* Shifted up 40 to pay for some of the headroom the hand needed, so
+            the band grew by 100 units rather than 140. */}
+        <g transform="translate(0 -40)">
           <path d={PAN_FILL} fill="url(#nl-sauce)" />
           {PAN_ART.map((a, i) => (
             <Noodle key={i} art={a} />
@@ -384,7 +487,7 @@ export function NoodleLift() {
         </g>
 
         {/* ---- into the dark, and into the next section ---- */}
-        <rect x="-60" y="400" width="1320" height="120" fill="url(#nl-dusk)" />
+        <rect x="-60" y="360" width="1320" height="120" fill="url(#nl-dusk)" />
       </svg>
     </div>
   );
