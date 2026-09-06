@@ -10,6 +10,7 @@ import { Reveal } from "@/components/reveal";
 import { Marquee } from "@/components/marquee";
 import { CountUp } from "@/components/count-up";
 import { WhyUs } from "@/components/why-us";
+import { NoodleLift } from "@/components/noodle-lift";
 import { FanFavorites } from "@/components/fan-favorites";
 import { ReviewCarousel } from "@/components/review-carousel";
 import { SocialLinks } from "@/components/social-links";
@@ -526,6 +527,11 @@ export default async function Home() {
         </Reveal>
         <WhyUs tiles={whyUsTiles} />
       </section>
+
+      {/* ---------------------------------------------------------- */}
+      {/* Noodle lift — the hand-off into Fan favorites                */}
+      {/* ---------------------------------------------------------- */}
+      <NoodleLift />
 
       {/* ---------------------------------------------------------- */}
       {/* Fan favorites                                               */}
