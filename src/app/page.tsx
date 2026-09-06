@@ -11,7 +11,6 @@ import { Marquee } from "@/components/marquee";
 import { CountUp } from "@/components/count-up";
 import { WhyUs } from "@/components/why-us";
 import { FanFavorites } from "@/components/fan-favorites";
-import { PinnedDishes } from "@/components/pinned-dishes";
 import { ReviewCarousel } from "@/components/review-carousel";
 import { SocialLinks } from "@/components/social-links";
 import { CustomerAvatar } from "@/components/customer-avatar";
@@ -556,27 +555,9 @@ export default async function Home() {
               See all {menuCount ?? ""} items →
             </Link>
           </Reveal>
-          <div className="pinned-fallback">
-            <FanFavorites items={favorites} />
-          </div>
+          <FanFavorites items={favorites} />
         </div>
-
       </section>
-
-      {/* Its own section, and that is load-bearing rather than tidy.
-          
-          The section above carries `overflow-hidden` to clip a blurred colour
-          wash, and `overflow: hidden` on ANY ancestor silently switches off
-          `position: sticky` in every descendant — the element simply scrolls
-          away instead of pinning. Nothing warns about it: the page builds,
-          the tests pass, and the stage renders one screen of black with the
-          content already scrolled past.
-          
-          See `.pinned-stage` in globals.css for which of the two blocks is
-          shown, and why the phone gets the grid. */}
-      <div className="pinned-stage grain bg-ink-950">
-        <PinnedDishes items={favorites} />
-      </div>
 
       {/* ---------------------------------------------------------- */}
       {/* The gold band: dine-in special, and what's coming           */}
