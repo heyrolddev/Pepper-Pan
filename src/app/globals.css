@@ -386,6 +386,31 @@ html.intro-lock body {
   color: transparent;
 }
 
+/**
+ * The pinned dish stage, and the grid that stands in for it.
+ *
+ * A scroll-pinned section has no still equivalent — the pin IS the effect —
+ * so the honest fallback is a different block entirely, and exactly one of
+ * the two is ever shown.
+ *
+ * Both conditions live in one rule so they cannot drift apart, and both are
+ * CSS rather than JavaScript: deciding this with a hook would render the
+ * moving one first and swap after hydration, which is a flash of precisely
+ * what somebody asked not to see. A media query has the answer before the
+ * first paint.
+ *
+ * The width test is not cosmetic. A pinned section on a phone reads as a page
+ * that has frozen, and it spends six screens of scroll on the device with the
+ * least of it.
+ */
+.pinned-stage { display: none; }
+.pinned-fallback { display: block; }
+
+@media (prefers-reduced-motion: no-preference) and (min-width: 640px) {
+  .pinned-stage { display: block; }
+  .pinned-fallback { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
