@@ -4,11 +4,12 @@ import Image from "next/image";
 import {
   motion,
   useMotionValue,
-  useReducedMotion,
   useScroll,
   useSpring,
   useTransform,
 } from "motion/react";
+
+import { usePrefersReducedMotion } from "@/lib/reduced-motion";
 import { useRef, type MouseEvent } from "react";
 
 /**
@@ -44,7 +45,7 @@ export function TiltPhoto({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const still = useReducedMotion();
+  const still = usePrefersReducedMotion();
 
   // Where this element is in its journey up the screen: 0 as it appears from
   // the bottom, 1 once it has reached the middle. Everything below reads from
