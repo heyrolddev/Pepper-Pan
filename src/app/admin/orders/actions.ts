@@ -9,6 +9,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { pushToStaff } from "@/lib/push";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 import { PAYMENT_STATUSES, type PaymentStatus } from "@/lib/payments";
+import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
+import { cleanReason } from "@/lib/cancellation";
+import { orderLabel } from "@/lib/tickets";
 
 const BLOCKED_MESSAGE =
   "The database didn't accept that change. Re-run the latest migration (0004) in the Supabase SQL Editor.";
@@ -64,9 +67,32 @@ function nameOf(viewer: Awaited<ReturnType<typeof getViewer>>): string {
   return viewer?.profile?.full_name?.trim() || viewer?.email || "someone";
 }
 
+/**
+ * How the order should be named in the record.
+ *
+ * These lines used to carry the raw uuid — "set order 3f9c1a8e-… to
+ * completed" — which is a record of something the owner cannot look up. The
+ * ticket is what the receipt says, what the board shows and what the search
+ * box on Orders matches, so it is what goes here, with the customer's name
+ * beside it when there is one.
+ */
+type Named = { ticket: number | null; contact_name: string | null };
+const labelOf = (row: Named | undefined) =>
+  row ? orderLabel(row.ticket, row.contact_name) : "an order";
+
 export async function setOrderStatus(
   orderId: string,
-  status: OrderStatus
+  status: OrderStatus,
+  /**
+   * Why, and required when cancelling.
+   *
+   * Cancelling is the one status change that takes money back out of the
+   * drawer, and until now the shop could do it with nothing recorded at all —
+   * `cancelled_reason` had one writer, the customer cancelling their own
+   * order. So the owner could see that a paid order had become a cancelled
+   * one and had no way to ask about it.
+   */
+  reason?: string
 ): Promise<{ error: string | null }> {
   if (!ORDER_STATUSES.includes(status)) {
     return { error: "Unknown status." };
@@ -74,6 +100,10 @@ export async function setOrderStatus(
 
   const viewer = await getViewer();
   if (!can(viewer, "orders")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
+
+  const why = status === "cancelled" ? cleanReason(reason) : null;
+  if (why?.error) return { error: why.error };
 
   const supabase = await createClient();
   // `.select()` matters: without it PostgREST reports success even when a
@@ -89,9 +119,20 @@ export async function setOrderStatus(
       ...(ETA_IS_OVER.includes(status)
         ? { eta_minutes: null, eta_set_at: null }
         : {}),
+      // Stamped in the same write as the status, so there is no moment where
+      // an order is cancelled and nobody owns it. Cleared when an order is
+      // moved back off cancelled — a stale "cancelled by" on a live order is
+      // a worse record than none.
+      ...(status === "cancelled"
+        ? {
+            cancelled_reason: why!.reason,
+            cancelled_by: viewer?.profile?.id ?? null,
+            cancelled_at: new Date().toISOString(),
+          }
+        : { cancelled_reason: null, cancelled_by: null, cancelled_at: null }),
     })
     .eq("id", orderId)
-    .select("id");
+    .select("id, ticket, contact_name");
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
@@ -108,7 +149,8 @@ export async function setOrderStatus(
   await notifyOrderStatus(orderId);
 
   await record(
-    `${nameOf(viewer)} set order ${orderId} to ${status}`,
+    `${nameOf(viewer)} set ${labelOf((data as Named[])[0])} to ${status}` +
+      (why?.reason ? ` — ${why.reason}` : ""),
     viewer?.profile?.id ?? null
   );
 
@@ -128,6 +170,7 @@ export async function setOrderEta(
 ): Promise<{ error: string | null }> {
   const viewer = await getViewer();
   if (!can(viewer, "orders")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   if (minutes !== null && (!Number.isFinite(minutes) || minutes < 0 || minutes > 600)) {
     return { error: "Enter an ETA between 0 and 600 minutes." };
@@ -169,6 +212,7 @@ export async function setPaymentStatus(
 
   const viewer = await getViewer();
   if (!can(viewer, "orders")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const now = new Date().toISOString();
   const supabase = await createClient();
@@ -188,13 +232,13 @@ export async function setPaymentStatus(
           : {}),
     })
     .eq("id", orderId)
-    .select("id");
+    .select("id, ticket, contact_name");
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
   await record(
-    `${nameOf(viewer)} marked payment for order ${orderId} as ${status}`,
+    `${nameOf(viewer)} marked payment for ${labelOf((data as Named[])[0])} as ${status}`,
     viewer?.profile?.id ?? null
   );
 

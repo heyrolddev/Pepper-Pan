@@ -1,4 +1,5 @@
 import "server-only";
+import { orderLabel } from "@/lib/tickets";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -25,6 +26,22 @@ export type LedgerEntry = {
   amount: number;
   category: string | null;
   note: string | null;
+  /**
+   * Whether this line was typed in or worked out from a sale.
+   *
+   * The balance always counted cash sales — see `onHand` below — but the
+   * history only ever listed `cash_ledger`, the rows somebody entered by
+   * hand. So the number moved and nothing on screen said why, which is the
+   * exact shape of a figure nobody trusts.
+   *
+   * Sales are not written into `cash_ledger` to fix that. They are derived at
+   * read time, because a sale is already a row in `orders` and copying it
+   * would mean two sources of truth for the same peso — and the balance would
+   * count it twice the moment anything went slightly wrong.
+   */
+  derived?: boolean;
+  /** Who was on the till. Only ever set on a derived line. */
+  by?: string | null;
 };
 export type Receivable = {
   id: string;
@@ -154,7 +171,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
   const netProfit = grossProfit - oeForWindow - wasteForWindow;
 
   // ---- cash ------------------------------------------------------------
-  const ledger: LedgerEntry[] = ((ledgerRows ?? []) as LedgerEntry[]).map((l) => ({
+  const typedIn: LedgerEntry[] = ((ledgerRows ?? []) as LedgerEntry[]).map((l) => ({
     ...l,
     amount: Number(l.amount) || 0,
   }));
@@ -186,6 +203,110 @@ export async function loadMoney(): Promise<MoneyPicture> {
     );
     onHand = startedWith + takings + moved;
   }
+
+  /**
+   * Every cash sale and every cancelled cash sale, as lines in the history.
+   *
+   * This is display only — the arithmetic above is untouched — which is what
+   * makes it safe: nothing is double-counted, nothing needs backfilling, and
+   * orders from before today show up straight away.
+   *
+   * A cancelled cash order gets an "out" line rather than being left off.
+   * Leaving it off is technically consistent — `onHand` excludes it because
+   * the query filters cancelled rows — but it means money appears in the
+   * drawer one day and is silently gone the next. An owner looking for a
+   * shortfall needs to see the reversal and whose till it was on.
+   */
+  const derivedLines: LedgerEntry[] = [];
+  if (cashEnabled && startedOn) {
+    const { data: cashOrders } = await supabase
+      .from("orders")
+      .select("id, ticket, date, revenue, status, contact_name, logged_by, tag, cancelled_by")
+      .gte("date", startedOn)
+      .eq("payment_method", "cod")
+      .order("date", { ascending: false })
+      .limit(200);
+
+    const rows = (cashOrders ?? []) as {
+      id: string;
+      ticket: number | null;
+      date: string;
+      revenue: number;
+      status: string;
+      contact_name: string | null;
+      logged_by: string | null;
+      tag: string | null;
+      cancelled_by: string | null;
+    }[];
+
+    // Who cancelled, by name. `cancelled_by` is stamped at the moment of
+    // cancelling — unlike `logged_by`, which says who rang the sale up — so
+    // this is the one attribution a reversal can carry honestly.
+    const cancellerIds = [...new Set(rows.map((o) => o.cancelled_by).filter(Boolean))] as string[];
+    const cancellerName = new Map<string, string>();
+    if (cancellerIds.length > 0) {
+      const { data: people } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", cancellerIds);
+      for (const p of (people ?? []) as { id: string; full_name: string | null }[]) {
+        if (p.full_name?.trim()) cancellerName.set(p.id, p.full_name.trim());
+      }
+    }
+
+    for (const o of rows) {
+      const amount = Number(o.revenue) || 0;
+      if (amount === 0) continue;
+      const who = o.logged_by?.trim() || null;
+      const what = `${o.tag === "walk-in" ? "Counter sale" : "Order"} ${orderLabel(o.ticket, o.contact_name)}`;
+      derivedLines.push(
+        o.status === "cancelled"
+          ? {
+              id: `order-void-${o.id}`,
+              date: o.date,
+              type: "out",
+              amount,
+              category: "sale",
+              /**
+               * Named from `cancelled_by`, and only from `cancelled_by`.
+               *
+               * It briefly used `logged_by`, which is stamped when the sale is
+               * RUNG UP — so it put the cancellation on whoever was on the
+               * till at the time, very often not the person who cancelled it.
+               * A confident wrong name is worse than no name: it sends the
+               * owner to ask the wrong person about missing money. Orders
+               * cancelled before this column existed simply have no name, and
+               * say nothing rather than guessing.
+               */
+              note:
+                `${what} cancelled` +
+                (o.cancelled_by && cancellerName.has(o.cancelled_by)
+                  ? ` by ${cancellerName.get(o.cancelled_by)}`
+                  : ""),
+              derived: true,
+              by: o.cancelled_by ? (cancellerName.get(o.cancelled_by) ?? null) : null,
+            }
+          : {
+              id: `order-${o.id}`,
+              date: o.date,
+              type: "in",
+              amount,
+              category: "sale",
+              // Safe on the sale line: `logged_by` is exactly who took it.
+              note: `${what}${who ? ` · took by ${who}` : ""}`,
+              derived: true,
+              by: who,
+            }
+      );
+    }
+  }
+
+  // Newest first, the same order the panel already read in. Sorted on the
+  // date string because these are dates, not timestamps — ISO dates sort
+  // correctly as text, which is the one thing that makes this cheap.
+  const ledger: LedgerEntry[] = [...typedIn, ...derivedLines].sort((a, b) =>
+    a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+  );
 
   // ---- utang -----------------------------------------------------------
   const receivables: Receivable[] = ((receivableRows ?? []) as {

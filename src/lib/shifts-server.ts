@@ -18,14 +18,25 @@ export type Shift = {
   ended_at: string | null;
   closing_cash: number | null;
   note: string | null;
+  /** Closed by the system because nobody clocked out. See below. */
+  auto_closed?: boolean;
 };
+
+/**
+ * How long a shift may run before the system closes it itself.
+ *
+ * A street stall's longest day is well inside this; anything past it is a
+ * button nobody pressed. Fourteen rather than twelve so a genuinely long
+ * market day is never cut short mid-service.
+ */
+export const STALE_SHIFT_HOURS = 14;
 
 /** The shift this person is currently on, if any. */
 export async function openShiftFor(staffId: string): Promise<Shift | null> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("staff_shifts")
-    .select("id, staff_id, started_at, ended_at, closing_cash, note")
+    .select("id, staff_id, started_at, ended_at, closing_cash, note, auto_closed")
     .eq("staff_id", staffId)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
@@ -36,6 +47,37 @@ export async function openShiftFor(staffId: string): Promise<Shift | null> {
     return null;
   }
   return (data as Shift) ?? null;
+}
+
+/**
+ * Close shifts nobody clocked out of, and say which ones.
+ *
+ * This mattered much more the moment the clock started gating the shop floor.
+ * Before that, a forgotten shift was a wrong number in a report. Now an open
+ * shift is the key to the till, the board and the store room — so a shift
+ * nobody closed is a key nobody took back, held by someone who went home, and
+ * one that never gets a drawer count either.
+ *
+ * There is no scheduled job on this project, so it cannot be a cron. It runs
+ * when HQ is opened, which is often enough to matter and costs nothing when
+ * there is nothing to close. `closing_cash` is left null on purpose: nobody
+ * counted, and the report says exactly that rather than inventing a figure.
+ *
+ * Returns the rows it closed so the caller can tell the owner — silently
+ * tidying this up would hide the very thing worth knowing, which is that
+ * somebody keeps forgetting.
+ */
+export async function closeStaleShifts(): Promise<Shift[]> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.rpc("close_stale_shifts", {
+    p_hours: STALE_SHIFT_HOURS,
+  });
+  if (error) {
+    // Never fatal: HQ loading is not worth failing over a tidy-up.
+    console.error(`[shifts] close stale: ${error.message}`);
+    return [];
+  }
+  return (data as Shift[]) ?? [];
 }
 
 export async function clockIn(staffId: string): Promise<Shift | null> {

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test \"tests/*.test.ts\"",
-    "restore": "node --env-file=.env.local scripts/restore.mjs"
+    "restore": "node --env-file=.env.local scripts/restore.mjs",
+    "verify:migrations": "bash scripts/verify-migrations.sh"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.73.0",

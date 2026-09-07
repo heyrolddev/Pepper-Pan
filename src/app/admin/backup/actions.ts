@@ -187,6 +187,19 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     outcomes.push({ table, rows: rows.length, restored, error: failed });
   }
 
+  /**
+   * A restore brings its own ticket numbers, which can sit above where the
+   * live sequence is — and then the next real order tries to take a number a
+   * restored order already has and the insert fails on the unique index. This
+   * moves the sequence past everything now in the table.
+   *
+   * Not fatal: a restore that got the rows back and could not bump a counter
+   * is still a successful restore, and the next order failing is a much
+   * smaller problem than the restore appearing to have failed.
+   */
+  const { error: seqError } = await db.rpc("sync_order_ticket_seq");
+  if (seqError) console.error(`[restore] ticket sequence: ${seqError.message}`);
+
   await db.from("activity_log").insert({
     category: "backup",
     description: `${

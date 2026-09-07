@@ -11,6 +11,7 @@ import {
 } from "@/lib/categories";
 import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
+import { ticketOf } from "@/lib/tickets";
 import { ReceiptPrinter } from "@/components/receipt-printer";
 import { printSale } from "@/lib/printer-store";
 import { asPlainText, renderReceipt, type Receipt } from "@/lib/receipt";
@@ -68,6 +69,7 @@ export function CounterTill({
   const [reference, setReference] = useState("");
   const [toKitchen, setToKitchen] = useState(false);
   const [customer, setCustomer] = useState("");
+  const [noName, setNoName] = useState(false);
   const [note, setNote] = useState("");
   /** The sale as it will be recorded, held while somebody checks it. Null
    *  means nothing is waiting — the dialog is closed. */
@@ -127,6 +129,7 @@ export function CounterTill({
     setTicket({});
     setNote("");
     setCustomer("");
+    setNoName(false);
     setReference("");
     setTendered("");
     setError(null);
@@ -146,6 +149,13 @@ export function CounterTill({
     if (lines.length === 0) return "Add something to the order first.";
     if (method === "gcash" && !reference.trim())
       return "Type the GCash reference number before recording this.";
+    // A name or a deliberate "no name". Not the same as leaving it blank:
+    // blank used to be the default and produced records nobody could trace,
+    // and a required box with no way out at a lunchtime queue just produces
+    // "x" and "asdf". So the way out is one tap, and it is honest — the sale
+    // is then filed under its ticket number, which is on the receipt.
+    if (!customer.trim() && !noName)
+      return "Whose order is this? Type a name, or tap \u201cNo name\u201d to file it under its ticket number.";
     if (method === "cash") {
       if (tendered.trim() === "") return "Type how much cash the customer handed over.";
       const paid = Number(tendered);
@@ -237,9 +247,11 @@ export function CounterTill({
       // price and the cash that changed hands, and going back to the database
       // for it would be a round trip with a customer waiting.
       const receipt: Receipt = {
-        // The last four of the order id: short enough to say out loud,
-        // and it matches what the order is filed under.
-        ref: result.orderId.slice(-4).toUpperCase(),
+        // The ticket, which is the number this order is filed under
+        // everywhere else — on the board, in the activity log and in the
+        // search box. It used to be the last four of the uuid, which matched
+        // nothing the owner could look up.
+        ref: ticketOf(result.ticket),
         at: new Date(),
         lines: soldLines,
         total: result.total,
@@ -687,17 +699,48 @@ export function CounterTill({
                 </div>
               )}
 
-              {/* Who it is for. Optional, because a queue at lunchtime is not
-                  the place to insist on it — but when it is filled in the name
-                  goes on the paper and on the order, so a bag on the counter
-                  can be handed over by name instead of by shouting a
-                  four-character reference across the shop. */}
-              <input
-                value={customer}
-                onChange={(e) => setCustomer(e.target.value)}
-                placeholder="Customer name (optional)"
-                className="rounded-xl bg-cream-50 px-3 py-2.5 text-sm ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
-              />
+              {/* Who it is for, and it is no longer optional.
+                  
+                  The name goes on the paper and on the order, so a bag on the
+                  counter is handed over by name — and, more to the point, so
+                  the owner reading the shift report a week later has something
+                  to search for. What it used to leave behind was a uuid.
+                  
+                  "No name" is the way out, because a required box at a
+                  lunchtime queue with no way out produces "x" and "asdf",
+                  which is worse than an honest blank. Tapping it files the
+                  sale under its ticket number instead, which is printed on
+                  the receipt and searchable in Orders. */}
+              <div className="flex gap-2">
+                <input
+                  value={customer}
+                  onChange={(e) => {
+                    setCustomer(e.target.value);
+                    if (e.target.value.trim()) setNoName(false);
+                  }}
+                  placeholder="Customer name"
+                  className="min-w-0 flex-1 rounded-xl bg-cream-50 px-3 py-2.5 text-sm ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNoName((v) => !v);
+                    setCustomer("");
+                  }}
+                  className={`shrink-0 rounded-xl px-3 py-2.5 text-xs font-black uppercase tracking-wide transition-colors ${
+                    noName
+                      ? "bg-ink-950 text-cream-50"
+                      : "bg-ink-950/[0.06] text-ink-800/60 hover:bg-ink-950/10"
+                  }`}
+                >
+                  No name
+                </button>
+              </div>
+              {noName && (
+                <p className="-mt-1 text-xs text-ink-800/50">
+                  Filed under its ticket number, printed on the receipt.
+                </p>
+              )}
 
               <input
                 value={note}

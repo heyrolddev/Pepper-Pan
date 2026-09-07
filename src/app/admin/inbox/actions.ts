@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
+import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { deriveTriggers } from "@/lib/faq";
 
 /**
@@ -28,7 +29,9 @@ export async function setThreadHandled(
   threadId: string,
   handled: boolean
 ): Promise<{ error: string | null }> {
-  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
+  const viewer = await getViewer();
+  if (!can(viewer, "chat")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -105,7 +108,9 @@ export async function replyToThread(
   threadId: string,
   text: string
 ): Promise<{ error: string | null }> {
-  if (!can(await getViewer(), "chat")) return { error: "Not allowed." };
+  const viewer = await getViewer();
+  if (!can(viewer, "chat")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
   const body = text.trim();
   if (!body) return { error: "Type a reply first." };
   if (body.length > 2000) return { error: "That's too long for one message." };
@@ -159,7 +164,9 @@ export async function teachAnswer(input: {
   // "faq", not "chat": replying to one customer in the inbox is a shift's
   // work; writing the answer the shop gives everybody, in public and on its
   // own homepage, is the owner's and the manager's.
-  if (!can(await getViewer(), "faq")) return { error: "Not allowed." };
+  const viewer = await getViewer();
+  if (!can(viewer, "faq")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
   const question = input.question.trim().slice(0, 300);
   const answer = input.answer.trim().slice(0, 2000);
   if (!question) return { error: "What was the question?" };
@@ -208,7 +215,9 @@ export async function updateFaqEntry(input: {
   showOnSite: boolean;
   siteOrder: number;
 }): Promise<{ error: string | null }> {
-  if (!can(await getViewer(), "faq")) return { error: "Not allowed." };
+  const viewer = await getViewer();
+  if (!can(viewer, "faq")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
   const question = input.question.trim().slice(0, 300);
   const answer = input.answer.trim().slice(0, 2000);
   if (!question || !answer) return { error: "A question and an answer are both needed." };
@@ -245,7 +254,9 @@ export async function updateFaqEntry(input: {
 }
 
 export async function deleteFaqEntry(id: string): Promise<{ error: string | null }> {
-  if (!can(await getViewer(), "faq")) return { error: "Not allowed." };
+  const viewer = await getViewer();
+  if (!can(viewer, "faq")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
   const supabase = await createClient();
   const { error } = await supabase.from("faq_entries").delete().eq("id", id);
   if (error) return { error: error.message };

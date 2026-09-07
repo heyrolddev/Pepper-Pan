@@ -34,6 +34,12 @@ export async function cancelMyOrder(
     .update({
       status: "cancelled",
       cancelled_reason: reason.trim() || "Cancelled by the customer",
+      // Stamped here too, so "who cancelled this" has one answer wherever the
+      // cancellation came from. Without it the shop's cancellations were
+      // attributable and the customer's were not, which is the wrong way
+      // round — the customer's is the one the shop will be asked about.
+      cancelled_by: user.id,
+      cancelled_at: new Date().toISOString(),
     })
     .eq("id", orderId)
     .eq("customer_id", user.id)

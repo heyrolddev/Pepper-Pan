@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { ticketOf } from "@/lib/tickets";
 import { alertEtaElapsed } from "@/app/admin/orders/actions";
 import { OrderStatusPicker } from "@/components/order-status-picker";
 import { EtaPicker } from "@/components/eta-picker";
@@ -22,6 +23,10 @@ export type AdminOrder = {
   revenue: number;
   eta_minutes: number | null;
   cancelled_reason: string | null;
+  cancelled_at: string | null;
+  /** Who cancelled it — resolved on the server, since staff names are not in this list. */
+  cancelled_by_name: string | null;
+  ticket: number | null;
   contact_name: string | null;
   contact_phone: string | null;
   notes: string | null;
@@ -71,8 +76,14 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
             >
               {STATUS_LABELS[o.status]}
             </span>
+            {/* The ticket first. It is what the receipt says, what the
+                activity log points at and what somebody types into the search
+                box — so it belongs where the eye lands, not buried. */}
+            <span className="font-display text-lg font-black tabular-nums text-ink-800/45">
+              {ticketOf(o.ticket)}
+            </span>
             <span className="font-display text-lg font-bold text-ink-950">
-              {o.contact_name || p?.full_name || "Walk-in"}
+              {o.contact_name || p?.full_name || "No name"}
             </span>
             {/* The confirmation when completing is a moment and it can be
                 clicked through. This stays until the money is settled, which
@@ -234,9 +245,12 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
         </p>
       )}
 
-      {o.status === "cancelled" && o.cancelled_reason && (
+      {o.status === "cancelled" && (o.cancelled_reason || o.cancelled_by_name) && (
         <p className="mt-3 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
-          <span className="font-bold">Cancelled:</span> {o.cancelled_reason}
+          <span className="font-bold">Cancelled</span>
+          {o.cancelled_by_name ? ` by ${o.cancelled_by_name}` : ""}
+          {o.cancelled_at ? ` · ${formatDateTimeFull(o.cancelled_at)}` : ""}
+          {o.cancelled_reason ? ` — ${o.cancelled_reason}` : ""}
         </p>
       )}
     </div>
@@ -263,7 +277,7 @@ function OrderRow({ order: o }: { order: AdminOrder }) {
   const money = moneyState(o);
   const owed = money.balance > 0;
   const tone = STATUS_TONES[o.status];
-  const who = o.contact_name || o.customer?.full_name || "Walk-in";
+  const who = o.contact_name || o.customer?.full_name || ticketOf(o.ticket);
 
   return (
     <Foldable
@@ -331,6 +345,8 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
         o.payment_method,
         o.payment_status,
         o.payment_reference,
+        ticketOf(o.ticket),
+        String(o.ticket ?? ""),
         o.id.slice(0, 8),
         ...o.lines.map((l) => l.name),
       ]
@@ -344,7 +360,7 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
       rows={orders}
       searchText={searchText}
       noun="order"
-      placeholder="Search name, number, item, status…"
+      placeholder="Search ticket, name, number, item, status…"
     >
       {(filtered, query) => {
         // Counts come from what the search left behind, not from every order

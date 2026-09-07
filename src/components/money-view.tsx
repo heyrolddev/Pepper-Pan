@@ -100,16 +100,26 @@ function Row({
   label,
   value,
   tone,
+  badge,
   onDelete,
 }: {
   label: string;
   value: string;
   tone?: "bad" | "good";
+  /** A quiet word on where the line came from. */
+  badge?: string;
   onDelete?: () => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-ink-950/5 py-2 last:border-0">
-      <span className="min-w-0 text-sm text-ink-800/75">{label}</span>
+      <span className="min-w-0 text-sm text-ink-800/75">
+        {label}
+        {badge && (
+          <span className="ml-2 whitespace-nowrap rounded-md bg-ink-950/[0.06] px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-ink-800/45">
+            {badge}
+          </span>
+        )}
+      </span>
       <span className="flex shrink-0 items-center gap-2">
         <span
           className={`font-display font-black tabular-nums ${
@@ -325,7 +335,7 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
         title="Cash in the drawer"
         hint={
           money.cash.enabled
-            ? `Counting from ${formatDate(money.cash.startedOn!)}, starting at ${peso(money.cash.startedWith, 0)}. Cash sales in, anything you take out.`
+            ? `Counting from ${formatDate(money.cash.startedOn!)}, starting at ${peso(money.cash.startedWith, 0)}. Every cash sale, every cancellation, and anything put in or taken out — with whose till it was on.`
             : "Start from what's in the drawer right now — nothing retroactive, because a balance rebuilt from guesses looks authoritative and drifts."
         }
         action={
@@ -362,14 +372,20 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
               items={money.ledger}
               keyOf={(l) => l.id}
               dateOf={(l) => l.date}
-              initial={5}
+              initial={8}
               noun="entries"
-              empty="Nothing recorded yet. Cash sales are counted automatically."
+              empty="Nothing yet — no sales, and nothing put in or taken out."
               render={(l) => (
                 <Row
                   label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Cash in" : "Cash out")}`}
                   value={`${l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
                   tone={l.type === "in" ? "good" : "bad"}
+                  /* Marked, because the two kinds behave differently: a sale
+                     line follows its order — cancel the order and the line
+                     turns into a reversal — while a typed entry stays exactly
+                     as it was entered. Somebody chasing a shortfall needs to
+                     know which they are looking at. */
+                  badge={l.derived ? "from a sale" : undefined}
                 />
               )}
             />
