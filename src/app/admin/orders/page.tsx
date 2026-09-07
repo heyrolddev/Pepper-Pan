@@ -1,174 +1,38 @@
-import { createClient } from "@/lib/supabase/server";
-import { AdminOrderList, type AdminOrder } from "@/components/admin-order-list";
+import { AdminOrderList } from "@/components/admin-order-list";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
-import type { OrderStatus } from "@/lib/orders";
-import {
-  PAYMENT_STATUSES,
-  type PaymentMethod,
-  type PaymentPlan,
-  type PaymentStatus,
-} from "@/lib/payments";
+import { BOARD_LIMIT, loadBoardOrders } from "@/lib/orders-admin-server";
+import { hqTitle } from "@/lib/hq-theme";
 
-type OrderRow = {
-  id: string;
-  ticket: number | null;
-  cancelled_by: string | null;
-  cancelled_at: string | null;
-  created_at: string;
-  status: OrderStatus;
-  fulfillment: string;
-  revenue: number;
-  eta_minutes: number | null;
-  cancelled_reason: string | null;
-  contact_name: string | null;
-  contact_phone: string | null;
-  notes: string | null;
-  customer_id: string | null;
-  delivery_address: string | null;
-  delivery_lat: number | null;
-  delivery_lng: number | null;
-  delivery_distance_km: number | null;
-  delivery_fee: number;
-  payment_method: string;
-  payment_status: string;
-  payment_reference: string | null;
-  payment_receipt_url: string | null;
-  eta_set_at: string | null;
-  scheduled_for: string | null;
-  payment_plan: string;
-  downpayment_amount: number | null;
-  downpayment_confirmed_at: string | null;
-  order_lines: { qty: number; price_at_sale: number; meals: { name: string } | null }[];
-};
-
-type CustomerInfo = {
-  id: string;
-  full_name: string | null;
-  phone: string | null;
-  is_verified: boolean;
-  is_blocked: boolean;
-};
+// Every figure here is live; nothing about an order board should be cached.
+export const dynamic = "force-dynamic";
 
 export default async function AdminOrdersPage() {
-  const supabase = await createClient();
-
-  const { data, error } = await supabase
-    .from("orders")
-    .select(
-      "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
-    )
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const { orders, total, error } = await loadBoardOrders();
 
   // A failed query used to render as "no orders yet", which is the worst
-  // possible lie for this page — the shop would sit waiting on orders that
-  // were already in the database. Say what actually went wrong instead.
-  if (error) {
+  // possible lie for this screen to tell.
+  if (error !== null) {
     return (
-      <div className="rounded-3xl bg-brand-50 p-8 ring-2 ring-brand-600/40">
-        <h2 className="font-display text-2xl font-black text-brand-700">
-          Couldn&apos;t load your orders
-        </h2>
-        <p className="mt-2 max-w-xl text-sm text-ink-800/70">
-          This is a database error, not an empty shop — your orders are safe.
-          If the message below mentions a column that doesn&apos;t exist, a
+      <div className="rounded-3xl bg-brand-50 p-8 ring-1 ring-brand-600/25">
+        <h2 className={hqTitle}>Couldn&apos;t load your orders</h2>
+        <p className="mt-2 max-w-2xl text-sm text-ink-800/75">
+          This is a database error, not an empty shop — your orders are safe. If
+          the message below mentions a column that doesn&apos;t exist, a
           migration hasn&apos;t been run yet. Run any missing files from{" "}
-          <code className="font-mono text-xs">supabase/migrations/</code> in the
-          Supabase SQL Editor, in number order.
+          <code className="rounded bg-cream-100 px-1">supabase/migrations/</code>{" "}
+          in the Supabase SQL Editor, in number order.
         </p>
-        <p className="mt-3 rounded-xl bg-cream-50 px-4 py-3 font-mono text-xs text-ink-800/70">
-          {error.message}
+        <p className="mt-4 rounded-2xl bg-cream-50 px-4 py-3 font-mono text-xs text-brand-700">
+          {error}
         </p>
       </div>
     );
   }
 
-  const rows = (data ?? []) as unknown as OrderRow[];
-
-  // Customers AND whoever cancelled, in one query. A cancellation with a
-  // reason and no name is half a record — the reason says what happened and
-  // the name is who to ask about it.
-  const peopleIds = [
-    ...new Set(
-      [
-        ...rows.map((o) => o.customer_id),
-        ...rows.map((o) => o.cancelled_by),
-      ].filter(Boolean)
-    ),
-  ] as string[];
-  const { data: profileRows } = peopleIds.length
-    ? await supabase
-        .from("profiles")
-        .select("id, full_name, phone, is_verified, is_blocked")
-        .in("id", peopleIds)
-    : { data: [] };
-  const profiles = new Map(((profileRows ?? []) as CustomerInfo[]).map((p) => [p.id, p]));
-
-  // How many completed orders each customer has — a cheap "is this a real
-  // regular or a first-timer?" signal next to each order.
-  const completedCount = new Map<string, number>();
-  for (const o of rows) {
-    if (o.customer_id && o.status === "completed") {
-      completedCount.set(o.customer_id, (completedCount.get(o.customer_id) ?? 0) + 1);
-    }
-  }
-
-  const orders: AdminOrder[] = rows.map((o) => {
-    const p = o.customer_id ? profiles.get(o.customer_id) : undefined;
-    return {
-      id: o.id,
-      ticket: o.ticket === null ? null : Number(o.ticket),
-      created_at: o.created_at,
-      status: o.status,
-      fulfillment: o.fulfillment,
-      revenue: Number(o.revenue),
-      eta_minutes: o.eta_minutes,
-      cancelled_reason: o.cancelled_reason,
-      cancelled_at: o.cancelled_at,
-      cancelled_by_name: o.cancelled_by
-        ? (profiles.get(o.cancelled_by)?.full_name ?? null)
-        : null,
-      eta_set_at: o.eta_set_at,
-      scheduled_for: o.scheduled_for,
-      contact_name: o.contact_name,
-      contact_phone: o.contact_phone,
-      notes: o.notes,
-      customer_id: o.customer_id,
-      delivery_address: o.delivery_address,
-      delivery_lat: o.delivery_lat,
-      delivery_lng: o.delivery_lng,
-      delivery_distance_km: o.delivery_distance_km,
-      delivery_fee: Number(o.delivery_fee ?? 0),
-      payment_method: (o.payment_method === "gcash" ? "gcash" : "cod") as PaymentMethod,
-      payment_status: (PAYMENT_STATUSES as readonly string[]).includes(o.payment_status)
-        ? (o.payment_status as PaymentStatus)
-        : "unpaid",
-      payment_reference: o.payment_reference,
-      payment_receipt_url: o.payment_receipt_url,
-      payment_plan: (o.payment_plan === "downpayment" ? "downpayment" : "full") as PaymentPlan,
-      downpayment_amount: Number(o.downpayment_amount ?? 0),
-      downpayment_confirmed_at: o.downpayment_confirmed_at,
-      lines: (o.order_lines ?? []).map((l) => ({
-        qty: Number(l.qty),
-        price: Number(l.price_at_sale),
-        name: l.meals?.name ?? "Item",
-      })),
-      customer: p
-        ? {
-            full_name: p.full_name,
-            phone: p.phone,
-            is_verified: p.is_verified,
-            is_blocked: p.is_blocked,
-          }
-        : null,
-      completedBefore: o.customer_id ? (completedCount.get(o.customer_id) ?? 0) : 0,
-    };
-  });
-
   return (
     <div className="flex flex-col gap-6">
       <LiveOrdersBanner />
-      <AdminOrderList orders={orders} />
+      <AdminOrderList orders={orders} loaded={BOARD_LIMIT} total={total} />
     </div>
   );
 }

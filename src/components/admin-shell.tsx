@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Logo } from "@/components/logo";
 import type { AdminBadges } from "@/lib/admin-badges";
 import { SignOutButton } from "@/components/sign-out-button";
+import { DailyBackup } from "@/components/daily-backup";
 import { ShiftClock } from "@/components/shift-clock";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { roleCan, roleLabel, type Capability } from "@/lib/permissions";
@@ -425,6 +426,10 @@ export function AdminShell({
           )}
           {children}
         </main>
+
+        {/* Renders nothing. Takes the day's safety copy if one is due — see
+            the component for why the browser fires this and not the server. */}
+        <DailyBackup />
       </div>
     </div>
   );

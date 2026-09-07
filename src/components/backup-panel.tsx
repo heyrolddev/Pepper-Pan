@@ -126,9 +126,9 @@ export function BackupPanel({
       ring: "ring-brand-600/30",
       bg: "bg-brand-600",
       text: "text-cream-50",
-      eyebrow: "No copy exists",
+      eyebrow: "No copy of your own",
       headline: "Everything you have is in one place",
-      body: "If this database is lost, so are your recipes, your costs and every order you've taken. Download a copy now — it takes a few seconds and costs nothing.",
+      body: "The shop takes a copy for itself every day, and that covers a bad restore or a wrong reset. It does not cover losing this database, because it lives inside it. Download one — it takes a few seconds and costs nothing.",
     },
     stale: {
       ring: "ring-brand-600/30",
@@ -136,7 +136,7 @@ export function BackupPanel({
       text: "text-cream-50",
       eyebrow: `Last copy ${age?.days} days ago`,
       headline: "Time for a fresh copy",
-      body: "Everything you've entered since that day exists in exactly one place. Download again.",
+      body: "The shop's own daily copies are still being taken, but they live in the same database. Everything since that day exists in exactly one place you can reach. Download again.",
     },
     aging: {
       ring: "ring-gold-600/30",
@@ -162,7 +162,9 @@ export function BackupPanel({
       <div>
         <h2 className={hqTitle}>Backup</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
-          Your own copy of everything the shop knows, saved to this device.
+          The shop copies itself every day. This is where you take one of your
+          own — the daily copies live in the same database, so they cannot
+          survive losing it.
         </p>
       </div>
 

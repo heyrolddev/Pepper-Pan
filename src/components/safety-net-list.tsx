@@ -21,14 +21,22 @@ export function SafetyNetList({ snapshots }: { snapshots: SnapshotRow[] }) {
         Safety copies
       </h3>
       <p className="mt-2 max-w-2xl text-sm text-ink-800/70">
-        Taken automatically, just before anything is overwritten or cleared —
-        you don&apos;t have to remember. The five most recent are kept.
+        Taken for you: one every day the shop opens, and one immediately
+        before anything is overwritten or cleared. You don&apos;t have to
+        remember either. The last 14 daily copies and the last 5 taken before a
+        change are kept.
+      </p>
+      <p className="mt-2 max-w-2xl text-sm text-ink-800/55">
+        These live in the same database as the shop, which is what makes them
+        instant and also what limits them: they undo a bad restore or a wrong
+        reset, and they cannot survive losing the database. The download above
+        is the copy that can.
       </p>
 
       {snapshots.length === 0 ? (
         <p className="mt-5 rounded-2xl border-2 border-dashed border-ink-950/15 bg-cream-50 p-5 text-sm text-ink-800/60">
-          None yet. The first one is taken the next time you restore a backup
-          or clear shop data.
+          None yet. The first daily copy is taken the next time HQ is opened,
+          and one is taken immediately before any restore or reset.
         </p>
       ) : (
         <ul className="mt-5 flex flex-col gap-2">
@@ -38,7 +46,21 @@ export function SafetyNetList({ snapshots }: { snapshots: SnapshotRow[] }) {
               className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-cream-50 px-4 py-3 ring-1 ring-ink-950/10"
             >
               <div className="min-w-0">
-                <p className="text-sm font-bold text-ink-950">{s.reason}</p>
+                <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-ink-950">
+                  {s.reason}
+                  {/* Which family, because the two are kept for different
+                      lengths of time and mean different things — one is the
+                      day's record, the other is the undo for one change. */}
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide ${
+                      s.automatic
+                        ? "bg-jade-600/15 text-jade-700"
+                        : "bg-gold-400/25 text-ink-800/70"
+                    }`}
+                  >
+                    {s.automatic ? "daily" : "before a change"}
+                  </span>
+                </p>
                 <p className="mt-0.5 text-xs text-ink-800/55">
                   {formatDateTime(s.taken_at)} ·{" "}
                   <span className="tabular-nums">
