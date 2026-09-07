@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { backUpIfDue } from "@/app/admin/backup/actions";
+import { backUpIfDue, sendOffsiteIfDue } from "@/app/admin/backup/actions";
 
 /**
  * The nudge that makes the daily copy happen.
@@ -31,7 +31,11 @@ export function DailyBackup() {
     // Not awaited and not surfaced. A backup is not what this person came to
     // HQ to do, and the backup screen is where its success or failure is
     // reported.
-    void backUpIfDue();
+    //
+    // The daily copy first, then the weekly one out to email — in that order
+    // deliberately, so a week where both are due gets the copy in the drawer
+    // before it starts posting megabytes anywhere.
+    void backUpIfDue().then(() => sendOffsiteIfDue());
   }, []);
 
   return null;

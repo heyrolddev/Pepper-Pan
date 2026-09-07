@@ -202,3 +202,24 @@ begin
 
   raise notice 'the families can be told apart, and old copies default to asked-for';
 end $$;
+
+\echo '--- the weekly off-site copy cannot switch itself on ---'
+-- The file is every customer's name, phone and address. A migration that
+-- started emailing it would be the worst kind of helpful, so the default is
+-- asserted rather than assumed.
+select act_as_service();
+do $$
+declare on_by_default boolean;
+begin
+  select offsite_backup_enabled into on_by_default from settings where id = 1;
+  if on_by_default is null then
+    raise exception 'FAIL: settings row 1 has no offsite_backup_enabled';
+  end if;
+  if on_by_default then
+    raise exception 'FAIL: the weekly copy is ON by default — it must wait to be asked';
+  end if;
+  if exists (select 1 from settings where id = 1 and offsite_backup_email is not null) then
+    raise exception 'FAIL: an address was assumed rather than chosen';
+  end if;
+  raise notice 'off by default, and no address assumed';
+end $$;

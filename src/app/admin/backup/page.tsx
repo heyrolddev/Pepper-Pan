@@ -5,6 +5,8 @@ import { runHealthCheck } from "@/lib/inventory-insight";
 import { BackupPanel, type BackupFile } from "@/components/backup-panel";
 import { SafetyNetList } from "@/components/safety-net-list";
 import { listSafetyNets } from "@/lib/safety-net";
+import { readOffsiteSettings } from "@/lib/offsite-backup";
+import { OffsiteBackupCard } from "@/components/offsite-backup-card";
 import { hqTitle } from "@/lib/hq-theme";
 
 // Row counts and the last-backup date are the two things this page exists to
@@ -83,7 +85,7 @@ export default async function AdminBackupPage() {
   }
 
   const supabase = createAdminClient();
-  const [counts, { data: settings }, health, safetyNets] = await Promise.all([
+  const [counts, { data: settings }, health, safetyNets, offsite] = await Promise.all([
     countRows(),
     supabase.from("settings").select("last_backup_date").eq("id", 1).maybeSingle(),
     // Checked here rather than on its own screen: this is already the page
@@ -91,6 +93,7 @@ export default async function AdminBackupPage() {
     // health check that never runs.
     runHealthCheck(),
     listSafetyNets(),
+    readOffsiteSettings(),
   ]);
 
   const total = counts.reduce((sum, c) => sum + c.count, 0);
@@ -106,7 +109,12 @@ export default async function AdminBackupPage() {
       brokenTables={broken.map((b) => b.table)}
       lastBackup={settings?.last_backup_date ?? null}
       health={health}
-      safetyNets={<SafetyNetList snapshots={safetyNets} />}
+      safetyNets={
+        <>
+          <OffsiteBackupCard settings={offsite} />
+          <SafetyNetList snapshots={safetyNets} />
+        </>
+      }
     />
   );
 }

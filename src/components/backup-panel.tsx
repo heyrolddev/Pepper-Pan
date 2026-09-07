@@ -380,7 +380,10 @@ export function BackupPanel({
       </section>
 
       <RestorePanel />
-      {safetyNets}
+      {/* Slots, rendered on the server: the weekly off-site copy and the
+          list of copies already taken. Both read the database, so they come
+          in as children rather than as imports from this client file. */}
+      <div className="flex flex-col gap-6">{safetyNets}</div>
     </div>
   );
 }
