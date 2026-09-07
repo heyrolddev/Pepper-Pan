@@ -135,3 +135,46 @@ select 'staff_shifts NOT guarded: ' || (count(*) = 0)::text from pg_trigger
   where tgname = 'require_shift_staff_shifts';
 select 'profiles NOT guarded: ' || (count(*) = 0)::text from pg_trigger
   where tgname = 'require_shift_profiles';
+
+\echo '--- every column a browser session must read, it can read ---'
+-- The check that was missing. `orders` and `waste_log` have column-level
+-- SELECT so the margin stays out of reach of a signed-in customer; a column
+-- added later gets no grant at all, and Postgres calls that "permission denied
+-- for table orders" — which reads like the table vanished. It is how the
+-- Orders page broke the day `ticket` shipped.
+do $$
+declare
+  spec record;
+  c record;
+  missing text[] := '{}';
+  leaked text[] := '{}';
+begin
+  for spec in
+    select 'orders'::text as tbl, array['cogs','oe','gross_profit','net_profit']::text[] as hidden
+    union all
+    select 'waste_log'::text, array['cost_at_time','total_cost']::text[]
+  loop
+    for c in
+      select column_name from information_schema.columns
+      where table_schema='public' and table_name=spec.tbl
+    loop
+      if c.column_name = any (spec.hidden) then
+        if has_column_privilege('authenticated', spec.tbl, c.column_name, 'select') then
+          leaked := leaked || (spec.tbl || '.' || c.column_name);
+        end if;
+      else
+        if not has_column_privilege('authenticated', spec.tbl, c.column_name, 'select') then
+          missing := missing || (spec.tbl || '.' || c.column_name);
+        end if;
+      end if;
+    end loop;
+  end loop;
+
+  if array_length(missing, 1) > 0 then
+    raise exception 'FAIL: a signed-in session cannot read %. Call regrant_visible_columns() in the migration that added it.', missing;
+  end if;
+  if array_length(leaked, 1) > 0 then
+    raise exception 'FAIL: the margin is readable by a browser session: %', leaked;
+  end if;
+  raise notice 'every visible column readable, every cost column still walled off';
+end $$;

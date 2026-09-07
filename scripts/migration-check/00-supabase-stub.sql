@@ -40,3 +40,16 @@ do $$ begin
     create publication supabase_realtime;
   end if;
 end $$;
+
+-- The grants a Supabase project starts with. Without these the checks below
+-- run as a superuser, which skips privilege checks entirely — and that is
+-- precisely how a missing column grant on `orders` reached the owner's screen.
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+grant all on all functions in schema public to anon, authenticated, service_role;
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+grant usage on schema auth to anon, authenticated, service_role;
+grant execute on function auth.uid(), auth.role(), auth.jwt() to anon, authenticated, service_role;
