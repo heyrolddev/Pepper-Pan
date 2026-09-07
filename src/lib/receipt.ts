@@ -132,9 +132,13 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
   const out: ReceiptRow[] = [];
 
   out.push({ text: "PEPPER PAN", align: "centre", big: true });
-  out.push(mid("Taiwan-Style Street Food"));
-  out.push(mid("In front of Palengkeni,"));
-  out.push(mid("beside Osave! - Apalit"));
+  out.push(mid("Taiwan-Style Food"));
+  // The town first, the landmark after — a receipt gets read away from the
+  // stall as often as at it, and "in front of Palengkeni" only helps someone
+  // who already knows which town Palengkeni is in.
+  out.push(mid("Apalit, Pampanga."));
+  out.push(mid("(In front of Palengkeni,"));
+  out.push(mid("beside Osave! - Apalit)"));
   out.push(mid("+63 947 353 3060"));
   out.push(left(""));
 
@@ -184,7 +188,11 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
   }
 
   out.push(left(""));
-  out.push(mid("Salamat po!"));
+  // Three languages, because the stall serves in three. The accent on "Xiè"
+  // is folded away by toPrinterAscii below — a thermal printer has no byte for
+  // it — so the paper reads "Xie xie". It is kept here so the intent survives
+  // in the one place that decides what a receipt says.
+  out.push(mid("Xiè xie, Thank you, Salamat po!"));
   out.push(mid("See you again"));
   out.push(left(""));
   // Not a BIR receipt, and the paper should be the thing that says so rather
