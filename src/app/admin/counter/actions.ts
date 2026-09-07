@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { recordOrderCost } from "@/lib/costing-server";
 import { syncStockForStatus } from "@/lib/stock-server";
 import { openShiftFor } from "@/lib/shifts-server";
+import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
+import { orderLabel } from "@/lib/tickets";
 import { loadAvailability } from "@/lib/costing-server";
 import type { PaymentMethod } from "@/lib/payments";
 
@@ -18,8 +20,8 @@ const METHOD_FOR_TILL: Record<"cash" | "gcash", PaymentMethod> = {
 };
 
 export type CounterResult =
-  | { error: string; orderId?: undefined; total?: undefined }
-  | { error: null; orderId: string; total: number };
+  | { error: string; orderId?: undefined; total?: undefined; ticket?: undefined }
+  | { error: null; orderId: string; total: number; ticket: number };
 
 /**
  * A sale that happened at the stall.
@@ -51,6 +53,7 @@ export async function recordWalkInSale(input: {
 }): Promise<CounterResult> {
   const viewer = await getViewer();
   if (!can(viewer, "till")) return { error: "Only shop staff can record a sale." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const lines = input.lines.filter((l) => l.qty > 0);
   if (lines.length === 0) return { error: "Add something to the order first." };
@@ -111,9 +114,10 @@ export async function recordWalkInSale(input: {
     return { error: "Add the GCash reference number." };
   }
 
-  // Which shift rang it up. Null when nobody is clocked in — the sale still
-  // records, because refusing to take money because of a missed button is
-  // never the right trade. It just won't appear in anyone's shift report.
+  // Which shift rang it up. Never null for staff now: the gate above turned
+  // that away, because a sale with no shift on it is a sale the owner can see
+  // happened and cannot trace. The owner is the one exception — they are not
+  // on a rota — and their sales carry their name through `logged_by` instead.
   const staffId = viewer!.profile?.id ?? null;
   const shift = staffId ? await openShiftFor(staffId) : null;
 
@@ -151,11 +155,12 @@ export async function recordWalkInSale(input: {
       notes: input.note?.trim() || null,
       tag: "walk-in",
     })
-    .select("id")
+    .select("id, ticket")
     .single();
   if (orderError || !order) {
     return { error: orderError?.message ?? "Could not record the sale." };
   }
+  const ticket = Number((order as { ticket: number }).ticket);
 
   const { error: linesError } = await supabase.from("order_lines").insert(
     lines.map((l) => ({
@@ -179,10 +184,33 @@ export async function recordWalkInSale(input: {
   await recordOrderCost(order.id);
   await syncStockForStatus(order.id, input.toKitchen ? "confirmed" : "completed");
 
+  /**
+   * On the record, and this is the line that was missing.
+   *
+   * A counter sale sent to the kitchen board picked up an activity line later,
+   * when somebody moved it along — so it showed in the shift report. A sale
+   * rung up and handed straight over never touched `activity_log` at all, so
+   * the shift's takings included it and the shift's list of what happened did
+   * not. Same sale, two different answers, depending on one checkbox.
+   *
+   * The label leads with the ticket, so the owner can paste it into the search
+   * box on Orders and land on this exact sale.
+   */
+  const label = orderLabel(ticket, input.customerName);
+  const { error: logError } = await supabase.from("activity_log").insert({
+    category: "orders",
+    description:
+      `Rang up ${label} at the counter — ₱${subtotal.toFixed(2)} ` +
+      `${input.method === "cash" ? "cash" : "GCash"}` +
+      `${input.toKitchen ? ", sent to the kitchen" : ", handed over"}`,
+    actor: staffId,
+  });
+  if (logError) console.error(`[counter] log: ${logError.message}`);
+
   // The board, the day's takings and the sidebar counts all move.
   revalidatePath("/admin");
   revalidatePath("/admin/orders");
   revalidatePath("/admin/counter");
 
-  return { error: null, orderId: order.id, total: subtotal };
+  return { error: null, orderId: order.id, total: subtotal, ticket };
 }

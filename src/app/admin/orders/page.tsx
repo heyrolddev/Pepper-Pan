@@ -11,6 +11,7 @@ import {
 
 type OrderRow = {
   id: string;
+  ticket: number | null;
   created_at: string;
   status: OrderStatus;
   fulfillment: string;
@@ -52,7 +53,7 @@ export default async function AdminOrdersPage() {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
+      "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -104,6 +105,7 @@ export default async function AdminOrdersPage() {
     const p = o.customer_id ? profiles.get(o.customer_id) : undefined;
     return {
       id: o.id,
+      ticket: o.ticket === null ? null : Number(o.ticket),
       created_at: o.created_at,
       status: o.status,
       fulfillment: o.fulfillment,

@@ -58,10 +58,15 @@ export function ShiftClock({
 
   function finish() {
     setError(null);
+    // Checked here as well as on the server, so a missing count is caught
+    // before a round trip at the end of a long shift.
+    if (cash.trim() === "") {
+      setError("How much cash is in the drawer? Enter 0 if it's empty.");
+      return;
+    }
     startTransition(async () => {
       const r = await endShift({
-        // Empty means nobody counted, which is not the same as counting zero.
-        closingCash: cash.trim() === "" ? null : Number(cash),
+        closingCash: Number(cash),
         note,
       });
       if (r.error !== null) {
@@ -118,9 +123,13 @@ export function ShiftClock({
           busy={busy}
         >
           <div className="flex flex-col gap-4">
+            {/* Required, and the hint says why rather than just that it is.
+                A blank count used to be allowed and was usually what happened,
+                which left the shift report with a takings figure and nothing
+                to test it against. */}
             <Field
               label="Cash in the drawer (₱)"
-              hint="Leave it blank if nobody counted. Blank is not the same as zero."
+              hint="Count it. Without this number a short drawer never shows up. Enter 0 if it's empty."
             >
               <input
                 value={cash}
@@ -130,6 +139,7 @@ export function ShiftClock({
                 min="0"
                 inputMode="decimal"
                 autoFocus
+                required
                 className={inputClass}
               />
             </Field>

@@ -9,6 +9,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { pushToStaff } from "@/lib/push";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 import { PAYMENT_STATUSES, type PaymentStatus } from "@/lib/payments";
+import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
+import { orderLabel } from "@/lib/tickets";
 
 const BLOCKED_MESSAGE =
   "The database didn't accept that change. Re-run the latest migration (0004) in the Supabase SQL Editor.";
@@ -64,6 +66,19 @@ function nameOf(viewer: Awaited<ReturnType<typeof getViewer>>): string {
   return viewer?.profile?.full_name?.trim() || viewer?.email || "someone";
 }
 
+/**
+ * How the order should be named in the record.
+ *
+ * These lines used to carry the raw uuid — "set order 3f9c1a8e-… to
+ * completed" — which is a record of something the owner cannot look up. The
+ * ticket is what the receipt says, what the board shows and what the search
+ * box on Orders matches, so it is what goes here, with the customer's name
+ * beside it when there is one.
+ */
+type Named = { ticket: number | null; contact_name: string | null };
+const labelOf = (row: Named | undefined) =>
+  row ? orderLabel(row.ticket, row.contact_name) : "an order";
+
 export async function setOrderStatus(
   orderId: string,
   status: OrderStatus
@@ -74,6 +89,7 @@ export async function setOrderStatus(
 
   const viewer = await getViewer();
   if (!can(viewer, "orders")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const supabase = await createClient();
   // `.select()` matters: without it PostgREST reports success even when a
@@ -91,7 +107,7 @@ export async function setOrderStatus(
         : {}),
     })
     .eq("id", orderId)
-    .select("id");
+    .select("id, ticket, contact_name");
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
@@ -108,7 +124,7 @@ export async function setOrderStatus(
   await notifyOrderStatus(orderId);
 
   await record(
-    `${nameOf(viewer)} set order ${orderId} to ${status}`,
+    `${nameOf(viewer)} set ${labelOf((data as Named[])[0])} to ${status}`,
     viewer?.profile?.id ?? null
   );
 
@@ -128,6 +144,7 @@ export async function setOrderEta(
 ): Promise<{ error: string | null }> {
   const viewer = await getViewer();
   if (!can(viewer, "orders")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   if (minutes !== null && (!Number.isFinite(minutes) || minutes < 0 || minutes > 600)) {
     return { error: "Enter an ETA between 0 and 600 minutes." };
@@ -169,6 +186,7 @@ export async function setPaymentStatus(
 
   const viewer = await getViewer();
   if (!can(viewer, "orders")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const now = new Date().toISOString();
   const supabase = await createClient();
@@ -188,13 +206,13 @@ export async function setPaymentStatus(
           : {}),
     })
     .eq("id", orderId)
-    .select("id");
+    .select("id, ticket, contact_name");
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
   await record(
-    `${nameOf(viewer)} marked payment for order ${orderId} as ${status}`,
+    `${nameOf(viewer)} marked payment for ${labelOf((data as Named[])[0])} as ${status}`,
     viewer?.profile?.id ?? null
   );
 

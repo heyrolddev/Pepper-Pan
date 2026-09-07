@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
+import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CATEGORY_COLOURS, cleanCategories, fallbackColour } from "@/lib/categories";
 import { applyTakeoutMerge } from "@/lib/takeout-merge";
@@ -227,6 +228,7 @@ export async function setMealAvailability(
 ): Promise<{ error: string | null }> {
   const viewer = await getViewer();
   if (!can(viewer, "menu.availability")) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const supabase = await createClient();
   const { data, error } = await supabase

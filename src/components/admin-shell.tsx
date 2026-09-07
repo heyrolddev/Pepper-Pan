@@ -404,6 +404,25 @@ export function AdminShell({
         </header>
 
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+          {/* Off the clock, and the server will refuse everything, so say so
+              here rather than letting somebody find out one tap at a time.
+              
+              Above the page and on every screen, because the thing it is
+              warning about is not on any one page — it is the till, the board,
+              the store room and the inbox all at once. The owner never sees
+              it: they are not on a rota. */}
+          {shiftStartedAt === null && role !== "owner" && (
+            <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-brand-600 px-5 py-4 text-cream-50">
+              <p className="font-display text-base font-black">
+                You&apos;re not clocked in.
+              </p>
+              <p className="text-sm text-cream-50/85">
+                Nothing can be rung up, moved or changed until you are — the
+                shift is what puts your name on it. The clock is at the bottom
+                of the menu.
+              </p>
+            </div>
+          )}
           {children}
         </main>
       </div>

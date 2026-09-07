@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
+import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
 
@@ -93,6 +94,7 @@ export async function saveIngredient(input: {
 }): Promise<Result & { id?: string }> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change the store room." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const name = input.name.trim();
   const unit = input.unit.trim();
@@ -162,6 +164,7 @@ export async function saveIngredient(input: {
 export async function deleteIngredient(id: string): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change the store room." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const supabase = createAdminClient();
 
@@ -219,6 +222,7 @@ export async function recordRestock(input: {
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can record a delivery." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   if (input.qty <= 0) return { error: "How much arrived?" };
   if (input.amountPaid < 0) return { error: "The amount paid can't be negative." };
@@ -301,6 +305,7 @@ export async function adjustStock(input: {
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can adjust stock." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
   if (!Number.isFinite(input.countedQty) || input.countedQty < 0) {
     return { error: "Enter the counted amount." };
   }
@@ -378,6 +383,7 @@ export async function produceBatch(input: {
 }): Promise<Result & { cost?: number }> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can record a batch." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
   if (!(input.multiplier > 0)) return { error: "How many batches?" };
 
   const supabase = createAdminClient();
@@ -419,6 +425,7 @@ export async function saveBatchRecipe(input: {
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change recipes." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const lines = input.lines.filter((l) => l.ingredientId && l.qty > 0);
   const supabase = createAdminClient();
@@ -463,6 +470,7 @@ export async function saveMealRecipe(input: {
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change recipes." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const lines = input.lines.filter((l) => l.refId && l.qty > 0);
   const supabase = createAdminClient();
@@ -534,6 +542,7 @@ export async function recordWaste(input: {
 }): Promise<Result & { cost?: number }> {
   const viewer = await requireWaste();
   if (!viewer) return { error: "Only shop staff can log waste." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
   if (!(input.qty > 0)) return { error: "How much was it?" };
   if (!input.reason.trim()) return { error: "What happened to it?" };
 
@@ -645,6 +654,7 @@ export async function saveMealPackaging(input: {
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change packaging." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const lines = input.lines.filter((l) => l.refId && l.qty > 0);
   const supabase = createAdminClient();
@@ -695,6 +705,7 @@ export async function saveOrderPackaging(input: {
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Not allowed." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
   const lines = input.lines.filter((l) => l.refId && l.qty > 0);
   const supabase = createAdminClient();
