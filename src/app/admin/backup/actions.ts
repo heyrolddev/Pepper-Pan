@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { can, getViewer } from "@/lib/auth";
+import { can, getViewer, isStaff } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   RESTORE_CHUNK,
@@ -11,7 +11,7 @@ import {
   unknownTables,
 } from "@/lib/restore-order";
 import { convertLegacyBackup, detectBackupKind } from "@/lib/legacy-import";
-import { takeSafetyNet } from "@/lib/safety-net";
+import { automaticBackupDue, takeSafetyNet } from "@/lib/safety-net";
 
 export type TableOutcome = {
   table: string;
@@ -230,4 +230,57 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     unusable: converted?.report.skipped ?? [],
     safetyNet: { rows: net.rows, bytes: net.bytes },
   };
+}
+
+/**
+ * The daily copy, taken because somebody opened HQ rather than because they
+ * remembered to.
+ *
+ * There is no cron on this project, and adding one would mean a platform
+ * dependency and a shared secret for a shop that opens HQ every single day it
+ * trades. So the visit is the heartbeat — the same trick that closes stale
+ * shifts. It also fails in the right direction: a week with no backups is a
+ * week where nobody opened the shop, and therefore a week with nothing new to
+ * lose.
+ *
+ * Called from the browser rather than from a page render, deliberately. A
+ * snapshot reads every table, and doing that inside a render would make one
+ * HQ page load a day mysteriously slow. Fired and forgotten from the client,
+ * it happens beside the page instead of in front of it.
+ *
+ * Any member of staff may trigger it. The snapshot is taken with the service
+ * role and nothing comes back, so who pressed the button carries no privilege
+ * — and restricting it to the owner would mean no copies on the days the
+ * owner does not log in, which is exactly the gap this closes.
+ */
+export async function backUpIfDue(): Promise<{
+  took: boolean;
+  error: string | null;
+}> {
+  const viewer = await getViewer();
+  if (!isStaff(viewer)) return { took: false, error: null };
+
+  const { due } = await automaticBackupDue();
+  if (!due) return { took: false, error: null };
+
+  const net = await takeSafetyNet("Daily copy, taken automatically", {
+    automatic: true,
+  });
+  if (!net.ok) {
+    // Recorded and reported, never thrown. A failed backup must not break the
+    // page that triggered it — but it must not pass silently either, because
+    // a backup that quietly stopped working is worse than one that never was.
+    console.error(`[backup] automatic: ${net.error}`);
+    return { took: false, error: net.error };
+  }
+
+  const db = createAdminClient();
+  await db.from("activity_log").insert({
+    category: "backup",
+    description: `Automatic copy taken — ${net.rows} rows, ${(net.bytes / 1_048_576).toFixed(1)} MB`,
+    actor: null,
+  });
+
+  revalidatePath("/admin/backup");
+  return { took: true, error: null };
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ticketOf } from "@/lib/tickets";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
@@ -27,6 +28,8 @@ export type TrackedLine = {
 
 export type TrackedOrder = {
   id: string;
+  /** The number the shop and the customer can both say out loud. */
+  ticket: number | null;
   created_at: string;
   status: string;
   fulfillment: string;
@@ -233,7 +236,13 @@ function OrderCard({ order }: { order: TrackedOrder }) {
             {formatDateTime(order.created_at)}
           </p>
           <p className="text-xs capitalize text-ink-800/60">
-            {order.fulfillment} · #{order.id.slice(0, 8)}
+            {/* The ticket, not eight characters of a uuid.
+                
+                This is the number printed on the receipt, shown on the shop's
+                board and searched in HQ — and until now the customer was the
+                one person never shown it. Staff asking "what's your ticket?"
+                was a question the customer had no way to answer. */}
+            {order.fulfillment} · {ticketOf(order.ticket)}
           </p>
         </div>
 

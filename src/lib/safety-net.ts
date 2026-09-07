@@ -18,8 +18,25 @@ import { collectSnapshot, snapshotToJson } from "@/lib/backup";
  * and a month of records.
  */
 
-/** How many to keep. */
-const KEEP = 5;
+/**
+ * How many to keep, per family.
+ *
+ * A pre-restore copy is interesting for a few days: it exists in case that one
+ * restore turns out to have been a mistake. A daily copy is interesting for as
+ * long as it takes to notice that something went wrong last week, which is
+ * longer. One number for both would either throw away the daily history or
+ * hoard copies nobody will read.
+ */
+const KEEP = { asked: 5, automatic: 14 } as const;
+
+/**
+ * How stale the newest automatic copy may get before another is due.
+ *
+ * Twenty hours rather than twenty-four, so a shop that opens HQ at roughly the
+ * same time each morning does not drift into skipping a day — at exactly 24 a
+ * day that starts ten minutes earlier takes no copy at all.
+ */
+export const BACKUP_DUE_HOURS = 20;
 
 export type SafetyNet =
   | { ok: true; id: string; rows: number; bytes: number }
@@ -34,7 +51,10 @@ export type SafetyNet =
  * of the copy is the case where the restore turns out to be wrong. The
  * caller enforces that; this function only reports.
  */
-export async function takeSafetyNet(reason: string): Promise<SafetyNet> {
+export async function takeSafetyNet(
+  reason: string,
+  opts: { automatic?: boolean } = {}
+): Promise<SafetyNet> {
   let payload: string;
   let rows = 0;
 
@@ -55,7 +75,7 @@ export async function takeSafetyNet(reason: string): Promise<SafetyNet> {
 
   const { data, error } = await db
     .from("restore_snapshots")
-    .insert({ reason, rows_included: rows, bytes, payload })
+    .insert({ reason, rows_included: rows, bytes, payload, automatic: opts.automatic ?? false })
     .select("id")
     .single();
 
@@ -64,11 +84,15 @@ export async function takeSafetyNet(reason: string): Promise<SafetyNet> {
   // Trimmed after the new one is safely in, never before: a prune that runs
   // first would, on a bad day, delete the fifth copy and then fail to write
   // the sixth.
+  // Only this family is trimmed. Taking a daily copy must never be the thing
+  // that deletes the copy from just before a restore, or the other way round.
+  const automatic = opts.automatic ?? false;
   const { data: old } = await db
     .from("restore_snapshots")
     .select("id")
+    .eq("automatic", automatic)
     .order("taken_at", { ascending: false })
-    .range(KEEP, KEEP + 50);
+    .range(automatic ? KEEP.automatic : KEEP.asked, 200);
   const doomed = (old ?? []).map((r) => r.id as string);
   if (doomed.length > 0) await db.from("restore_snapshots").delete().in("id", doomed);
 
@@ -81,6 +105,7 @@ export type SnapshotRow = {
   reason: string;
   rows_included: number;
   bytes: number;
+  automatic: boolean;
 };
 
 /** The list, without dragging half a megabyte of JSON along per row. */
@@ -88,7 +113,7 @@ export async function listSafetyNets(): Promise<SnapshotRow[]> {
   const db = createAdminClient();
   const { data, error } = await db
     .from("restore_snapshots")
-    .select("id, taken_at, reason, rows_included, bytes")
+    .select("id, taken_at, reason, rows_included, bytes, automatic")
     .order("taken_at", { ascending: false });
   if (error) {
     // Advisory list on a page the owner needs for other things. Reported to
@@ -109,4 +134,36 @@ export async function readSafetyNet(id: string): Promise<string | null> {
     .single();
   if (error || !data) return null;
   return data.payload as string;
+}
+
+/**
+ * When the last automatic copy was taken, and whether another is due.
+ *
+ * Read before doing the expensive part, so a shop that opens HQ thirty times
+ * a day pays for one snapshot and twenty-nine cheap queries.
+ */
+export async function automaticBackupDue(): Promise<{ due: boolean; last: string | null }> {
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from("restore_snapshots")
+    .select("taken_at")
+    .eq("automatic", true)
+    .order("taken_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // On a read failure, do NOT take one. A database that cannot answer this is
+  // not a database to start writing megabytes into, and the alternative — 
+  // assuming it is due — turns one broken query into a snapshot on every
+  // single page load.
+  if (error) {
+    console.error(`[safety-net] due check: ${error.message}`);
+    return { due: false, last: null };
+  }
+
+  const last = (data?.taken_at as string | undefined) ?? null;
+  if (!last) return { due: true, last: null };
+
+  const hours = (Date.now() - new Date(last).getTime()) / 3_600_000;
+  return { due: hours >= BACKUP_DUE_HOURS, last };
 }

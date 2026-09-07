@@ -12,6 +12,8 @@ import { PAYMENT_STATUSES, type PaymentStatus } from "@/lib/payments";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { cleanReason } from "@/lib/cancellation";
 import { orderLabel } from "@/lib/tickets";
+import { findOrders } from "@/lib/orders-admin-server";
+import type { AdminOrder } from "@/components/admin-order-list";
 
 const BLOCKED_MESSAGE =
   "The database didn't accept that change. Re-run the latest migration (0004) in the Supabase SQL Editor.";
@@ -299,4 +301,18 @@ export async function alertEtaElapsed(
     // An alert is a courtesy. It must never break the page it fired from.
     return { error: null };
   }
+}
+
+/**
+ * Search every order, not just the ones the board loaded.
+ *
+ * Read-only, so it is NOT behind the shift gate. Looking at the shop's own
+ * records is not changing them, and a clocked-out member of staff who cannot
+ * even read the board is being punished rather than prevented — the banner
+ * and the write gate are the boundary.
+ */
+export async function searchAllOrders(query: string): Promise<AdminOrder[]> {
+  const viewer = await getViewer();
+  if (!can(viewer, "orders")) return [];
+  return findOrders(query);
 }

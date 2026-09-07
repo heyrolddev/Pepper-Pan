@@ -178,3 +178,27 @@ begin
   end if;
   raise notice 'every visible column readable, every cost column still walled off';
 end $$;
+
+\echo '--- the two families of safety copy are trimmed apart ---'
+-- Automatic daily copies and the copy taken just before a restore keep
+-- different histories. One trim for both would either throw away the daily
+-- record or hoard copies nobody will read.
+select act_as_service();
+do $$
+declare n int;
+begin
+  if not exists (select 1 from information_schema.columns
+                 where table_schema='public' and table_name='restore_snapshots'
+                   and column_name='automatic') then
+    raise exception 'FAIL: restore_snapshots.automatic is missing';
+  end if;
+
+  select count(*) into n from information_schema.columns
+   where table_schema='public' and table_name='restore_snapshots'
+     and column_name='automatic' and is_nullable='NO' and column_default = 'false';
+  if n <> 1 then
+    raise exception 'FAIL: automatic must be NOT NULL DEFAULT false so old rows read as "asked for"';
+  end if;
+
+  raise notice 'the families can be told apart, and old copies default to asked-for';
+end $$;

@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
     const { data } = await supabase
       .from("orders")
       .select(
-        "id, date, created_at, status, fulfillment, payment_method, payment_status, contact_name, contact_phone, revenue, notes, scheduled_for"
+        "id, ticket, date, created_at, status, fulfillment, payment_method, payment_status, contact_name, contact_phone, revenue, notes, scheduled_for"
       )
       .order("created_at", { ascending: false });
     const rows = (data ?? []) as Record<string, unknown>[];
@@ -141,6 +141,7 @@ export async function GET(request: NextRequest) {
       toCsv(
         [
           "Order ID",
+          "Ticket",
           "Date",
           "Placed at",
           "Status",
@@ -155,6 +156,7 @@ export async function GET(request: NextRequest) {
         ],
         rows.map((o) => [
           o.id,
+          o.ticket,
           o.date,
           o.created_at,
           o.status,

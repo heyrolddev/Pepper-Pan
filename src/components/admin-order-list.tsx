@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ticketOf } from "@/lib/tickets";
 import { alertEtaElapsed } from "@/app/admin/orders/actions";
 import { OrderStatusPicker } from "@/components/order-status-picker";
 import { EtaPicker } from "@/components/eta-picker";
 import { AdminSearch } from "@/components/admin-search";
+import { searchAllOrders } from "@/app/admin/orders/actions";
 import { PaymentVerifier } from "@/components/payment-verifier";
 import { ACTIVE_ORDER_STATUSES, STATUS_LABELS, STATUS_TONES, ORDER_STATUSES, type OrderStatus, fulfillmentLabel } from "@/lib/orders";
 import { OrderBoard, type View } from "@/components/order-board";
@@ -323,7 +324,33 @@ function OrderRow({ order: o }: { order: AdminOrder }) {
   );
 }
 
-export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
+export function AdminOrderList({
+  orders,
+  loaded,
+  total,
+}: {
+  orders: AdminOrder[];
+  /** How many the board asked for. */
+  loaded: number;
+  /** How many exist. The difference is the whole reason for the archive. */
+  total: number;
+}) {
+  /**
+   * The archive, for when the board's slice does not contain the answer.
+   *
+   * The board loads the newest few hundred, which is right — nobody wants two
+   * years of orders rendered to find today's. But the search box only ever
+   * searched what was loaded, so a ticket from last month came back empty.
+   * That does not read as "out of range", it reads as data loss.
+   *
+   * So when the local filter finds nothing, this asks the database. Automatic
+   * rather than behind a button, because a button is a thing to discover and
+   * the person typing a ticket number has already told us what they want.
+   */
+  const [archive, setArchive] = useState<{
+    for: string;
+    rows: AdminOrder[] | null;
+  } | null>(null);
   // "Open" is the working view during service; the per-status tabs answer a
   // specific question. Kept here rather than in the URL because it's a glance,
   // not a destination — nobody bookmarks "the cancelled ones".
@@ -363,6 +390,8 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
       placeholder="Search ticket, name, number, item, status…"
     >
       {(filtered, query) => {
+        const q = query.trim();
+        const localMiss = q.length >= 2 && filtered.length === 0;
         // Counts come from what the search left behind, not from every order
         // in the shop. A tab that says 40 and then shows 2 is a tab lying
         // about what clicking it does.
@@ -378,17 +407,32 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
             ? filtered.filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status))
             : filtered.filter((o) => o.status === view);
 
-        if (query.trim() && filtered.length === 0) {
+        if (localMiss) {
           return (
-            <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-              No orders match &ldquo;{query}&rdquo;.
-            </p>
+            <ArchiveResults
+              query={q}
+              archive={archive}
+              onLoad={setArchive}
+              total={total}
+              loaded={loaded}
+            />
           );
         }
 
         return (
           <div className="flex flex-col gap-5">
             <OrderBoard view={view} onView={setView} counts={counts} />
+
+            {/* A list that silently stops is a list somebody eventually
+                mistakes for the whole thing. Search reaches the rest. */}
+            {total > loaded && (
+              <p className="text-xs text-ink-800/50">
+                Showing the newest{" "}
+                <span className="tabular-nums">{loaded.toLocaleString()}</span> of{" "}
+                <span className="tabular-nums">{total.toLocaleString()}</span> orders.
+                Search reaches all of them.
+              </p>
+            )}
 
             {shown.length === 0 ? (
               <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
@@ -412,5 +456,91 @@ export function AdminOrderList({ orders }: { orders: AdminOrder[] }) {
         );
       }}
     </AdminSearch>
+  );
+}
+
+/**
+ * What the archive found, or that it is looking.
+ *
+ * Split out so the board above stays a rendering function and this can hold
+ * the request. It fires once per query — the guard is the query string itself,
+ * so typing one more character asks again and backspacing does not.
+ */
+function ArchiveResults({
+  query,
+  archive,
+  onLoad,
+  total,
+  loaded,
+}: {
+  query: string;
+  archive: { for: string; rows: AdminOrder[] | null } | null;
+  onLoad: (a: { for: string; rows: AdminOrder[] | null }) => void;
+  total: number;
+  loaded: number;
+}) {
+  const asked = useRef<string | null>(null);
+
+  /**
+   * One request per query, and the query string is what matches a result to
+   * the box.
+   *
+   * Written this way after getting it wrong once. The first version set a
+   * "looking…" state before awaiting, and kept `archive.for` in the
+   * dependencies — so that state change re-ran the effect, React cleaned up
+   * the previous one, the cleanup flipped an `alive` flag, and the reply that
+   * was already in flight was then thrown away on arrival. It sat on
+   * "looking…" for ever.
+   *
+   * So: the effect depends on the query alone, nothing sets an intermediate
+   * state, and "looking" is derived from whether the stored result is for the
+   * query currently in the box. A reply that arrives for an older query is
+   * ignored by the same comparison rather than by a flag.
+   */
+  useEffect(() => {
+    if (asked.current === query) return;
+    // Debounced, because this runs on a miss and every keystroke on the way to
+    // a ticket number is a miss.
+    const t = setTimeout(async () => {
+      asked.current = query;
+      onLoad({ for: query, rows: await searchAllOrders(query) });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query, onLoad]);
+
+  const rows = archive?.for === query ? archive.rows : null;
+  const looking = rows === null;
+
+  if (looking) {
+    return (
+      <p className="rounded-2xl border-2 border-dashed border-ink-950/15 bg-cream-100 p-6 text-sm text-ink-800/60">
+        Not in the newest {loaded.toLocaleString()} — looking through all{" "}
+        {total.toLocaleString()}…
+      </p>
+    );
+  }
+
+  if (!rows || rows.length === 0) {
+    return (
+      <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
+        Nothing in the whole history matches &ldquo;{query}&rdquo; — not just
+        the newest {loaded.toLocaleString()}. Tickets look like{" "}
+        <span className="font-mono">0042</span>.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="rounded-2xl bg-gold-400/20 px-4 py-3 text-sm text-ink-800/75">
+        <span className="font-bold text-ink-950">
+          {rows.length} from the archive
+        </span>{" "}
+        — older than the newest {loaded.toLocaleString()} on the board.
+      </p>
+      {rows.map((o) => (
+        <OrderRow key={o.id} order={o} />
+      ))}
+    </div>
   );
 }

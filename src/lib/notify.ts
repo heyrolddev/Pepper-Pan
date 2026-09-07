@@ -1,4 +1,5 @@
 import "server-only";
+import { ticketOf } from "@/lib/tickets";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { STATUS_LABELS, type OrderStatus } from "@/lib/orders";
 import { pushConfigured, pushToStaff, pushToUser } from "@/lib/push";
@@ -41,17 +42,17 @@ const WORTH_SENDING: OrderStatus[] = [
 function subjectFor(status: OrderStatus, ref: string): string {
   switch (status) {
     case "confirmed":
-      return `Your Pepper Pan order is confirmed (#${ref})`;
+      return `Your Pepper Pan order is confirmed (${ref})`;
     case "preparing":
-      return `We're cooking your Pepper Pan order (#${ref})`;
+      return `We're cooking your Pepper Pan order (${ref})`;
     case "ready":
-      return `Your Pepper Pan order is ready (#${ref})`;
+      return `Your Pepper Pan order is ready (${ref})`;
     case "out_for_delivery":
-      return `Your Pepper Pan order is on the way (#${ref})`;
+      return `Your Pepper Pan order is on the way (${ref})`;
     case "cancelled":
-      return `Your Pepper Pan order was cancelled (#${ref})`;
+      return `Your Pepper Pan order was cancelled (${ref})`;
     default:
-      return `Update on your Pepper Pan order (#${ref})`;
+      return `Update on your Pepper Pan order (${ref})`;
   }
 }
 
@@ -108,17 +109,17 @@ function pushBodyFor(status: OrderStatus, fulfillment: string): string {
 function pushTitleFor(status: OrderStatus, ref: string): string {
   switch (status) {
     case "confirmed":
-      return `Order confirmed · #${ref}`;
+      return `Order confirmed · ${ref}`;
     case "preparing":
-      return `Cooking now 🍳 · #${ref}`;
+      return `Cooking now 🍳 · ${ref}`;
     case "ready":
-      return `Your order is ready 🍜 · #${ref}`;
+      return `Your order is ready 🍜 · ${ref}`;
     case "out_for_delivery":
-      return `On the way 🛵 · #${ref}`;
+      return `On the way 🛵 · ${ref}`;
     case "cancelled":
-      return `Order cancelled · #${ref}`;
+      return `Order cancelled · ${ref}`;
     default:
-      return `Order update · #${ref}`;
+      return `Order update · ${ref}`;
   }
 }
 
@@ -146,7 +147,7 @@ async function sendEmail(
         bodyFor(status, fulfillment, reason),
         "",
         `Status: ${STATUS_LABELS[status]}`,
-        `Order #${ref}`,
+        `Order ${ref}`,
         "",
         "Pepper Pan — in front of Palengkeni, beside Osave, Apalit",
         "+63 947 353 3060",
@@ -177,7 +178,7 @@ export async function notifyOrderStatus(orderId: string): Promise<void> {
     const { data: order } = await db
       .from("orders")
       .select(
-        "id, customer_id, status, fulfillment, cancelled_reason, notified_status, contact_name"
+        "id, ticket, customer_id, status, fulfillment, cancelled_reason, notified_status, contact_name"
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -197,7 +198,11 @@ export async function notifyOrderStatus(orderId: string): Promise<void> {
       .select("id");
     if (!claimed?.length) return;
 
-    const ref = order.id.slice(0, 8);
+    // The ticket, not eight characters of a uuid. This notification is where
+    // most customers first see the number, and it has to be the same one the
+    // receipt shows and the shop searches for — otherwise "quote your number"
+    // means two different things on two screens.
+    const ref = ticketOf(order.ticket as number | null);
     const firstName = (order.contact_name ?? "").trim().split(/\s+/)[0] || "there";
 
     // Neither channel may hold up the other, and neither may throw: the order
