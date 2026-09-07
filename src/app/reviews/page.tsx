@@ -86,9 +86,18 @@ export default async function ReviewsPage() {
 
             <ReviewList reviews={reviews} />
 
+            {/* This paragraph used to say every review here was left by a
+                customer on this site. Now that the shop can add reviews
+                people sent it on Messenger, that sentence would no longer be
+                true — so it says what is actually the case instead, and the
+                relayed ones carry a badge. A claim you can check beats a
+                claim you have to take on faith. */}
             <p className="mt-10 text-center text-sm text-ink-800/55">
-              Only customers who&apos;ve received an order can review, so every
-              rating here comes from a real meal.
+              Every review here is from a real Pepper Pan meal. Most were
+              posted by the customer themselves, which the site only allows
+              once an order has been received. The ones marked{" "}
+              <span className="font-semibold">Sent on Messenger</span> were
+              written to us in a chat and typed in here by the shop.
             </p>
           </>
         )}

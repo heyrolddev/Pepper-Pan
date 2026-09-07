@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Avatar } from "@/components/avatar";
 import { Stars } from "@/components/stars";
 
 export type FeaturedReview = {
@@ -8,7 +9,9 @@ export type FeaturedReview = {
   rating: number;
   comment: string | null;
   author: string;
+  avatarUrl: string | null;
   mealName: string | null;
+  relayed: boolean;
 };
 
 /**
@@ -202,9 +205,20 @@ export function ReviewCarousel({ reviews }: { reviews: FeaturedReview[] }) {
                 <blockquote className="flex-1 font-display text-lg font-bold leading-snug">
                   &ldquo;{r.comment}&rdquo;
                 </blockquote>
-                <figcaption className="text-sm text-cream-100/70">
-                  {r.author}
-                  {r.mealName && ` · ${r.mealName}`}
+                <figcaption className="flex items-center gap-3">
+                  <Avatar name={r.author} url={r.avatarUrl} size={36} tone="dark" />
+                  <span className="min-w-0 text-sm text-cream-100/70">
+                    <span className="block truncate font-bold text-cream-50">
+                      {r.author}
+                    </span>
+                    <span className="block truncate">
+                      {r.relayed
+                        ? r.mealName
+                          ? `${r.mealName} · via Messenger`
+                          : "Sent on Messenger"
+                        : (r.mealName ?? "The shop overall")}
+                    </span>
+                  </span>
                 </figcaption>
               </figure>
             </li>

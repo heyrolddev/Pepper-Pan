@@ -1,10 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  AVATAR_EDGE,
+  AVATAR_PREFIX,
+  MAX_AVATAR_BYTES,
+  MAX_AVATAR_PICK_BYTES,
   MAX_IMAGE_BYTES,
   MAX_VIDEO_BYTES,
   MEDIA_BUCKET,
   MEDIA_PREFIX,
+  checkAvatarPick,
+  checkAvatarUpload,
   checkMedia,
   storagePathOf,
 } from "../src/lib/media.ts";
@@ -98,4 +104,82 @@ test("an iPhone .mov is refused with instructions an owner can follow", () => {
   const check = checkMedia("video/quicktime", 5 * 1024 * 1024);
   assert.equal(check.ok, false, "quicktime does not play everywhere");
   if (!check.ok) assert.match(check.error, /iPhone/, "tells them how to fix it on the phone they have");
+});
+
+/* ============================================================
+ * Profile pictures
+ *
+ * Two different questions, and conflating them is the bug this guards
+ * against. `checkAvatarPick` is asked about the file on the phone, which is
+ * about to be shrunk and may therefore be large. `checkAvatarUpload` is asked
+ * on the server about the shrunk result, and is the one that decides what
+ * ends up in the bucket — so it must not accept a four-megabyte "avatar"
+ * just because a browser claimed to have resized it.
+ * ============================================================ */
+
+test("a phone photo may be picked even though it is far too big to store", () => {
+  const picked = checkAvatarPick("image/jpeg", 6 * 1024 * 1024);
+  assert.equal(picked.ok, true);
+  // The same bytes would never be accepted for storage.
+  assert.equal(checkAvatarUpload("image/jpeg", 6 * 1024 * 1024).ok, false);
+});
+
+test("something larger than any camera produces is refused at the pick", () => {
+  assert.equal(checkAvatarPick("image/jpeg", MAX_AVATAR_PICK_BYTES + 1).ok, false);
+  assert.equal(checkAvatarPick("image/jpeg", MAX_AVATAR_PICK_BYTES).ok, true);
+});
+
+test("only photos may be picked as a profile picture", () => {
+  assert.equal(checkAvatarPick("video/mp4", 1000).ok, false);
+  assert.equal(checkAvatarPick("application/pdf", 1000).ok, false);
+  for (const type of ["image/jpeg", "image/png", "image/webp", "image/gif"]) {
+    assert.equal(checkAvatarPick(type, 1000).ok, true, type);
+  }
+});
+
+test("the stored avatar limit is the one the server enforces", () => {
+  assert.equal(checkAvatarUpload("image/webp", MAX_AVATAR_BYTES).ok, true);
+  assert.equal(checkAvatarUpload("image/webp", MAX_AVATAR_BYTES + 1).ok, false);
+});
+
+test("a GIF is not stored as a GIF — the shrink flattens it first", () => {
+  // Accepting an animated GIF for storage would put a moving image, at GIF's
+  // file sizes, into a row of review cards. It is picked, then re-encoded.
+  assert.equal(checkAvatarPick("image/gif", 1000).ok, true);
+  assert.equal(checkAvatarUpload("image/gif", 1000).ok, false);
+});
+
+test("a stored avatar is squared, so its edge is the only size that matters", () => {
+  // A guard on the constant rather than the maths: 512 is what the field's
+  // copy promises the customer, and the two must not drift.
+  assert.equal(AVATAR_EDGE, 512);
+});
+
+/* An avatar path is scoped to one account's own folder, which is what stops
+ * "remove my photo" reaching anybody else's. */
+
+test("an avatar resolves inside its owner's folder", () => {
+  const mine = `${AVATAR_PREFIX}/user-1`;
+  assert.equal(storagePathOf(publicUrl(`${mine}/a.webp`), mine), `${mine}/a.webp`);
+});
+
+test("one account cannot name another account's avatar", () => {
+  const mine = `${AVATAR_PREFIX}/user-1`;
+  assert.equal(storagePathOf(publicUrl(`${AVATAR_PREFIX}/user-2/a.webp`), mine), null);
+});
+
+test("an avatar URL is not a promo path, and a promo path is not an avatar", () => {
+  const mine = `${AVATAR_PREFIX}/user-1`;
+  assert.equal(storagePathOf(publicUrl(`${MEDIA_PREFIX}/a.jpg`), mine), null);
+  assert.equal(storagePathOf(publicUrl(`${mine}/a.webp`)), null);
+});
+
+test("traversal out of an avatar folder is refused", () => {
+  const mine = `${AVATAR_PREFIX}/user-1`;
+  assert.equal(storagePathOf(publicUrl(`${mine}/../user-2/a.webp`), mine), null);
+});
+
+test("a URL somewhere else entirely is not a stored avatar", () => {
+  const mine = `${AVATAR_PREFIX}/user-1`;
+  assert.equal(storagePathOf(`https://evil.example/${mine}/a.webp`, mine), null);
 });

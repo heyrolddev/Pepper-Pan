@@ -3,6 +3,7 @@ import { RoleOffer } from "@/components/role-offer";
 import { getViewer, isConfigured } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { AccountForm } from "@/components/account-form";
+import { AvatarField } from "@/components/avatar-field";
 import { getDeliverySettings } from "@/lib/delivery-server";
 import { SignOutButton } from "@/components/sign-out-button";
 import { PushToggle } from "@/components/push-toggle";
@@ -93,6 +94,17 @@ export default async function AccountPage() {
               order — we verify accounts as we get to know you.
             </span>
           )}
+        </div>
+
+        {/* Its own block above the form, not a field inside it. It saves the
+            moment a photo is chosen — a picture you can see is the only
+            confirmation that matters — and a control that saves itself has no
+            business sitting above a Save button that doesn't apply to it. */}
+        <div className="mb-8 border-b border-ink-950/10 pb-8">
+          <AvatarField
+            name={p?.full_name ?? viewer.email}
+            avatarUrl={p?.avatar_url ?? null}
+          />
         </div>
 
         <AccountForm
