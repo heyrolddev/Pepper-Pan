@@ -8,6 +8,7 @@ export type Profile = {
   role: "owner" | "manager" | "staff" | "customer";
   full_name: string | null;
   phone: string | null;
+  avatar_url: string | null;
   address: string | null;
   address_lat: number | null;
   address_lng: number | null;
@@ -39,7 +40,7 @@ export async function getViewer(): Promise<Viewer> {
     const { data: profile } = await supabase
       .from("profiles")
       .select(
-        "id, role, full_name, phone, address, address_lat, address_lng, is_verified, is_blocked, pending_role"
+        "id, role, full_name, phone, avatar_url, address, address_lat, address_lng, is_verified, is_blocked, pending_role"
       )
       .eq("id", user.id)
       .maybeSingle();

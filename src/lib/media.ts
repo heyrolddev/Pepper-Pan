@@ -13,6 +13,9 @@ export const MEDIA_BUCKET = "PepperPan";
 /** Kept apart from the menu photos so a tidy-up of one never catches the other. */
 export const MEDIA_PREFIX = "announcements";
 
+/** Profile pictures. Their own folder for the same reason. */
+export const AVATAR_PREFIX = "avatars";
+
 export const IMAGE_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -104,10 +107,96 @@ export function checkMedia(type: string, size: number): MediaCheck {
  * stops a hand-typed URL turning a "remove photo" into a delete of somebody
  * else's file.
  */
-export function storagePathOf(publicUrl: string): string | null {
+export function storagePathOf(
+  publicUrl: string,
+  prefix: string = MEDIA_PREFIX
+): string | null {
   const marker = `/storage/v1/object/public/${MEDIA_BUCKET}/`;
   const at = publicUrl.indexOf(marker);
   if (at === -1) return null;
   const path = publicUrl.slice(at + marker.length).split("?")[0];
-  return path.startsWith(`${MEDIA_PREFIX}/`) && !path.includes("..") ? path : null;
+  return path.startsWith(`${prefix}/`) && !path.includes("..") ? path : null;
+}
+
+/* ============================================================
+ * Profile pictures
+ *
+ * A separate set of rules from the promo photos, because the shape of the
+ * problem is different. A promo photo is looked at; an avatar is a 40-pixel
+ * circle next to a name. Uploading two megabytes to fill forty pixels is
+ * exactly how a site gets slow, and the shop asked for it not to.
+ *
+ * So the answer here is not a smaller limit — a limit only moves the problem
+ * onto the customer, who now has to go and resize a photo they took on their
+ * phone. The photo is squared and shrunk in the browser before a single byte
+ * leaves it: a 6MB phone picture becomes about 40KB, always, whatever it
+ * started as. The size limits below are then backstops rather than walls.
+ * ============================================================ */
+
+/** What the stored square is. 512 covers a retina screen at any size we show. */
+export const AVATAR_EDGE = 512;
+
+/**
+ * What may be chosen. Generous on purpose — it is the file on the phone, and
+ * it is about to be shrunk. Big enough to accept any photo a phone takes,
+ * small enough that we never ask a browser to decode something absurd.
+ */
+export const MAX_AVATAR_PICK_BYTES = 12 * 1024 * 1024;
+
+/**
+ * What may be stored. The shrink lands two orders of magnitude below this,
+ * so reaching it means something went wrong rather than something was big.
+ */
+export const MAX_AVATAR_BYTES = 1024 * 1024;
+
+/** Encoded to WEBP where the browser can, JPEG where it cannot. */
+export const AVATAR_STORED_TYPES: Record<string, string> = {
+  "image/webp": "webp",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+};
+
+/** A GIF is accepted and flattened to its first frame — an avatar holds still. */
+export const AVATAR_ACCEPT = Object.keys(IMAGE_TYPES).join(",");
+
+/** Can this file be picked as a profile picture? */
+export function checkAvatarPick(type: string, size: number): MediaCheck {
+  const ext = IMAGE_TYPES[type];
+  if (!ext) {
+    return {
+      ok: false,
+      error: "A profile picture has to be a photo — JPG, PNG, WEBP or GIF.",
+    };
+  }
+  if (size > MAX_AVATAR_PICK_BYTES) {
+    return {
+      ok: false,
+      error: `That photo is ${humanBytes(size)}, which is larger than any phone camera produces. Keep it under ${humanBytes(
+        MAX_AVATAR_PICK_BYTES
+      )}.`,
+    };
+  }
+  return { ok: true, kind: "image", ext };
+}
+
+/**
+ * Can this be stored as a profile picture?
+ *
+ * Asked of the shrunk result, on the server, before a token is issued. The
+ * browser did the shrinking, so this is the check that does not trust it.
+ */
+export function checkAvatarUpload(type: string, size: number): MediaCheck {
+  const ext = AVATAR_STORED_TYPES[type];
+  if (!ext) {
+    return { ok: false, error: "That is not an image this site can store." };
+  }
+  if (size > MAX_AVATAR_BYTES) {
+    return {
+      ok: false,
+      error: `That came to ${humanBytes(size)} after resizing, over the ${humanBytes(
+        MAX_AVATAR_BYTES
+      )} a profile picture may be. Try a different photo.`,
+    };
+  }
+  return { ok: true, kind: "image", ext };
 }

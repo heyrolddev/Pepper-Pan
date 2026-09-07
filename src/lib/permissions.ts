@@ -89,6 +89,17 @@ export const CAPABILITIES = [
    * shop gives everybody, forever, in public, is not.
    */
   "faq",
+  /**
+   * Type in a review a customer sent on Messenger.
+   *
+   * Owner only, and the only capability on this list that is owner-only for a
+   * reason other than money. Everything else here is about what a person may
+   * see or change; this one is about publishing words in a named customer's
+   * voice. The card says the shop typed it in, the row records who did, and
+   * the ability to do it at all stops with the person whose reputation is on
+   * the line if it is ever abused.
+   */
+  "reviews.relay",
   /** Add a dish, change its name, price, photo or description. */
   "menu.edit",
   /** What each DISH costs and earns — the margin. The owner's alone. */

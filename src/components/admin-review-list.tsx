@@ -3,8 +3,13 @@
 import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AdminSearch } from "@/components/admin-search";
+import { Avatar } from "@/components/avatar";
 import { Stars } from "@/components/stars";
-import { replyToReview, setReviewHidden } from "@/app/reviews/actions";
+import {
+  deleteRelayedReview,
+  replyToReview,
+  setReviewHidden,
+} from "@/app/reviews/actions";
 import { formatDateTimeFull } from "@/lib/format-date";
 
 export type AdminReview = {
@@ -13,16 +18,28 @@ export type AdminReview = {
   comment: string | null;
   created_at: string;
   author: string;
+  avatarUrl: string | null;
   mealName: string | null;
   shopReply: string | null;
   isHidden: boolean;
+  /** Typed in from a Messenger chat rather than posted by the customer. */
+  relayed: boolean;
+  /** Who typed it in, for a relayed one. */
+  relayedByName: string | null;
 };
 
-function ReviewRow({ review: r }: { review: AdminReview }) {
+function ReviewRow({
+  review: r,
+  canRelay,
+}: {
+  review: AdminReview;
+  canRelay: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [replyOpen, setReplyOpen] = useState(false);
   const [reply, setReply] = useState(r.shopReply ?? "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function run(fn: () => Promise<{ error: string | null }>) {
@@ -48,19 +65,28 @@ function ReviewRow({ review: r }: { review: AdminReview }) {
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-ink-950">{r.author}</span>
-            {r.isHidden && (
-              <span className="rounded-full bg-ink-800 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-cream-100">
-                Hidden
-              </span>
-            )}
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar name={r.author} url={r.avatarUrl} size={40} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-ink-950">{r.author}</span>
+              {r.relayed && (
+                <span className="rounded-full bg-gold-400/40 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-ink-800">
+                  From Messenger
+                </span>
+              )}
+              {r.isHidden && (
+                <span className="rounded-full bg-ink-800 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-cream-100">
+                  Hidden
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-ink-800/55">
+              {r.mealName ?? "The shop overall"} ·{" "}
+              {formatDateTimeFull(r.created_at)}
+              {r.relayed && r.relayedByName && ` · added by ${r.relayedByName}`}
+            </p>
           </div>
-          <p className="text-xs text-ink-800/55">
-            {r.mealName ?? "The shop overall"} ·{" "}
-            {formatDateTimeFull(r.created_at)}
-          </p>
         </div>
         <Stars rating={r.rating} size="md" />
       </div>
@@ -123,6 +149,39 @@ function ReviewRow({ review: r }: { review: AdminReview }) {
         >
           {r.isHidden ? "Show again" : "Hide"}
         </button>
+
+        {/* Delete only ever appears on a relayed review, and the action
+            refuses anything else regardless of what it is sent. A customer's
+            own words are theirs; the most the shop may do to those is stop
+            showing them. This one is the shop's own typing, so a wrong name
+            or the wrong dish is a mistake to erase, not to hide. */}
+        {r.relayed && canRelay && (
+          confirmDelete ? (
+            <span className="flex items-center gap-2">
+              <button
+                onClick={() => run(() => deleteRelayedReview(r.id))}
+                disabled={pending}
+                className="rounded-full bg-brand-600 px-4 py-1.5 text-xs font-bold text-cream-50 disabled:opacity-60"
+              >
+                {pending ? "…" : "Delete for good"}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-xs font-bold text-ink-800 hover:text-brand-600"
+              >
+                Keep it
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={pending}
+              className="rounded-full px-4 py-1.5 text-xs font-bold text-brand-600 transition-colors hover:bg-brand-600 hover:text-cream-50 disabled:opacity-60"
+            >
+              Delete
+            </button>
+          )
+        )}
       </div>
 
       {error && <p className="mt-2 text-xs font-semibold text-brand-700">{error}</p>}
@@ -130,7 +189,13 @@ function ReviewRow({ review: r }: { review: AdminReview }) {
   );
 }
 
-export function AdminReviewList({ reviews }: { reviews: AdminReview[] }) {
+export function AdminReviewList({
+  reviews,
+  canRelay = false,
+}: {
+  reviews: AdminReview[];
+  canRelay?: boolean;
+}) {
   const searchText = useCallback(
     (r: AdminReview) =>
       [
@@ -141,6 +206,7 @@ export function AdminReviewList({ reviews }: { reviews: AdminReview[] }) {
         `${r.rating} star`,
         r.isHidden ? "hidden" : "visible",
         r.shopReply ? "replied" : "no reply",
+        r.relayed ? "messenger relayed" : "posted here",
       ]
         .filter(Boolean)
         .join(" "),
@@ -164,7 +230,7 @@ export function AdminReviewList({ reviews }: { reviews: AdminReview[] }) {
         ) : (
           <ul className="flex flex-col gap-4">
             {filtered.map((r) => (
-              <ReviewRow key={r.id} review={r} />
+              <ReviewRow key={r.id} review={r} canRelay={canRelay} />
             ))}
           </ul>
         )
