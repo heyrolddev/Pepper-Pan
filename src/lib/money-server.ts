@@ -249,9 +249,20 @@ export async function loadMoney(): Promise<MoneyPicture> {
               type: "out",
               amount,
               category: "sale",
-              note: `${what} cancelled${who ? ` by ${who}` : ""}`,
+              /**
+               * No name on a reversal, deliberately.
+               *
+               * `logged_by` is stamped when the sale is RUNG UP, not when it
+               * is cancelled — so naming it here would put the cancellation
+               * on whoever was on the till at the time, which is very often
+               * not the person who cancelled it. A confident wrong name is
+               * worse than no name: it sends the owner to ask the wrong
+               * person. Who cancelled it is in the activity log, where it is
+               * recorded at the moment it happens.
+               */
+              note: `${what} cancelled`,
               derived: true,
-              by: who,
+              by: null,
             }
           : {
               id: `order-${o.id}`,
@@ -259,7 +270,8 @@ export async function loadMoney(): Promise<MoneyPicture> {
               type: "in",
               amount,
               category: "sale",
-              note: `${what}${who ? ` — ${who}` : ""}`,
+              // Safe on the sale line: `logged_by` is exactly who took it.
+              note: `${what}${who ? ` · took by ${who}` : ""}`,
               derived: true,
               by: who,
             }
