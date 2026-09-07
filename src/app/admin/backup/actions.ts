@@ -12,6 +12,12 @@ import {
 } from "@/lib/restore-order";
 import { convertLegacyBackup, detectBackupKind } from "@/lib/legacy-import";
 import { automaticBackupDue, takeSafetyNet } from "@/lib/safety-net";
+import {
+  emailConfigured,
+  looksLikeEmail,
+  offsiteBackupDue,
+  sendOffsiteBackup,
+} from "@/lib/offsite-backup";
 
 export type TableOutcome = {
   table: string;
@@ -283,4 +289,93 @@ export async function backUpIfDue(): Promise<{
 
   revalidatePath("/admin/backup");
   return { took: true, error: null };
+}
+
+/**
+ * The weekly copy that leaves the building.
+ *
+ * Rides the same heartbeat as the daily one — opening HQ — for the same
+ * reasons, and is checked after it so a week where both are due takes the
+ * snapshot for the drawer first. Owner-gated unlike the daily copy: this one
+ * puts every customer's details into an email, and that is not a decision a
+ * shift makes.
+ */
+export async function sendOffsiteIfDue(): Promise<{ sent: boolean; error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "settings")) return { sent: false, error: null };
+  if (!(await offsiteBackupDue())) return { sent: false, error: null };
+
+  const result = await sendOffsiteBackup();
+  const db = createAdminClient();
+  await db.from("activity_log").insert({
+    category: "backup",
+    description: result.sent
+      ? "Weekly copy emailed out"
+      : `Weekly copy could not be sent — ${result.error ?? "unknown reason"}`,
+    actor: viewer?.profile?.id ?? null,
+  });
+  revalidatePath("/admin/backup");
+  return result;
+}
+
+/** Turn the weekly copy on or off, and say where it goes. */
+export async function saveOffsiteBackup(input: {
+  enabled: boolean;
+  email: string;
+}): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "settings")) {
+    return { error: "Only the owner can change where the shop's records are sent." };
+  }
+
+  const email = input.email.trim();
+  // Checked before it is stored, not when the first send fails a week later.
+  if (input.enabled && !looksLikeEmail(email)) {
+    return { error: "That doesn't look like an email address." };
+  }
+  if (input.enabled && !emailConfigured()) {
+    return {
+      error: "Email isn't set up on this site yet, so there is nothing to send with.",
+    };
+  }
+
+  const db = createAdminClient();
+  const { error } = await db
+    .from("settings")
+    .update({
+      offsite_backup_enabled: input.enabled,
+      offsite_backup_email: email || null,
+      // Cleared, because an old failure has nothing to say about a new setting.
+      offsite_backup_last_error: null,
+    })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+
+  await db.from("activity_log").insert({
+    category: "backup",
+    description: input.enabled
+      ? `Weekly copy switched on, going to ${email}`
+      : "Weekly copy switched off",
+    actor: viewer?.profile?.id ?? null,
+  });
+  revalidatePath("/admin/backup");
+  return { error: null };
+}
+
+/** Send one now, so the owner finds out it works before they need it to. */
+export async function sendOffsiteNow(): Promise<{ sent: boolean; error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "settings")) {
+    return { sent: false, error: "Only the owner can send the shop's records." };
+  }
+  const result = await sendOffsiteBackup();
+  await createAdminClient().from("activity_log").insert({
+    category: "backup",
+    description: result.sent
+      ? "Copy emailed out by hand"
+      : `Copy could not be emailed — ${result.error ?? "unknown reason"}`,
+    actor: viewer?.profile?.id ?? null,
+  });
+  revalidatePath("/admin/backup");
+  return result;
 }
