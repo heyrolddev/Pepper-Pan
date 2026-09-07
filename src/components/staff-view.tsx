@@ -28,6 +28,8 @@ export type ShiftReport = {
   endedAt: string | null;
   length: string;
   closingCash: number | null;
+  /** Closed by the system because nobody clocked out — so nobody counted. */
+  autoClosed: boolean;
   note: string | null;
   sales: number;
   takings: number;
@@ -119,7 +121,17 @@ function ShiftCard({ r }: { r: ShiftReport }) {
               </p>
             )}
             {diff === null && !running && (
-              <p className="mt-0.5 text-xs text-ink-800/40">Drawer not counted</p>
+              /* Two different facts wearing the same words. "Not counted"
+                 could mean somebody skipped it; "never clocked out" says the
+                 shift was closed by the system, which is a thing to raise
+                 with the person rather than a gap in a report. */
+              <p
+                className={`mt-0.5 text-xs ${
+                  r.autoClosed ? "font-bold text-brand-600" : "text-ink-800/40"
+                }`}
+              >
+                {r.autoClosed ? "Never clocked out" : "Drawer not counted"}
+              </p>
             )}
           </div>
         </div>
@@ -145,7 +157,9 @@ function ShiftCard({ r }: { r: ShiftReport }) {
               <dt className="text-sm text-ink-800/60">Counted in the drawer</dt>
               <dd>
                 {r.closingCash === null ? (
-                  <span className="text-sm text-ink-800/40">not counted</span>
+                  <span className="text-sm text-ink-800/40">
+                    {r.autoClosed ? "never clocked out" : "not counted"}
+                  </span>
                 ) : (
                   <Money n={r.closingCash} />
                 )}

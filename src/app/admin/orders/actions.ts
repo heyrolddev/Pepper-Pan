@@ -10,6 +10,7 @@ import { pushToStaff } from "@/lib/push";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
 import { PAYMENT_STATUSES, type PaymentStatus } from "@/lib/payments";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
+import { cleanReason } from "@/lib/cancellation";
 import { orderLabel } from "@/lib/tickets";
 
 const BLOCKED_MESSAGE =
@@ -81,7 +82,17 @@ const labelOf = (row: Named | undefined) =>
 
 export async function setOrderStatus(
   orderId: string,
-  status: OrderStatus
+  status: OrderStatus,
+  /**
+   * Why, and required when cancelling.
+   *
+   * Cancelling is the one status change that takes money back out of the
+   * drawer, and until now the shop could do it with nothing recorded at all —
+   * `cancelled_reason` had one writer, the customer cancelling their own
+   * order. So the owner could see that a paid order had become a cancelled
+   * one and had no way to ask about it.
+   */
+  reason?: string
 ): Promise<{ error: string | null }> {
   if (!ORDER_STATUSES.includes(status)) {
     return { error: "Unknown status." };
@@ -90,6 +101,9 @@ export async function setOrderStatus(
   const viewer = await getViewer();
   if (!can(viewer, "orders")) return { error: "Not allowed." };
   if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
+
+  const why = status === "cancelled" ? cleanReason(reason) : null;
+  if (why?.error) return { error: why.error };
 
   const supabase = await createClient();
   // `.select()` matters: without it PostgREST reports success even when a
@@ -105,6 +119,17 @@ export async function setOrderStatus(
       ...(ETA_IS_OVER.includes(status)
         ? { eta_minutes: null, eta_set_at: null }
         : {}),
+      // Stamped in the same write as the status, so there is no moment where
+      // an order is cancelled and nobody owns it. Cleared when an order is
+      // moved back off cancelled — a stale "cancelled by" on a live order is
+      // a worse record than none.
+      ...(status === "cancelled"
+        ? {
+            cancelled_reason: why!.reason,
+            cancelled_by: viewer?.profile?.id ?? null,
+            cancelled_at: new Date().toISOString(),
+          }
+        : { cancelled_reason: null, cancelled_by: null, cancelled_at: null }),
     })
     .eq("id", orderId)
     .select("id, ticket, contact_name");
@@ -124,7 +149,8 @@ export async function setOrderStatus(
   await notifyOrderStatus(orderId);
 
   await record(
-    `${nameOf(viewer)} set ${labelOf((data as Named[])[0])} to ${status}`,
+    `${nameOf(viewer)} set ${labelOf((data as Named[])[0])} to ${status}` +
+      (why?.reason ? ` — ${why.reason}` : ""),
     viewer?.profile?.id ?? null
   );
 

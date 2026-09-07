@@ -23,6 +23,9 @@ export type AdminOrder = {
   revenue: number;
   eta_minutes: number | null;
   cancelled_reason: string | null;
+  cancelled_at: string | null;
+  /** Who cancelled it — resolved on the server, since staff names are not in this list. */
+  cancelled_by_name: string | null;
   ticket: number | null;
   contact_name: string | null;
   contact_phone: string | null;
@@ -242,9 +245,12 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
         </p>
       )}
 
-      {o.status === "cancelled" && o.cancelled_reason && (
+      {o.status === "cancelled" && (o.cancelled_reason || o.cancelled_by_name) && (
         <p className="mt-3 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
-          <span className="font-bold">Cancelled:</span> {o.cancelled_reason}
+          <span className="font-bold">Cancelled</span>
+          {o.cancelled_by_name ? ` by ${o.cancelled_by_name}` : ""}
+          {o.cancelled_at ? ` · ${formatDateTimeFull(o.cancelled_at)}` : ""}
+          {o.cancelled_reason ? ` — ${o.cancelled_reason}` : ""}
         </p>
       )}
     </div>

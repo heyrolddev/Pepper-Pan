@@ -6,7 +6,9 @@ import { DEVICE_COOKIE } from "@/lib/devices";
 import { DeviceWaiting } from "@/components/device-waiting";
 import { AdminShell } from "@/components/admin-shell";
 import { getAdminBadges } from "@/lib/admin-badges";
-import { openShiftFor } from "@/lib/shifts-server";
+import { closeStaleShifts, openShiftFor, shiftLength, STALE_SHIFT_HOURS } from "@/lib/shifts-server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { pushToOwners } from "@/lib/push";
 
 import { privatePage } from "@/lib/seo";
 
@@ -57,6 +59,16 @@ export default async function AdminLayout({
   // Fetched in the layout rather than per page, so the counts are the same on
   // every screen — a sidebar that says "3 orders" on one page and "1" on the
   // next is worse than one that says nothing.
+  /**
+   * Shifts nobody clocked out of get closed here, before the clock is read.
+   *
+   * Before, that ran first and this second — which would have shown the person
+   * still on a shift the same request had just closed. Opening HQ is the only
+   * regular heartbeat this project has: there is no cron, and a stale shift is
+   * now a key to the whole shop floor rather than a wrong number in a report.
+   */
+  await tidyStaleShifts();
+
   const [badges, shift] = await Promise.all([
     getAdminBadges(),
     // Fetched here with the badges so the rail can show the clock on every
@@ -74,4 +86,49 @@ export default async function AdminLayout({
       {children}
     </AdminShell>
   );
+}
+
+/**
+ * Close what was left open, and tell the owner rather than tidying quietly.
+ *
+ * A shift closed by the system is a shift with no drawer count, which is
+ * exactly the thing the owner needs to know about — and the person keeps
+ * forgetting until somebody mentions it.
+ */
+async function tidyStaleShifts(): Promise<void> {
+  const closed = await closeStaleShifts();
+  if (closed.length === 0) return;
+
+  const db = createAdminClient();
+  const { data: people } = await db
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", [...new Set(closed.map((s) => s.staff_id))]);
+  const nameOf = new Map(
+    ((people ?? []) as { id: string; full_name: string | null }[]).map((p) => [
+      p.id,
+      p.full_name?.trim() || "Someone",
+    ])
+  );
+
+  for (const s of closed) {
+    const who = nameOf.get(s.staff_id) ?? "Someone";
+    await db.from("activity_log").insert({
+      category: "shift",
+      description:
+        `Shift closed automatically after ${STALE_SHIFT_HOURS}h — ` +
+        `nobody clocked out, so the drawer was never counted ` +
+        `(${shiftLength(s.started_at, s.ended_at)})`,
+      actor: s.staff_id,
+    });
+    await pushToOwners({
+      title: `${who} never clocked out`,
+      body: `The shift ran ${shiftLength(
+        s.started_at,
+        s.ended_at
+      )} and has been closed. The drawer was never counted.`,
+      url: "/admin/staff",
+      tag: `shift-stale-${s.id}`,
+    });
+  }
 }

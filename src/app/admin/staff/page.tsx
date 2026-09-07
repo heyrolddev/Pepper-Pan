@@ -41,7 +41,7 @@ export default async function AdminStaffPage() {
       .order("created_at", { ascending: false }),
     supabase
       .from("staff_shifts")
-      .select("id, staff_id, started_at, ended_at, closing_cash, note")
+      .select("id, staff_id, started_at, ended_at, closing_cash, note, auto_closed")
       .order("started_at", { ascending: false })
       .limit(60),
     supabase
@@ -59,6 +59,7 @@ export default async function AdminStaffPage() {
     ended_at: string | null;
     closing_cash: number | null;
     note: string | null;
+    auto_closed: boolean | null;
   }[];
 
   // Every sale that belongs to one of these shifts, in one query rather than
@@ -112,6 +113,7 @@ export default async function AdminStaffPage() {
       endedAt: s.ended_at,
       length: shiftLength(s.started_at, s.ended_at),
       closingCash: s.closing_cash === null ? null : Number(s.closing_cash),
+      autoClosed: Boolean(s.auto_closed),
       note: s.note,
       sales: sales.count,
       takings: sales.total,

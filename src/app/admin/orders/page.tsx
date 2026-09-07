@@ -12,6 +12,8 @@ import {
 type OrderRow = {
   id: string;
   ticket: number | null;
+  cancelled_by: string | null;
+  cancelled_at: string | null;
   created_at: string;
   status: OrderStatus;
   fulfillment: string;
@@ -53,7 +55,7 @@ export default async function AdminOrdersPage() {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
+      "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))"
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -83,12 +85,22 @@ export default async function AdminOrdersPage() {
 
   const rows = (data ?? []) as unknown as OrderRow[];
 
-  const customerIds = [...new Set(rows.map((o) => o.customer_id).filter(Boolean))] as string[];
-  const { data: profileRows } = customerIds.length
+  // Customers AND whoever cancelled, in one query. A cancellation with a
+  // reason and no name is half a record — the reason says what happened and
+  // the name is who to ask about it.
+  const peopleIds = [
+    ...new Set(
+      [
+        ...rows.map((o) => o.customer_id),
+        ...rows.map((o) => o.cancelled_by),
+      ].filter(Boolean)
+    ),
+  ] as string[];
+  const { data: profileRows } = peopleIds.length
     ? await supabase
         .from("profiles")
         .select("id, full_name, phone, is_verified, is_blocked")
-        .in("id", customerIds)
+        .in("id", peopleIds)
     : { data: [] };
   const profiles = new Map(((profileRows ?? []) as CustomerInfo[]).map((p) => [p.id, p]));
 
@@ -112,6 +124,10 @@ export default async function AdminOrdersPage() {
       revenue: Number(o.revenue),
       eta_minutes: o.eta_minutes,
       cancelled_reason: o.cancelled_reason,
+      cancelled_at: o.cancelled_at,
+      cancelled_by_name: o.cancelled_by
+        ? (profiles.get(o.cancelled_by)?.full_name ?? null)
+        : null,
       eta_set_at: o.eta_set_at,
       scheduled_for: o.scheduled_for,
       contact_name: o.contact_name,

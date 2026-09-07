@@ -221,13 +221,13 @@ export async function loadMoney(): Promise<MoneyPicture> {
   if (cashEnabled && startedOn) {
     const { data: cashOrders } = await supabase
       .from("orders")
-      .select("id, ticket, date, revenue, status, contact_name, logged_by, tag")
+      .select("id, ticket, date, revenue, status, contact_name, logged_by, tag, cancelled_by")
       .gte("date", startedOn)
       .eq("payment_method", "cod")
       .order("date", { ascending: false })
       .limit(200);
 
-    for (const o of (cashOrders ?? []) as {
+    const rows = (cashOrders ?? []) as {
       id: string;
       ticket: number | null;
       date: string;
@@ -236,7 +236,25 @@ export async function loadMoney(): Promise<MoneyPicture> {
       contact_name: string | null;
       logged_by: string | null;
       tag: string | null;
-    }[]) {
+      cancelled_by: string | null;
+    }[];
+
+    // Who cancelled, by name. `cancelled_by` is stamped at the moment of
+    // cancelling — unlike `logged_by`, which says who rang the sale up — so
+    // this is the one attribution a reversal can carry honestly.
+    const cancellerIds = [...new Set(rows.map((o) => o.cancelled_by).filter(Boolean))] as string[];
+    const cancellerName = new Map<string, string>();
+    if (cancellerIds.length > 0) {
+      const { data: people } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", cancellerIds);
+      for (const p of (people ?? []) as { id: string; full_name: string | null }[]) {
+        if (p.full_name?.trim()) cancellerName.set(p.id, p.full_name.trim());
+      }
+    }
+
+    for (const o of rows) {
       const amount = Number(o.revenue) || 0;
       if (amount === 0) continue;
       const who = o.logged_by?.trim() || null;
@@ -250,19 +268,23 @@ export async function loadMoney(): Promise<MoneyPicture> {
               amount,
               category: "sale",
               /**
-               * No name on a reversal, deliberately.
+               * Named from `cancelled_by`, and only from `cancelled_by`.
                *
-               * `logged_by` is stamped when the sale is RUNG UP, not when it
-               * is cancelled — so naming it here would put the cancellation
-               * on whoever was on the till at the time, which is very often
-               * not the person who cancelled it. A confident wrong name is
-               * worse than no name: it sends the owner to ask the wrong
-               * person. Who cancelled it is in the activity log, where it is
-               * recorded at the moment it happens.
+               * It briefly used `logged_by`, which is stamped when the sale is
+               * RUNG UP — so it put the cancellation on whoever was on the
+               * till at the time, very often not the person who cancelled it.
+               * A confident wrong name is worse than no name: it sends the
+               * owner to ask the wrong person about missing money. Orders
+               * cancelled before this column existed simply have no name, and
+               * say nothing rather than guessing.
                */
-              note: `${what} cancelled`,
+              note:
+                `${what} cancelled` +
+                (o.cancelled_by && cancellerName.has(o.cancelled_by)
+                  ? ` by ${cancellerName.get(o.cancelled_by)}`
+                  : ""),
               derived: true,
-              by: null,
+              by: o.cancelled_by ? (cancellerName.get(o.cancelled_by) ?? null) : null,
             }
           : {
               id: `order-${o.id}`,
