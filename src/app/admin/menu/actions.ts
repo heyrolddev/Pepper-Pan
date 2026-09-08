@@ -294,9 +294,29 @@ export async function saveCategory(input: {
     }
   }
 
+  // A rename writes a new row, so its place in the menu has to come with it.
+  // Without this the renamed category silently jumps to the front — the
+  // column defaults to 0 — and the owner's ordering is undone by a typo fix.
+  let sortOrder: number | undefined;
+  if (was) {
+    const { data: before } = await supabase
+      .from("menu_categories")
+      .select("sort_order")
+      .eq("name", was)
+      .maybeSingle();
+    sortOrder = (before as { sort_order: number } | null)?.sort_order;
+  }
+
   const { error } = await supabase
     .from("menu_categories")
-    .upsert({ name, colour: input.colour }, { onConflict: "name" });
+    .upsert(
+      {
+        name,
+        colour: input.colour,
+        ...(sortOrder === undefined ? {} : { sort_order: sortOrder }),
+      },
+      { onConflict: "name" }
+    );
   if (error) return { error: error.message };
 
   if (was && was !== name) {
@@ -350,6 +370,62 @@ export async function deleteCategory(name: string): Promise<{ error: string | nu
 
   const { error } = await supabase.from("menu_categories").delete().eq("name", name);
   if (error) return { error: error.message };
+
+  revalidateMenu();
+  return { error: null };
+}
+
+/**
+ * Put the categories in the order the customer should meet them.
+ *
+ * This is the control the menu was missing. `sort_order` decided both the
+ * filter pills and — since this change — what leads the "All" grid, and the
+ * only thing that had ever written it was migration 0022, which seeded it by
+ * how many dishes were in each category. That is a reasonable first guess and
+ * a terrible permanent answer: the biggest category was Drinks, so a shop
+ * selling Taiwanese noodles opened on three bottles of soft drink.
+ *
+ * Takes the WHOLE list rather than a name and a direction. Two reasons: the
+ * numbers are rewritten from scratch every time, so data that arrived with
+ * every row at 0 (or with gaps, or duplicates) heals itself on the first
+ * move; and there is no read-then-swap in between, which is the step where
+ * two quick taps race each other and land two categories on the same number.
+ */
+export async function reorderCategories(
+  names: string[]
+): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change the menu's order." };
+  }
+  if (names.length === 0) return { error: null };
+
+  const supabase = createAdminClient();
+  const { data: rows, error: readError } = await supabase
+    .from("menu_categories")
+    .select("name");
+  if (readError) return { error: readError.message };
+
+  // Only names that actually exist, and each one once. A list sent from a
+  // browser is a list the browser chose.
+  const real = new Set(((rows ?? []) as { name: string }[]).map((r) => r.name));
+  const ordered: string[] = [];
+  for (const name of names) {
+    if (real.has(name) && !ordered.includes(name)) ordered.push(name);
+  }
+
+  // Anything the browser didn't mention keeps its place at the end rather
+  // than being renumbered to 0 and jumping to the front.
+  const rest = [...real].filter((n) => !ordered.includes(n)).sort();
+
+  const step = 10;
+  for (const [i, name] of [...ordered, ...rest].entries()) {
+    const { error } = await supabase
+      .from("menu_categories")
+      .update({ sort_order: (i + 1) * step })
+      .eq("name", name);
+    if (error) return { error: error.message };
+  }
 
   revalidateMenu();
   return { error: null };

@@ -520,3 +520,82 @@ begin
   end if;
   raise notice 'the review stayed, and no longer points at a deleted account';
 end $$;
+
+-- ============================================================
+-- 0040 — the menu opens on food
+-- ============================================================
+
+\echo '--- the named order is applied, whatever the spacing and case ---'
+reset role;
+select act_as_service();
+do $$
+declare got text;
+begin
+  -- The shop's real vocabulary, including the seeded-by-popularity numbers
+  -- that put Drinks first: Drinks had the most dishes in it.
+  insert into menu_categories (name, colour, sort_order) values
+    ('Drinks','brand',10), ('Mains','gold',20), ('Coffee','jade',30),
+    ('Solo','chili',40), ('Burger','teal',50), ('Premium Sides','brown',60),
+    ('Milktea','ink',70), ('Raspberry','sand',80), ('Soft drinks','brand',90),
+    ('ji pai','gold',100)
+  on conflict (name) do update set sort_order = excluded.sort_order;
+
+  perform order_menu_categories();
+
+  select string_agg(name, ' > ' order by sort_order, name) into got
+    from menu_categories;
+  if got <> 'Mains > ji pai > Solo > Burger > Premium Sides > Coffee > Milktea > Raspberry > Soft drinks > Drinks' then
+    raise exception 'FAIL: the menu order came out as %', got;
+  end if;
+  raise notice 'food first, drinks last: %', got;
+end $$;
+
+\echo '--- and "Drinks" is last on purpose, not by accident ---'
+-- If Drinks ranked before Milktea or Soft drinks it would swallow them: a
+-- dish sits in the earliest block any of its categories names, and nearly
+-- every drink carries the Drinks tag as well as its own.
+do $$
+declare drinks int; softdrinks int;
+begin
+  select sort_order into drinks from menu_categories where name = 'Drinks';
+  select sort_order into softdrinks from menu_categories where name = 'Soft drinks';
+  if drinks <= softdrinks then
+    raise exception 'FAIL: the Drinks umbrella ranks at or before Soft drinks, so it will swallow every drink';
+  end if;
+  raise notice 'the umbrella sits behind the specific categories';
+end $$;
+
+\echo '--- a category nobody named keeps its place at the end ---'
+do $$
+declare pos int; last_named int;
+begin
+  insert into menu_categories (name, colour, sort_order)
+    values ('Seasonal','jade',5) on conflict (name) do nothing;
+  perform order_menu_categories();
+  select sort_order into pos from menu_categories where name = 'Seasonal';
+  select sort_order into last_named from menu_categories where name = 'Drinks';
+  if pos <= last_named then
+    raise exception 'FAIL: an unnamed category jumped in front of the named ones (% vs %)', pos, last_named;
+  end if;
+  raise notice 'a new category lands at the end rather than reshuffling the menu';
+end $$;
+
+\echo '--- re-running it changes nothing ---'
+do $$
+declare again int;
+begin
+  select order_menu_categories() into again;
+  if again <> 0 then
+    raise exception 'FAIL: re-running the ordering moved % rows — it is not idempotent', again;
+  end if;
+  raise notice 'safe to run twice';
+end $$;
+
+\echo '--- and the public cannot call it ---'
+do $$ begin
+  if has_function_privilege('anon', 'order_menu_categories(text[])', 'execute')
+     or has_function_privilege('authenticated', 'order_menu_categories(text[])', 'execute') then
+    raise exception 'FAIL: a browser session can rewrite what every customer sees first';
+  end if;
+  raise notice 'not reachable from a browser';
+end $$;

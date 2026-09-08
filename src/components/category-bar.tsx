@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveCategory, deleteCategory } from "@/app/admin/menu/actions";
+import {
+  saveCategory,
+  deleteCategory,
+  reorderCategories,
+} from "@/app/admin/menu/actions";
 import { PencilIcon } from "@/components/icons";
 import {
   CATEGORY_COLOURS,
@@ -38,8 +42,64 @@ export function CategoryBar({
   /** Filter the list to a category. Passing the active one again clears it. */
   onFilter?: (name: string | null) => void;
 }) {
+  const router = useRouter();
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [ordering, setOrdering] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [saving, startMove] = useTransition();
+
+  const names = useMemo(() => categories.map((c) => c.name), [categories]);
+
+  /**
+   * The order on screen while it is being changed.
+   *
+   * Held here as well as on the server so a tap moves the chip immediately —
+   * a reorder that waits for a round trip before anything moves gets tapped
+   * three more times, and the shop ends up with an order nobody chose.
+   *
+   * Re-seeded when the SET of categories changes (one added, renamed or
+   * deleted) but not when only the order does: that one is ours while the
+   * owner is in the middle of arranging them, and reseeding from a slow
+   * refresh would snap a chip back after they had already moved it.
+   */
+  const [order, setOrder] = useState<string[]>(names);
+  const signature = [...names].sort().join("\u0000");
+  // React's own "adjust state when a prop changes" pattern: compare against
+  // the last value in state during render, not in an effect. An effect would
+  // paint one frame of the wrong list first.
+  const [seeded, setSeeded] = useState(signature);
+  if (seeded !== signature) {
+    setSeeded(signature);
+    setOrder(names);
+  }
+
+  const shown = useMemo(() => {
+    const byName = new Map(categories.map((c) => [c.name, c]));
+    return order.map((n) => byName.get(n)).filter(Boolean) as MenuCategory[];
+  }, [order, categories]);
+
+  function move(name: string, by: -1 | 1) {
+    const from = order.indexOf(name);
+    const to = from + by;
+    if (from < 0 || to < 0 || to >= order.length) return;
+
+    const next = [...order];
+    [next[from], next[to]] = [next[to], next[from]];
+    setOrder(next);
+    setMoveError(null);
+
+    startMove(async () => {
+      const r = await reorderCategories(next);
+      if (r.error) {
+        // Put it back rather than leaving the screen showing an order the
+        // shop does not actually have.
+        setOrder(order);
+        return setMoveError(r.error);
+      }
+      router.refresh();
+    });
+  }
 
   return (
     <div className="rounded-3xl bg-cream-100 p-4 ring-1 ring-ink-950/10">
@@ -47,20 +107,51 @@ export function CategoryBar({
         <div>
           <p className="font-bold text-ink-950">Categories</p>
           <p className="mt-0.5 text-sm text-ink-800/55">
-            Tap one to see only those dishes. The pencil renames it or changes
-            its colour, which shows on the customer&apos;s menu, the till and
-            the costing screen.
+            {ordering ? (
+              <>
+                This is the order customers meet them in — the filter row on
+                the menu, and what leads the page before they tap anything. Put
+                the food first and the drinks last.
+              </>
+            ) : (
+              <>
+                Tap one to see only those dishes. The pencil renames it or
+                changes its colour, which shows on the customer&apos;s menu,
+                the till and the costing screen.
+              </>
+            )}
           </p>
         </div>
-        <button
-          onClick={() => {
-            setAdding(true);
-            setEditing(null);
-          }}
-          className="shrink-0 rounded-xl bg-ink-950 px-4 py-2 text-sm font-bold text-cream-50 transition-colors hover:bg-ink-800"
-        >
-          + New category
-        </button>
+        <div className="flex shrink-0 gap-2">
+          {categories.length > 1 && (
+            <button
+              onClick={() => {
+                setOrdering((v) => !v);
+                setEditing(null);
+                setAdding(false);
+                setMoveError(null);
+              }}
+              aria-pressed={ordering}
+              className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+                ordering
+                  ? "bg-gold-400 text-ink-950"
+                  : "bg-ink-950/5 text-ink-800/70 hover:bg-ink-950/10"
+              }`}
+            >
+              {ordering ? "Done" : "Reorder"}
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setAdding(true);
+              setEditing(null);
+              setOrdering(false);
+            }}
+            className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-bold text-cream-50 transition-colors hover:bg-ink-800"
+          >
+            + New category
+          </button>
+        </div>
       </div>
 
       {/* One chip, two jobs — so they get separate controls rather than
@@ -76,7 +167,7 @@ export function CategoryBar({
           button: nested buttons are invalid and browsers resolve them by
           dropping one, usually the one you wanted. */}
       <ul className="mt-3 flex flex-wrap gap-1.5">
-        {categories.map((c) => {
+        {shown.map((c, i) => {
           const tone = toneFor(c.colour);
           const on = active === c.name;
           return (
@@ -86,34 +177,74 @@ export function CategoryBar({
                   on ? "ring-2 ring-ink-950 ring-offset-2 ring-offset-cream-100" : ""
                 }`}
               >
+                {/* In reorder mode the arrows take the place of the pencil
+                    rather than sitting beside it. Four controls on one chip
+                    on a phone is four targets nobody can hit, and renaming is
+                    not something anyone does while arranging the order. */}
+                {ordering && (
+                  <button
+                    onClick={() => move(c.name, -1)}
+                    disabled={i === 0 || saving}
+                    aria-label={`Move ${c.name} earlier`}
+                    title={`Move ${c.name} earlier`}
+                    className="grid place-items-center border-r border-current/20 px-2.5 text-sm font-black disabled:opacity-25"
+                  >
+                    ‹
+                  </button>
+                )}
                 <button
-                  onClick={() => onFilter?.(on ? null : c.name)}
-                  aria-pressed={on}
-                  title={on ? `Show every dish again` : `Show only ${c.name}`}
-                  className="py-1.5 pl-3.5 pr-2 text-sm font-bold"
+                  onClick={() => !ordering && onFilter?.(on ? null : c.name)}
+                  aria-pressed={ordering ? undefined : on}
+                  title={
+                    ordering
+                      ? `${c.name} is ${i + 1} of ${shown.length}`
+                      : on
+                        ? `Show every dish again`
+                        : `Show only ${c.name}`
+                  }
+                  className={`py-1.5 text-sm font-bold ${
+                    ordering ? "px-2.5" : "pl-3.5 pr-2"
+                  }`}
                 >
+                  {ordering && (
+                    <span className="mr-1.5 tabular-nums opacity-60">{i + 1}</span>
+                  )}
                   {c.name}
-                  <span className="ml-2 tabular-nums opacity-60">
-                    {counts[c.name] ?? 0}
-                  </span>
+                  {!ordering && (
+                    <span className="ml-2 tabular-nums opacity-60">
+                      {counts[c.name] ?? 0}
+                    </span>
+                  )}
                 </button>
-                <button
-                  onClick={() => {
-                    setAdding(false);
-                    setEditing(editing === c.name ? null : c.name);
-                  }}
-                  aria-expanded={editing === c.name}
-                  aria-label={`Rename ${c.name} or change its colour`}
-                  title={`Rename ${c.name} or change its colour`}
-                  className="grid place-items-center border-l border-current/20 px-2.5 opacity-55 transition-opacity hover:opacity-100"
-                >
-                  <PencilIcon className="h-3.5 w-3.5" />
-                </button>
+                {ordering ? (
+                  <button
+                    onClick={() => move(c.name, 1)}
+                    disabled={i === shown.length - 1 || saving}
+                    aria-label={`Move ${c.name} later`}
+                    title={`Move ${c.name} later`}
+                    className="grid place-items-center border-l border-current/20 px-2.5 text-sm font-black disabled:opacity-25"
+                  >
+                    ›
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setAdding(false);
+                      setEditing(editing === c.name ? null : c.name);
+                    }}
+                    aria-expanded={editing === c.name}
+                    aria-label={`Rename ${c.name} or change its colour`}
+                    title={`Rename ${c.name} or change its colour`}
+                    className="grid place-items-center border-l border-current/20 px-2.5 opacity-55 transition-opacity hover:opacity-100"
+                  >
+                    <PencilIcon className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </span>
             </li>
           );
         })}
-        {active && (
+        {active && !ordering && (
           <li>
             <button
               onClick={() => onFilter?.(null)}
@@ -130,6 +261,12 @@ export function CategoryBar({
           </li>
         )}
       </ul>
+
+      {moveError && (
+        <p className="mt-3 rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-cream-50">
+          {moveError}
+        </p>
+      )}
 
       {(adding || editing) && (
         <Editor

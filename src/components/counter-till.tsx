@@ -5,6 +5,7 @@ import { peso } from "@/lib/costing";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
 import {
   categoriesUsed,
+  orderForMenu,
   colourOf,
   inCategory,
   type MenuCategory,
@@ -86,24 +87,29 @@ export function CounterTill({
     [known]
   );
 
-  const categories = useMemo(() => {
-    // Same order as the customer's menu, for the same reason the tiles are
-    // big: someone standing at the counter is finding things by position and
-    // colour, not by reading. Two screens that disagree about where Drinks
-    // sits cost a second every order.
-    return ["All", ...categoriesUsed(meals, known)];
-  }, [meals, known]);
+  // Same order as the customer's menu, for the same reason the tiles are
+  // big: someone standing at the counter is finding things by position and
+  // colour, not by reading. Two screens that disagree about where Drinks
+  // sits cost a second every order.
+  //
+  // That was already the intention here, and the pills did follow it — but
+  // the TILES were still in whatever order the query returned, which is by
+  // name. So the two screens agreed about where the Drinks pill was and
+  // disagreed about everything under it. Both now read the one list.
+  const order = useMemo(() => categoriesUsed(meals, known), [meals, known]);
+  const categories = useMemo(() => ["All", ...order], [order]);
+  const sorted = useMemo(() => orderForMenu(meals, order), [meals, order]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return meals.filter((m) => {
+    return sorted.filter((m) => {
       // ANY of the dish's categories. Reading only the first meant a dish
       // tagged Mains and Ji Wings was unreachable under Ji Wings — at the
       // counter, mid-order, with somebody waiting.
       if (category !== "All" && !inCategory(m, category)) return false;
       return !q || m.name.toLowerCase().includes(q);
     });
-  }, [meals, query, category]);
+  }, [sorted, query, category]);
 
   const lines = useMemo(
     () =>
