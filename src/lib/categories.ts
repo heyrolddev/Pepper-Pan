@@ -201,6 +201,62 @@ export function categoriesUsed(
 }
 
 /**
+ * Where a dish sits in the menu's running order.
+ *
+ * The EARLIEST block it belongs to, across all of its categories — not the
+ * block its first category names. That distinction is what makes this
+ * controllable, so it is worth saying why.
+ *
+ * A milktea is usually tagged "Drinks" and "Milktea"; a Coke, "Drinks" and
+ * "Soft drinks". If the order put "Drinks" near the front, every drink in the
+ * shop would collapse into one early block and the careful Coffee → Milktea →
+ * Raspberry → Soft drinks sequence would never appear. With "Drinks" placed
+ * last, the same rule reads the specific category instead, and a dish tagged
+ * only "Drinks" still lands at the end where it belongs.
+ *
+ * So the owner controls the whole layout by dragging one chip, rather than by
+ * re-tagging thirty dishes. Anything in no known category sorts last.
+ */
+export function menuRank(item: Categorised, order: Map<string, number>): number {
+  let best = Number.MAX_SAFE_INTEGER;
+  for (const raw of item.categories ?? []) {
+    const rank = order.get(raw.trim());
+    if (rank !== undefined && rank < best) best = rank;
+  }
+  return best;
+}
+
+/**
+ * The dishes, in the order the shop put its categories in.
+ *
+ * "All" used to be alphabetical by name, which is why a menu of Taiwanese
+ * food opened on three two-litre bottles of soft drink: the names start with
+ * digits, and digits sort before letters. Nobody chose that order — it was
+ * the database's `order by name` showing through.
+ *
+ * Takes the ordered category list rather than the raw `menu_categories` rows,
+ * so the grid and the filter pills above it are literally reading the same
+ * array. Two lists that are meant to agree and are computed separately are
+ * two lists that will eventually disagree.
+ *
+ * Ties break on name, with numeric collation — "8oz" before "16oz" before
+ * "22oz", which is the order a person reads a drinks size in and the opposite
+ * of what plain string sorting gives.
+ */
+export function orderForMenu<T extends Categorised & { name: string }>(
+  items: T[],
+  categories: string[]
+): T[] {
+  const order = new Map(categories.map((name, i) => [name, i]));
+  return [...items].sort((a, b) => {
+    const rankA = menuRank(a, order);
+    const rankB = menuRank(b, order);
+    if (rankA !== rankB) return rankA - rankB;
+    return a.name.localeCompare(b.name, "en", { numeric: true });
+  });
+}
+
+/**
  * How many dishes are in each category.
  *
  * A dish in two categories counts in both, so these deliberately sum to more

@@ -10,6 +10,7 @@ import {
   categoriesUsed,
   colourOf,
   inCategory,
+  orderForMenu,
   type MenuCategory,
 } from "@/lib/categories";
 
@@ -195,14 +196,21 @@ export function MenuList({
   // The dishes decide which pills exist; `known` only decides their order.
   // See `categoriesUsed` — this was written inline here first, which is
   // exactly why the same bug survived in two other screens.
-  const categories = useMemo(
-    () => ["All", ...categoriesUsed(meals, known)],
-    [meals, known]
-  );
+  const order = useMemo(() => categoriesUsed(meals, known), [meals, known]);
+  const categories = useMemo(() => ["All", ...order], [order]);
+
+  // The same array that draws the pills also decides what leads the grid.
+  //
+  // Before this, "All" was whatever order the database handed back — `order
+  // by name` — so a menu of Taiwanese street food opened on 1.5 Coke, 1.5
+  // Sprite and a milktea, because those names start with digits. The food was
+  // three rows down. The pills said one thing about what this shop sells and
+  // the first screenful said another.
+  const sorted = useMemo(() => orderForMenu(meals, order), [meals, order]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return meals.filter((m) => {
+    return sorted.filter((m) => {
       const matchesCategory =
         activeCategory === "All" || inCategory(m, activeCategory);
       const matchesQuery =
@@ -211,7 +219,7 @@ export function MenuList({
         (m.description ?? "").toLowerCase().includes(q);
       return matchesCategory && matchesQuery;
     });
-  }, [meals, query, activeCategory]);
+  }, [sorted, query, activeCategory]);
 
   return (
     <div className="flex flex-col gap-6">

@@ -5,6 +5,8 @@ import {
   cleanCategories,
   countByCategory,
   inCategory,
+  menuRank,
+  orderForMenu,
 } from "../src/lib/categories.ts";
 
 /**
@@ -131,4 +133,151 @@ test("blank and whitespace categories are ignored everywhere", () => {
   assert.deepEqual(categoriesUsed([{ categories: ["  ", "", " Mains "] }]), ["Mains"]);
   assert.deepEqual(countByCategory([{ categories: ["  ", "Mains"] }]), { Mains: 1 });
   assert.equal(inCategory({ categories: [" Mains "] }, "Mains"), true);
+});
+
+/* ============================================================
+ * The order the menu opens in
+ *
+ * The bug these guard against had a screenshot: the customer menu, "All"
+ * selected, and the first four cards were 1.5 Coke, 1.5 Sprite, a milktea
+ * and an iced americano. A shop that sells Taiwan-style black pepper noodles
+ * opened on two litres of soft drink.
+ *
+ * Nobody chose that. It was `order by name` from the database showing
+ * through, and names beginning with digits sort before names beginning with
+ * letters. The fix is that the grid reads the same ordered category list the
+ * filter pills are drawn from.
+ * ============================================================ */
+
+/** The shop's order, food first — what migration 0040 sets. */
+const SHOP_ORDER = [
+  "Mains",
+  "Ji Pai",
+  "Solo",
+  "Burger",
+  "Premium Sides",
+  "Coffee",
+  "Milktea",
+  "Raspberry",
+  "Soft drinks",
+  "Drinks",
+];
+
+const dish = (name: string, ...categories: string[]) => ({ name, categories });
+
+/** The menu from the screenshot, near enough. */
+const MENU = [
+  dish("1.5 Coke", "Drinks", "Soft drinks"),
+  dish("1.5 Sprite", "Drinks", "Soft drinks"),
+  dish("16oz Brown Sugar Milktea", "Drinks", "Milktea"),
+  dish("16oz Iced Americano", "Drinks", "Coffee"),
+  dish("Black Pepper Noodles", "Mains"),
+  dish("Ji Pai Chicken", "Ji Pai"),
+  dish("Solo Rice Meal", "Solo"),
+  dish("Pepper Burger", "Burger"),
+];
+
+const namesOf = (rows: { name: string }[]) => rows.map((r) => r.name);
+
+test("the screenshot: sorting by name alone puts the soft drinks first", () => {
+  // Not a test of our code — a test of the thing we replaced, so the reason
+  // this file exists stays legible.
+  const byName = [...MENU].sort((a, b) => a.name.localeCompare(b.name));
+  assert.deepEqual(namesOf(byName).slice(0, 3), [
+    "1.5 Coke",
+    "1.5 Sprite",
+    "16oz Brown Sugar Milktea",
+  ]);
+});
+
+test("the food leads and the soft drinks come last", () => {
+  const ordered = namesOf(orderForMenu(MENU, SHOP_ORDER));
+  assert.deepEqual(ordered, [
+    "Black Pepper Noodles",
+    "Ji Pai Chicken",
+    "Solo Rice Meal",
+    "Pepper Burger",
+    "16oz Iced Americano",
+    "16oz Brown Sugar Milktea",
+    "1.5 Coke",
+    "1.5 Sprite",
+  ]);
+});
+
+test("a drink files under what it actually is, not under the umbrella", () => {
+  // The reason "Drinks" is placed last. Nearly every drink carries it as a
+  // second tag, so a "Drinks" ranked early would collapse coffee, milktea and
+  // soft drinks into one block and lose the order the shop asked for.
+  const order = new Map(SHOP_ORDER.map((n, i) => [n, i]));
+  assert.equal(
+    menuRank(dish("16oz Brown Sugar Milktea", "Drinks", "Milktea"), order),
+    SHOP_ORDER.indexOf("Milktea")
+  );
+  assert.equal(
+    menuRank(dish("1.5 Coke", "Drinks", "Soft drinks"), order),
+    SHOP_ORDER.indexOf("Soft drinks")
+  );
+});
+
+test("a drink tagged only Drinks still lands at the end", () => {
+  const withPlain = [...MENU, dish("Bottled Water", "Drinks")];
+  assert.equal(namesOf(orderForMenu(withPlain, SHOP_ORDER)).at(-1), "Bottled Water");
+});
+
+test("tag order on the dish makes no difference", () => {
+  // The owner cannot see which of a dish's categories is first, so it must
+  // not be what decides where the dish appears.
+  const a = orderForMenu([dish("X", "Drinks", "Milktea")], SHOP_ORDER);
+  const b = orderForMenu([dish("X", "Milktea", "Drinks")], SHOP_ORDER);
+  const order = new Map(SHOP_ORDER.map((n, i) => [n, i]));
+  assert.equal(menuRank(a[0], order), menuRank(b[0], order));
+});
+
+test("a dish in no known category sorts last, not first", () => {
+  const rows = [dish("Mystery Item", "Nobody Set This Up"), dish("Ji Pai Chicken", "Ji Pai")];
+  assert.deepEqual(namesOf(orderForMenu(rows, SHOP_ORDER)), [
+    "Ji Pai Chicken",
+    "Mystery Item",
+  ]);
+});
+
+test("a dish with no categories at all sorts last too", () => {
+  const rows = [{ name: "Untagged", categories: null }, dish("Ji Pai Chicken", "Ji Pai")];
+  assert.deepEqual(namesOf(orderForMenu(rows, SHOP_ORDER)), [
+    "Ji Pai Chicken",
+    "Untagged",
+  ]);
+});
+
+test("within one category, drink sizes read in the order a person says them", () => {
+  const cups = [
+    dish("22oz Milktea", "Milktea"),
+    dish("8oz Milktea", "Milktea"),
+    dish("16oz Milktea", "Milktea"),
+  ];
+  assert.deepEqual(namesOf(orderForMenu(cups, SHOP_ORDER)), [
+    "8oz Milktea",
+    "16oz Milktea",
+    "22oz Milktea",
+  ]);
+});
+
+test("no known categories at all is name order, not a crash", () => {
+  assert.deepEqual(namesOf(orderForMenu(MENU, [])).slice(0, 2), ["1.5 Coke", "1.5 Sprite"]);
+});
+
+test("the caller's array is left alone", () => {
+  const before = namesOf(MENU);
+  orderForMenu(MENU, SHOP_ORDER);
+  assert.deepEqual(namesOf(MENU), before);
+});
+
+test("the pills and the grid read the same list", () => {
+  // `categoriesUsed` draws the filter row; `orderForMenu` takes its output.
+  // If these two ever computed their order separately they would drift, and
+  // the pills would claim an order the dishes below them did not follow.
+  const known = SHOP_ORDER.map((name) => ({ name }));
+  const pills = categoriesUsed(MENU, known);
+  assert.deepEqual(pills.slice(0, 4), ["Mains", "Ji Pai", "Solo", "Burger"]);
+  assert.equal(namesOf(orderForMenu(MENU, pills))[0], "Black Pepper Noodles");
 });
