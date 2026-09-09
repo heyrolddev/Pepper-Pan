@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Pepper Pan">
+  <title>Pepper Pan</title>
+  <rect width="512" height="512" rx="112" fill="#b91313"/>
+  <rect x="16" y="16" width="480" height="480" rx="100" fill="#fdf1e0"/>
+  <g transform="translate(250 296) scale(0.94) translate(-256 -262)">
+  <title>Pepper Pan</title>
+  <desc>The shop's pan, with a face. Noodles lifting out, peppercorns tumbling in.</desc>
+  <defs>
+    <linearGradient id="iron" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3d2620"/>
+      <stop offset="55%" stop-color="#1c110e"/>
+      <stop offset="100%" stop-color="#120a08"/>
+    </linearGradient>
+    <clipPath id="bowl"><path d="M110 266 A130 130 0 0 0 370 266 Z"/></clipPath>
+  </defs>
+
+  <!-- Noodles first, so the pan overlaps them and they read as coming OUT of
+       it. Four strands with real waves — two vertical curves read as flame
+       or steam, which is what the first attempt looked like. -->
+  <g stroke="#ffcf00" stroke-width="19" stroke-linecap="round" fill="none">
+    <path d="M162 258 C150 208 192 198 178 158 C168 128 190 112 210 112"/>
+    <path d="M206 258 C198 202 240 194 230 152 C224 122 246 110 264 116"/>
+    <path d="M256 258 C252 204 292 196 286 156 C282 128 302 120 318 128"/>
+    <path d="M300 258 C298 214 330 204 326 174"/>
+  </g>
+  <g stroke="#e6bb00" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.5">
+    <path d="M166 252 C156 210 194 200 182 164"/>
+    <path d="M260 252 C256 208 292 200 288 166"/>
+  </g>
+
+  <!-- Peppercorns tumbling in, the detail the wordmark already owns -->
+  <g fill="#120a08">
+    <circle cx="360" cy="150" r="15"/>
+    <circle cx="398" cy="118" r="10"/>
+    <circle cx="392" cy="176" r="8"/>
+    <circle cx="352" cy="98" r="6"/>
+  </g>
+
+  <!-- Handle. Angled up, and stopping short of the rim of any badge it sits
+       in, so the mark never looks cropped. -->
+  <g transform="rotate(-13 376 266)">
+    <rect x="352" y="247" width="128" height="38" rx="19" fill="#3d2620"/>
+    <rect x="380" y="258" width="82" height="10" rx="5" fill="#2a1a16"/>
+  </g>
+
+  <!-- The pan -->
+  <rect x="96" y="240" width="288" height="32" rx="16" fill="#3d2620"/>
+  <path d="M110 266 A130 130 0 0 0 370 266 Z" fill="url(#iron)"/>
+  <g clip-path="url(#bowl)">
+    <!-- One highlight arc gives the bowl its roundness. Without it the pan
+         is a flat dark half-disc and the face floats on a shape. -->
+    <path d="M128 300 A116 116 0 0 0 196 384" stroke="#3d2620" stroke-width="14"
+          stroke-linecap="round" fill="none" opacity="0.75"/>
+
+    <ellipse cx="196" cy="312" rx="31" ry="35" fill="#fffaf2"/>
+    <ellipse cx="288" cy="312" rx="31" ry="35" fill="#fffaf2"/>
+    <circle cx="203" cy="320" r="15.5" fill="#120a08"/>
+    <circle cx="281" cy="320" r="15.5" fill="#120a08"/>
+    <circle cx="209" cy="310" r="6.5" fill="#fffaf2"/>
+    <circle cx="287" cy="310" r="6.5" fill="#fffaf2"/>
+
+    <g fill="#e36158" opacity="0.5">
+      <ellipse cx="148" cy="352" rx="21" ry="14"/>
+      <ellipse cx="336" cy="352" rx="21" ry="14"/>
+    </g>
+
+    <path d="M200 352 q42 54 84 0 z" fill="#fffaf2"/>
+    <path d="M226 384 q16 18 32 0 z" fill="#cc3226"/>
+  </g>
+</g>
+</svg>

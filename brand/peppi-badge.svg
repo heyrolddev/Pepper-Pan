@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Pepper Pan — Peppi the peppercorn">
+  <title>Pepper Pan — Peppi</title>
+  <defs>
+    <clipPath id="peppi-head"><circle cx="256" cy="300" r="118"/></clipPath>
+    <radialGradient id="peppi-sheen" cx="35%" cy="28%" r="72%">
+      <stop offset="0%" stop-color="#3d2620"/>
+      <stop offset="55%" stop-color="#1c110e"/>
+      <stop offset="100%" stop-color="#120a08"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Badge: gold ring, red ring, cream field. The character has to sit on
+       something light or a near-black peppercorn is a blob at small sizes. -->
+  <circle cx="256" cy="256" r="256" fill="#ffcf00"/>
+  <circle cx="256" cy="256" r="242" fill="#b91313"/>
+  <circle cx="256" cy="256" r="206" fill="#fdf1e0"/>
+
+  <!-- Loose peppercorns around the field, the detail the wordmark already owns -->
+  <g fill="#1c110e" opacity="0.16">
+    <circle cx="104" cy="196" r="11"/><circle cx="88" cy="286" r="7"/>
+    <circle cx="408" cy="196" r="11"/><circle cx="424" cy="286" r="7"/>
+    <circle cx="140" cy="128" r="6"/><circle cx="372" cy="128" r="6"/>
+  </g>
+
+  <!-- Chef's toque. Three puffs and a band — the universal "this is food"
+       shape, and it keeps the silhouette from being a plain circle. -->
+  <g>
+    <circle cx="200" cy="150" r="44" fill="#fffaf2"/>
+    <circle cx="312" cy="150" r="44" fill="#fffaf2"/>
+    <circle cx="256" cy="128" r="54" fill="#fffaf2"/>
+    <rect x="196" y="150" width="120" height="48" fill="#fffaf2"/>
+    <rect x="188" y="182" width="136" height="36" rx="18" fill="#f8e3c9"/>
+    <rect x="188" y="182" width="136" height="12" rx="6" fill="#f0d0a8" opacity="0.7"/>
+  </g>
+
+  <!-- The peppercorn itself -->
+  <circle cx="256" cy="300" r="118" fill="url(#peppi-sheen)"/>
+  <g clip-path="url(#peppi-head)" stroke="#3d2620" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.85">
+    <!-- The wrinkle ridges. A peppercorn is identified by its crinkle, so
+         they stay — but only around the rim, never across the face. -->
+    <path d="M150 232 q26 26 20 62"/>
+    <path d="M138 300 q30 14 34 44"/>
+    <path d="M160 372 q30 4 44 26"/>
+    <path d="M362 232 q-26 26 -20 62"/>
+    <path d="M374 300 q-30 14 -34 44"/>
+    <path d="M352 372 q-30 4 -44 26"/>
+  </g>
+
+  <!-- Face -->
+  <g>
+    <ellipse cx="216" cy="284" rx="30" ry="34" fill="#fffaf2"/>
+    <ellipse cx="296" cy="284" rx="30" ry="34" fill="#fffaf2"/>
+    <circle cx="222" cy="292" r="15" fill="#120a08"/>
+    <circle cx="290" cy="292" r="15" fill="#120a08"/>
+    <circle cx="228" cy="283" r="6" fill="#fffaf2"/>
+    <circle cx="296" cy="283" r="6" fill="#fffaf2"/>
+  </g>
+  <g fill="#e36158" opacity="0.55">
+    <ellipse cx="172" cy="330" rx="20" ry="14"/>
+    <ellipse cx="340" cy="330" rx="20" ry="14"/>
+  </g>
+
+  <!-- A wide open smile, because this is for children first -->
+  <path d="M204 336 q52 68 104 0 z" fill="#fffaf2"/>
+  <path d="M238 372 q18 22 36 0 z" fill="#cc3226"/>
+
+  <!-- Two noodle strands lifting past the shoulder — the shop's actual dish,
+       and the one warm accent that stops the mark reading as a plain face. -->
+  <g stroke="#ffcf00" stroke-width="13" stroke-linecap="round" fill="none">
+    <path d="M372 392 q22 -40 4 -74"/>
+    <path d="M398 400 q30 -34 20 -70"/>
+  </g>
+</svg>

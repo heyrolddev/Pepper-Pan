@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Pepper Pan">
+  <title>Pepper Pan — one colour</title>
+  <desc>Flat, no gradients, no mid-tones. For the receipt printer, which is
+  one bit per pixel, and for a rubber stamp, embroidery or a foil press.</desc>
+  <defs>
+    <clipPath id="bowl-m"><path d="M110 266 A130 130 0 0 0 370 266 Z"/></clipPath>
+  </defs>
+  <g fill="currentColor" color="#120a08">
+    <!-- Noodles as outlines rather than solid gold: at one bit, a filled
+         shape and a stroked one are the same ink, so the strands have to be
+         separated by paper or they merge into a blob. -->
+    <g stroke="currentColor" stroke-width="15" stroke-linecap="round" fill="none">
+      <path d="M162 258 C150 208 192 198 178 158 C168 128 190 112 210 112"/>
+      <path d="M206 258 C198 202 240 194 230 152 C224 122 246 110 264 116"/>
+      <path d="M256 258 C252 204 292 196 286 156 C282 128 302 120 318 128"/>
+      <path d="M300 258 C298 214 330 204 326 174"/>
+    </g>
+    <circle cx="360" cy="150" r="15"/>
+    <circle cx="398" cy="118" r="10"/>
+    <circle cx="392" cy="176" r="8"/>
+    <circle cx="352" cy="98" r="6"/>
+    <g transform="rotate(-13 376 266)">
+      <rect x="352" y="248" width="108" height="36" rx="18"/>
+    </g>
+    <rect x="96" y="240" width="288" height="32" rx="16"/>
+    <path d="M110 266 A130 130 0 0 0 370 266 Z"/>
+  </g>
+  <!-- Knocked out in paper -->
+  <g clip-path="url(#bowl-m)" fill="#ffffff">
+    <ellipse cx="196" cy="312" rx="31" ry="35"/>
+    <ellipse cx="288" cy="312" rx="31" ry="35"/>
+    <path d="M200 352 q42 54 84 0 z"/>
+  </g>
+  <g clip-path="url(#bowl-m)" fill="currentColor" color="#120a08">
+    <circle cx="203" cy="320" r="15.5"/>
+    <circle cx="281" cy="320" r="15.5"/>
+  </g>
+  <g clip-path="url(#bowl-m)" fill="#ffffff">
+    <circle cx="209" cy="310" r="6.5"/>
+    <circle cx="287" cy="310" r="6.5"/>
+  </g>
+</svg>
