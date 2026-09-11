@@ -127,7 +127,11 @@ body {
     transform: translateX(0);
   }
   to {
-    transform: translateX(-50%);
+    /* One copy, whatever the copy count turns out to be. A transform
+       percentage is a share of the element's own width, and the track is
+       `--marquee-copies` copies wide — so this always lands exactly on the
+       start of the next one. `Marquee` sets the variable after measuring. */
+    transform: translateX(calc(-100% / var(--marquee-copies, 2)));
   }
 }
 
@@ -275,13 +279,13 @@ html.intro-lock body {
 .marquee-track {
   display: flex;
   width: max-content;
+  /* The duration is set per band by `Marquee`, from the measured width, so
+     the band reads at one speed however much the owner has typed into it. */
   animation: marquee 32s linear infinite;
+  will-change: transform;
 }
 .marquee-track:hover {
   animation-play-state: paused;
-}
-.marquee-track--fast {
-  animation-duration: 20s;
 }
 .marquee-track--reverse {
   animation-direction: reverse;
