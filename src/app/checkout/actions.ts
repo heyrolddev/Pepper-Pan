@@ -13,6 +13,7 @@ import {
   type PaymentSettings,
 } from "@/lib/payments";
 import { notifyNewOrder } from "@/lib/notify";
+import { cartQuantityProblem } from "@/lib/orders";
 import { recordOrderCost, loadAvailability } from "@/lib/costing-server";
 
 type PlaceOrderInput = {
@@ -51,6 +52,11 @@ export async function placeOrder(
   if (input.items.length === 0) {
     return { error: "Your cart is empty." };
   }
+  // Before anything else, and before a single database round trip: the
+  // quantity is a number the browser chose, and every figure downstream —
+  // the subtotal, the stock check, the takings — is computed from it.
+  const badQuantity = cartQuantityProblem(input.items);
+  if (badQuantity) return { error: badQuantity };
   if (!input.contactName.trim()) {
     return { error: "Please enter your name." };
   }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 import { syncStockForStatus } from "@/lib/stock-server";
+import { cartQuantityProblem } from "@/lib/orders";
 
 const NOT_EDITABLE =
   "This order can no longer be changed — the kitchen has already started it. Please call us at +63 947 353 3060.";
@@ -73,9 +74,10 @@ export async function updateMyOrder(
   } = await supabase.auth.getUser();
   if (!user) return { error: "You need to sign in first." };
 
-  if (items.some((i) => !Number.isFinite(i.qty) || i.qty < 0 || i.qty > 99)) {
-    return { error: "Quantities must be between 0 and 99." };
-  }
+  // Zero is allowed here and only here: on an order that already exists it
+  // means the customer is taking a line off, not asking for none of it.
+  const badQuantity = cartQuantityProblem(items, { allowZero: true });
+  if (badQuantity) return { error: badQuantity };
   if (items.every((i) => i.qty === 0)) {
     return { error: "An order needs at least one item — cancel it instead." };
   }
