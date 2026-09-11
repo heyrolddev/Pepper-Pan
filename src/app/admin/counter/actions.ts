@@ -8,6 +8,7 @@ import { syncStockForStatus } from "@/lib/stock-server";
 import { openShiftFor } from "@/lib/shifts-server";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { orderLabel } from "@/lib/tickets";
+import { cartQuantityProblem } from "@/lib/orders";
 import { loadAvailability } from "@/lib/costing-server";
 import type { PaymentMethod } from "@/lib/payments";
 
@@ -55,8 +56,13 @@ export async function recordWalkInSale(input: {
   if (!can(viewer, "till")) return { error: "Only shop staff can record a sale." };
   if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
+  // The stepper can legitimately take a line to zero, which means "removed" —
+  // so those are dropped rather than refused. What is left still has to be a
+  // real count: the till writes straight into the day's takings.
   const lines = input.lines.filter((l) => l.qty > 0);
   if (lines.length === 0) return { error: "Add something to the order first." };
+  const badQuantity = cartQuantityProblem(lines);
+  if (badQuantity) return { error: badQuantity };
 
   // Prices come from the database, never from the browser. The counter screen
   // shows a total, but the total that gets recorded is the one the server

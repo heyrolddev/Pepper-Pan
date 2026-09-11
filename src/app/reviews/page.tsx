@@ -6,7 +6,7 @@ import { getPublicReviews } from "@/lib/reviews-server";
 import { isConfigured } from "@/lib/auth";
 
 export const metadata = {
-  title: "Reviews · Pepper Pan",
+  title: "Reviews",
   description: "What our customers say about Pepper Pan.",
 };
 
