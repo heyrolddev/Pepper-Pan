@@ -7,7 +7,7 @@ import { shortDate, windowText } from "@/lib/announcement-format";
 import type { Announcement } from "@/lib/announcements";
 
 export const metadata = {
-  title: "News & promos · Pepper Pan",
+  title: "News & promos",
   description: "What's running at the stall right now, and what's new.",
 };
 

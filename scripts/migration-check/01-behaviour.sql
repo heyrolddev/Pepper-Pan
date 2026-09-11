@@ -599,3 +599,113 @@ do $$ begin
   end if;
   raise notice 'not reachable from a browser';
 end $$;
+
+-- ============================================================
+-- 0041 — indexes, and totals the database works out
+-- ============================================================
+
+\echo '--- the five missing indexes are there ---'
+reset role;
+select act_as_service();
+do $$
+declare want text[] := array['idx_consumption_log_date','idx_waste_log_date',
+                             'idx_waste_log_ingredient','idx_activity_log_at',
+                             'idx_order_lines_meal'];
+        missing text[] := '{}';
+        n text;
+begin
+  foreach n in array want loop
+    if not exists (select 1 from pg_indexes where schemaname='public' and indexname=n) then
+      missing := missing || n;
+    end if;
+  end loop;
+  if array_length(missing,1) > 0 then
+    raise exception 'FAIL: missing %', missing;
+  end if;
+  raise notice 'all five indexes present';
+end $$;
+
+\echo '--- per-customer totals are grouped by the database, and only completed orders count ---'
+-- The screen used to pull every order ever taken and add them up in
+-- JavaScript. The point of the view is one row per customer; the point of
+-- this check is that the arithmetic survived the move.
+do $$
+declare r record;
+begin
+  insert into auth.users (id,email) values
+    ('66666666-6666-6666-6666-666666666666','totals@x') on conflict do nothing;
+  insert into profiles (id,role,full_name) values
+    ('66666666-6666-6666-6666-666666666666','customer','Totals Tester')
+    on conflict (id) do update set role = excluded.role;
+  insert into orders (id,customer_id,revenue,status) values
+    ('t-1','66666666-6666-6666-6666-666666666666',100,'completed'),
+    ('t-2','66666666-6666-6666-6666-666666666666',250,'completed'),
+    ('t-3','66666666-6666-6666-6666-666666666666',999,'cancelled'),
+    ('t-4','66666666-6666-6666-6666-666666666666',500,'pending');
+
+  select * into r from customer_order_stats
+   where customer_id = '66666666-6666-6666-6666-666666666666';
+
+  if r.order_count <> 4 then
+    raise exception 'FAIL: order_count is %, expected all 4 orders', r.order_count;
+  end if;
+  if r.completed_count <> 2 then
+    raise exception 'FAIL: completed_count is %, expected 2', r.completed_count;
+  end if;
+  -- 999 was cancelled and 500 is still pending. Neither is money taken.
+  if r.total_spent <> 350 then
+    raise exception 'FAIL: total_spent is %, expected 350 (cancelled and pending must not count)', r.total_spent;
+  end if;
+  raise notice '4 orders, 2 completed, P350 spent — cancelled and pending correctly excluded';
+end $$;
+
+\echo '--- a walk-in with no account never becomes a phantom customer row ---'
+do $$ begin
+  insert into orders (id,customer_id,revenue,status) values ('t-walkin',null,80,'completed');
+  if exists (select 1 from customer_order_stats where customer_id is null) then
+    raise exception 'FAIL: counter sales with no account produced a null-customer row';
+  end if;
+  raise notice 'walk-ins stay out of the customer totals';
+end $$;
+
+\echo '--- the view respects who is asking ---'
+-- security_invoker = true, so it is the caller's row-level security that
+-- decides what goes into the sum. A view is not a way around the walls.
+select act_as('66666666-6666-6666-6666-666666666666');
+set role authenticated;
+do $$
+declare mine int; others int;
+begin
+  select count(*) into mine from customer_order_stats
+   where customer_id = '66666666-6666-6666-6666-666666666666';
+  select count(*) into others from customer_order_stats
+   where customer_id <> '66666666-6666-6666-6666-666666666666';
+  if mine <> 1 then raise exception 'FAIL: a customer cannot see their own totals'; end if;
+  if others <> 0 then raise exception 'FAIL: a customer can see % other customers'' totals', others; end if;
+  raise notice 'a customer sees their own totals and nobody else''s';
+end $$;
+reset role;
+-- Clear the claim as well as the role. `set role anon` alone leaves the
+-- previous caller's auth.uid() in place, which is a state no real request can
+-- be in — a Supabase anon key carries no subject — and it made this check
+-- fail against a visitor who was still secretly signed in.
+select act_as_service();
+set role anon;
+do $$
+declare n int;
+begin
+  select count(*) into n from customer_order_stats;
+  if n <> 0 then raise exception 'FAIL: a signed-out visitor reads % rows of customer spend', n; end if;
+  raise notice 'a signed-out visitor reads nothing';
+end $$;
+reset role;
+
+\echo '--- and the margin is still not in it ---'
+do $$ begin
+  if exists (select 1 from information_schema.columns
+             where table_schema='public' and table_name='customer_order_stats'
+               and column_name in ('cogs','gross_profit','net_profit','oe')) then
+    raise exception 'FAIL: the view carries a cost column out past the grants that hide it';
+  end if;
+  raise notice 'revenue only — the margin stays walled off';
+end $$;

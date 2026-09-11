@@ -4,6 +4,13 @@ import type { AdminCustomer } from "@/components/customer-row";
 import { AdminCustomerList } from "@/components/admin-customer-list";
 import { hqTitle } from "@/lib/hq-theme";
 
+type StatRow = {
+  customer_id: string;
+  order_count: number;
+  completed_count: number;
+  total_spent: number;
+};
+
 type ProfileRow = {
   id: string;
   full_name: string | null;
@@ -19,37 +26,35 @@ export default async function AdminCustomersPage() {
   const viewer = await getViewer();
   const canManage = can(viewer, "business");
 
-  const [{ data: profileRows }, { data: orderRows }] = await Promise.all([
+  // One row per customer, grouped by the database.
+  //
+  // This used to fetch EVERY order the shop had ever taken — no date filter,
+  // no limit — and add them up here. That is a few hundred rows in the first
+  // months and tens of thousands in a couple of years, re-read and re-summed
+  // on every visit to this screen. `customer_order_stats` (migration 0041)
+  // does the grouping in Postgres, where it belongs.
+  const [{ data: profileRows }, { data: statRows, error: statsError }] = await Promise.all([
     supabase
       .from("profiles")
       .select("id, full_name, phone, address, is_verified, is_blocked, created_at")
       .eq("role", "customer")
       .order("created_at", { ascending: false }),
-    supabase.from("orders").select("customer_id, status, revenue").not("customer_id", "is", null),
+    supabase
+      .from("customer_order_stats")
+      .select("customer_id, order_count, completed_count, total_spent"),
   ]);
 
-  const stats = new Map<string, { orders: number; completed: number; spent: number }>();
-  for (const o of (orderRows ?? []) as {
-    customer_id: string;
-    status: string;
-    revenue: number;
-  }[]) {
-    const cur = stats.get(o.customer_id) ?? { orders: 0, completed: 0, spent: 0 };
-    cur.orders += 1;
-    if (o.status === "completed") {
-      cur.completed += 1;
-      cur.spent += Number(o.revenue || 0);
-    }
-    stats.set(o.customer_id, cur);
-  }
+  const stats = new Map(
+    ((statRows ?? []) as StatRow[]).map((s) => [s.customer_id, s])
+  );
 
   const customers: AdminCustomer[] = ((profileRows ?? []) as ProfileRow[]).map((p) => {
-    const s = stats.get(p.id) ?? { orders: 0, completed: 0, spent: 0 };
+    const s = stats.get(p.id);
     return {
       ...p,
-      orderCount: s.orders,
-      completedCount: s.completed,
-      totalSpent: s.spent,
+      orderCount: s?.order_count ?? 0,
+      completedCount: s?.completed_count ?? 0,
+      totalSpent: Number(s?.total_spent ?? 0),
     };
   });
 
@@ -64,6 +69,12 @@ export default async function AdminCustomersPage() {
           orders — blocked accounts are stopped from checking out, both in the
           app and at the database level.
         </p>
+        {statsError && (
+          <p className="mt-3 rounded-2xl bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700">
+            Order counts and totals aren&apos;t showing — run migration 0041 in
+            the Supabase SQL Editor. Everything else on this page is correct.
+          </p>
+        )}
         {!canManage && (
           <p className="mt-3 rounded-2xl bg-gold-400 px-5 py-3 text-sm font-semibold text-ink-950">
             Only the shop owner can verify or block customers.
