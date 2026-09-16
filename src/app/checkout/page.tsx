@@ -15,7 +15,7 @@ export default async function CheckoutPage() {
     return (
       <main className="flex-1">
         <PageHeader title="Checkout" />
-        <section className="mx-auto max-w-md px-6 py-14">
+        <section className="wide-when-sideways mx-auto max-w-md px-6 py-14">
           <p className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80">
             Ordering isn&apos;t set up yet.
           </p>
@@ -56,7 +56,7 @@ export default async function CheckoutPage() {
     return (
       <main className="flex-1">
         <PageHeader eyebrow="Account on hold" title="Ordering paused" />
-        <section className="mx-auto max-w-md px-6 py-14">
+        <section className="wide-when-sideways mx-auto max-w-md px-6 py-14">
           <p className="rounded-3xl bg-brand-600 p-8 text-center font-semibold text-cream-50">
             Ordering is paused on this account. Please contact us at
             +63 947 353 3060 if you think this is a mistake.
@@ -79,7 +79,7 @@ export default async function CheckoutPage() {
         title="Checkout"
         subtitle="Tell us where this is going and we'll start cooking."
       />
-      <section className="mx-auto max-w-md px-6 py-14">
+      <section className="wide-when-sideways mx-auto max-w-md px-6 py-14">
         <CheckoutForm
           delivery={delivery}
           payments={payments}

@@ -7,6 +7,7 @@ import { AvatarField } from "@/components/avatar-field";
 import { getDeliverySettings } from "@/lib/delivery-server";
 import { SignOutButton } from "@/components/sign-out-button";
 import { PushToggle } from "@/components/push-toggle";
+import { ScreenToggle } from "@/components/screen-toggle";
 import { pushConfigured } from "@/lib/push";
 
 import { privatePage } from "@/lib/seo";
@@ -60,7 +61,7 @@ export default async function AccountPage() {
         subtitle={viewer.email}
       />
 
-      <section className="mx-auto max-w-md px-6 py-14">
+      <section className="wide-when-sideways mx-auto max-w-md px-6 py-14">
         {/* Above everything else on the page, including the blocked notice:
             being offered a job is the most consequential thing that can be
             waiting here, and it is the only one with a deadline attached to
@@ -138,6 +139,13 @@ export default async function AccountPage() {
             />
           </div>
         )}
+
+        {/* Beside notifications because they are the same kind of thing: how
+            this device behaves, not who the customer is. Neither belongs in
+            the form above, which is the shop's record of them. */}
+        <div className="mt-10 border-t border-ink-950/10 pt-8">
+          <ScreenToggle />
+        </div>
 
         {/* The header drops sign-out on a phone, where it wrapped onto two
             lines and pushed the row into the logo. It belongs here anyway:

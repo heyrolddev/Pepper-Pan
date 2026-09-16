@@ -192,7 +192,13 @@ export default async function Home() {
       {/* ---------------------------------------------------------- */}
       {/* Hero                                                        */}
       {/* ---------------------------------------------------------- */}
-      <section className="under-nav grain relative flex min-h-[34rem] flex-col justify-end overflow-hidden bg-ink-950 sm:min-h-[38rem] lg:min-h-[44rem]">
+      {/* `hero-band` is the hook the landscape rules in globals.css use to cut
+          the minimum height. At 34rem the hero is 544px tall — taller than the
+          whole screen of a phone lying down — and because its content is
+          justified to the bottom, turning the phone sideways left a customer
+          looking at a video with the headline and the order button somewhere
+          below the fold. */}
+      <section className="hero-band under-nav grain relative flex min-h-[34rem] flex-col justify-end overflow-hidden bg-ink-950 sm:min-h-[38rem] lg:min-h-[44rem]">
         {/* The media, edge to edge behind everything.
 
             The still is server-rendered and `priority`, so it is what arrives
