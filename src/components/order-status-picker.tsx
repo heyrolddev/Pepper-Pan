@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { setOrderStatus } from "@/app/admin/orders/actions";
 import { STATUS_LABELS, statusesFor, type OrderStatus } from "@/lib/orders";
 import { moneyLine, type MoneyState } from "@/lib/payments";
@@ -21,7 +20,6 @@ export function OrderStatusPicker({
   /** What's been paid, so completing an unpaid order can ask first. */
   money?: MoneyState;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<OrderStatus | null>(null);
@@ -67,7 +65,22 @@ export function OrderStatusPicker({
       try {
         const res = await setOrderStatus(orderId, next, why);
         if (res.error) setError(res.error);
-        else router.refresh();
+        // No `router.refresh()` on success, and that is worth a paragraph
+        // because it looks like a missing line.
+        //
+        // `setOrderStatus` ends in `revalidatePath("/admin/orders")` and the
+        // rest, and a `revalidatePath` inside a server action updates the
+        // screen you are on as part of the action's own response. Calling
+        // refresh after it asked the server for the same page a second time —
+        // so one tap on this dropdown rendered the whole of HQ twice, layout
+        // included: auth, the device check, the sidebar counts, the page's own
+        // queries, all of it, twice. That is most of the wait between choosing
+        // a status and seeing it.
+        //
+        // This holds only while the action revalidates a path this component
+        // is rendered on. It is rendered in the order list, which lives on
+        // /admin/orders and /admin — both revalidated. Move it somewhere else
+        // and either revalidate that path too, or put the refresh back.
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not update the status.");
       }

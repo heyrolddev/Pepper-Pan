@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { setOrderEta } from "@/app/admin/orders/actions";
 import { ClockIcon } from "@/components/icons";
 
@@ -15,7 +14,6 @@ export function EtaPicker({
   orderId: string;
   eta: number | null;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -28,7 +26,9 @@ export function EtaPicker({
         if (res.error) setError(res.error);
         else {
           setOpen(false);
-          router.refresh();
+          // The action revalidates /admin/orders and /admin, which updates this
+          // screen as part of its own response — see order-status-picker.tsx
+          // for why an extra refresh here rendered all of HQ a second time.
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not set the ETA.");
