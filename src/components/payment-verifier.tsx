@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { setPaymentStatus } from "@/app/admin/orders/actions";
 import { formatDateTime } from "@/lib/format-date";
 import {
@@ -48,7 +47,6 @@ export function PaymentVerifier({
   downpayment: number;
   downpaymentConfirmedAt?: string | null;
 }) {
-  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -58,7 +56,9 @@ export function PaymentVerifier({
       try {
         const res = await setPaymentStatus(orderId, next);
         if (res.error) setError(res.error);
-        else router.refresh();
+        // Updated by the action's own revalidation — /admin/orders, /admin and
+        // /admin/payments, the three places this verifier is rendered. See
+        // order-status-picker.tsx for why the extra refresh was costly.
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not update the payment.");
       }

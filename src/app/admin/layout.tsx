@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { getViewer, isConfigured, isStaff } from "@/lib/auth";
 import { checkDevice } from "@/lib/devices-server";
@@ -56,19 +57,34 @@ export default async function AdminLayout({
     }
   }
 
+  /**
+   * Shifts nobody clocked out of get closed — after the screen is on, not
+   * before it.
+   *
+   * Opening HQ is the only regular heartbeat this project has: there is no
+   * cron, and a stale shift is a key to the whole shop floor rather than a
+   * wrong number in a report. So it still runs on every HQ request. What has
+   * changed is when.
+   *
+   * It used to be `await`ed here, ahead of everything, which put a database
+   * round trip in front of every single tab change — and on the rare request
+   * that actually found a stale shift, also a profiles lookup, an activity-log
+   * insert per shift and a push notification per owner, all of them between
+   * the tap and the page. The tidying is never what the person tapping was
+   * waiting for.
+   *
+   * `after` runs it once the response has been sent, so the cost is real but
+   * nobody sits through it. The one thing this gives up is that the clock in
+   * the rail can be a beat stale: a shift closed by this pass is still shown
+   * as open until the next load. That is the right way round — it was already
+   * hours out of date by definition, and a tab that responds now is worth more
+   * than a clock that is right a second sooner.
+   */
+  after(tidyStaleShifts);
+
   // Fetched in the layout rather than per page, so the counts are the same on
   // every screen — a sidebar that says "3 orders" on one page and "1" on the
   // next is worse than one that says nothing.
-  /**
-   * Shifts nobody clocked out of get closed here, before the clock is read.
-   *
-   * Before, that ran first and this second — which would have shown the person
-   * still on a shift the same request had just closed. Opening HQ is the only
-   * regular heartbeat this project has: there is no cron, and a stale shift is
-   * now a key to the whole shop floor rather than a wrong number in a report.
-   */
-  await tidyStaleShifts();
-
   const [badges, shift] = await Promise.all([
     getAdminBadges(),
     // Fetched here with the badges so the rail can show the clock on every

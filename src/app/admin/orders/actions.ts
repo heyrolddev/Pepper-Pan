@@ -18,9 +18,21 @@ import type { AdminOrder } from "@/components/admin-order-list";
 const BLOCKED_MESSAGE =
   "The database didn't accept that change. Re-run the latest migration (0004) in the Supabase SQL Editor.";
 
+/**
+ * Every screen an order appears on.
+ *
+ * `/admin/payments` is in here because the payment verifier is rendered twice
+ * — once inside the order list and once in the ledger — and marking a receipt
+ * checked from either place changes both. Left out, the ledger kept showing a
+ * payment as unverified until something else happened to refresh it.
+ *
+ * Marking a path the viewer is not currently on costs nothing: it is flagged
+ * stale and rebuilt when somebody next opens it.
+ */
 function revalidateOrders() {
   revalidatePath("/admin/orders");
   revalidatePath("/admin");
+  revalidatePath("/admin/payments");
   revalidatePath("/orders");
 }
 

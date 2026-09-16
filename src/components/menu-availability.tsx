@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { AdminSearch } from "@/components/admin-search";
 import { setMealAvailability } from "@/app/admin/menu/actions";
 import type { AdminMeal } from "@/components/meal-editor";
@@ -54,7 +53,6 @@ export function MenuAvailability({ meals }: { meals: AdminMeal[] }) {
 }
 
 function Row({ meal }: { meal: AdminMeal }) {
-  const router = useRouter();
   // Held locally as well as on the server so the tap lands immediately. A
   // toggle that waits for a round trip during service gets pressed twice.
   const [on, setOn] = useState(meal.is_available);
@@ -74,7 +72,8 @@ function Row({ meal }: { meal: AdminMeal }) {
         setError(res.error);
         return;
       }
-      router.refresh();
+      // `setMealAvailability` revalidates /admin/menu, which is this screen —
+      // see order-status-picker.tsx for why refreshing again doubled the work.
     });
   }
 
