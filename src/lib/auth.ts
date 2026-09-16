@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ACTIVE_ORDER_STATUSES } from "@/lib/orders";
@@ -26,16 +27,50 @@ export function isConfigured() {
   );
 }
 
-/** The signed-in user plus their profile row, or null when signed out. */
-export async function getViewer(): Promise<Viewer> {
+/**
+ * Who is asking — resolved once per request, however many callers ask.
+ *
+ * `supabase.auth.getUser()` is not a local cookie read. It posts the access
+ * token to Supabase's auth server and waits for it to be verified, which is
+ * the correct, unforgeable way to do it and also a full network round trip
+ * every single time.
+ *
+ * The root layout alone used to make three of them before a byte of HTML left
+ * the server: one in the proxy refreshing the session, one here inside
+ * `getViewer`, and a third inside `countActiveOrders` — all asking the same
+ * question about the same cookie, in the same render, and getting the same
+ * answer. Between Vercel and Supabase that is a couple of hundred milliseconds
+ * spent twice over, on every page, before the page's own data is even fetched.
+ *
+ * React's `cache` scopes the answer to one request: the first caller pays for
+ * the round trip and everyone after it reads the result. It is per-request, so
+ * nothing leaks between visitors — the trap this would otherwise be.
+ *
+ * The proxy's own call is a different request context and cannot join this;
+ * it is also doing a different job (writing the refreshed cookie), so it stays.
+ */
+const currentUser = cache(async () => {
   if (!isConfigured()) return null;
-
   try {
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    return user;
+  } catch {
+    return null;
+  }
+});
+
+/** The signed-in user plus their profile row, or null when signed out. */
+export const getViewer = cache(async function getViewer(): Promise<Viewer> {
+  if (!isConfigured()) return null;
+
+  try {
+    const user = await currentUser();
     if (!user) return null;
+
+    const supabase = await createClient();
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -49,7 +84,7 @@ export async function getViewer(): Promise<Viewer> {
   } catch {
     return null;
   }
-}
+});
 
 /** Does this person work here at all? The door, not the permission. */
 export function isStaff(viewer: Viewer) {
@@ -85,14 +120,13 @@ export function can(viewer: Viewer, what: Capability): boolean {
  * the tab, and a number in the header is what brings them back to the
  * countdown instead of ringing the shop.
  */
-export async function countActiveOrders(): Promise<number> {
+export const countActiveOrders = cache(async function countActiveOrders(): Promise<number> {
   if (!isConfigured()) return 0;
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await currentUser();
     if (!user) return 0;
+
+    const supabase = await createClient();
 
     const { count, error } = await supabase
       .from("orders")
@@ -104,7 +138,7 @@ export async function countActiveOrders(): Promise<number> {
   } catch {
     return 0;
   }
-}
+});
 
 /**
  * Send shop staff away from the customer's side of the site.

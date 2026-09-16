@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 /**
  * Signing out, with a question first.
@@ -40,8 +39,20 @@ export function SignOutButton({
     return () => window.removeEventListener("keydown", onKey);
   }, [asking, signingOut]);
 
+  /**
+   * The Supabase client is fetched here rather than imported at the top, and
+   * that one line is worth 64 KB gzipped on every page of the site.
+   *
+   * This button lives in the nav, the nav lives in the root layout, so a
+   * top-level import put the whole `@supabase/supabase-js` browser client into
+   * the bundle of every page — the homepage, the menu, the reviews — for
+   * visitors who are not signed in and will never press it. It is needed for
+   * exactly one click, so it is fetched on exactly that click. The extra
+   * round trip lands inside the time the confirm dialog is already open.
+   */
   async function confirm() {
     setSigningOut(true);
+    const { createClient } = await import("@/lib/supabase/client");
     const supabase = createClient();
     await supabase.auth.signOut();
     router.refresh();

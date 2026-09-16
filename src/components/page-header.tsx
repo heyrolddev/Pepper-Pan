@@ -39,8 +39,12 @@ export function PageHeader({
         className="pointer-events-none absolute -right-10 bottom-0 h-56 w-56 rounded-full bg-gold-400/20 blur-3xl drift"
       />
 
+      {/* `masthead-body` is the hook the landscape rules in globals.css use to
+          collapse this block. On a phone held sideways the viewport is around
+          390px tall, and the padding below plus the title alone is more than
+          all of it — the signpost filling the screen it was signposting. */}
       <div
-        className={`relative mx-auto max-w-5xl px-6 ${
+        className={`masthead-body relative mx-auto max-w-5xl px-6 ${
           compact ? "py-8 sm:py-10" : "py-16 sm:py-20"
         }`}
       >

@@ -4,7 +4,7 @@ import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
 import { Nav } from "@/components/nav";
 import { FloatingCart } from "@/components/floating-cart";
-import { Cursor } from "@/components/cursor";
+import { DesktopCursor } from "@/components/desktop-cursor";
 import { ScrollProgress } from "@/components/scroll-progress";
 import { Preloader } from "@/components/preloader";
 import { SiteFooter } from "@/components/site-footer";
@@ -101,10 +101,24 @@ export const viewport: Viewport = {
  *
  * Two jobs, and the second one is load-bearing.
  *
- * It decides whether this load gets the intro: every page load does, except
- * inside HQ and except for anyone who has asked their device for less motion.
- * Client-side route changes never re-run this, so moving between pages
- * without a reload stays instant either way.
+ * It decides whether this load gets the intro: the first load of a visit does,
+ * and nothing after it. Not inside HQ, and not for anyone who has asked their
+ * device for less motion. Client-side route changes never re-run this, so
+ * moving between pages without a reload stays instant either way.
+ *
+ * ONCE A VISIT, NOT ONCE A PAGE
+ *
+ * It used to play on every load, and that was 1.8 seconds — 1.1s on screen
+ * plus a 0.7s slide-off — of deliberately frozen page, repeated every time
+ * somebody opened a shared link, hit back, or reloaded because the page felt
+ * slow. On a phone that reads as the site being slow, because for those 1.8
+ * seconds it genuinely is: the scroll lock below means nothing else can
+ * happen. The animation was being blamed for the wait it was causing.
+ *
+ * A flag in sessionStorage is the right scope for it. It survives navigation
+ * and reloads within the visit, and it is gone by the next one — so the intro
+ * still greets everyone who arrives, and never again while they shop. It is
+ * also per-tab, which is what a "visit" means to a person.
  *
  * And it locks scrolling behind the overlay — which is why the path check
  * matters more than it looks. Only the Preloader component removes that lock,
@@ -114,14 +128,32 @@ export const viewport: Viewport = {
  */
 const introScript = `(function(){try{
 var d=document.documentElement;
+
+// The saved screen-layout choice, applied before the first paint so a tablet
+// set to landscape never flashes the tall portrait masthead on its way to the
+// short one. Reading it costs nothing; re-laying out the page after paint
+// would cost a visible jump. See src/lib/screen.ts.
+try{var s=localStorage.getItem('pp-screen');if(s==='wide')d.setAttribute('data-screen','wide');}catch(e){}
+
 var hq=location.pathname.indexOf('/admin')===0;
-if(hq||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+var seen=false;
+// Private mode can refuse sessionStorage outright. A visitor who cannot be
+// remembered is treated as already greeted: showing the intro on every single
+// load is the worse of the two failures.
+try{seen=sessionStorage.getItem('pp-intro')==='1';}catch(e){seen=true;}
+if(hq||seen||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
   d.setAttribute('data-intro','skip');
 }else{
+  try{sessionStorage.setItem('pp-intro','1');}catch(e){}
   d.classList.add('intro-lock');
-  // A page that cannot be scrolled is broken, so the lock releases itself
-  // even if the overlay never mounts.
-  setTimeout(function(){d.classList.remove('intro-lock');},4000);
+  // The overlay is pure CSS now and always leaves at 1.8s, so this releases
+  // the scroll with it rather than guarding a React effect that might never
+  // run. It is still the only thing that unlocks the page — a page that
+  // cannot be scrolled is broken, so this must not depend on the bundle.
+  setTimeout(function(){d.classList.remove('intro-lock');},1800);
+  // Belt, for the browser that somehow never runs the animation: after that
+  // the splash is hidden outright rather than left covering the shop.
+  setTimeout(function(){d.setAttribute('data-intro','skip');},2600);
 }
 }catch(e){document.documentElement.setAttribute('data-intro','skip');}})();`;
 
@@ -149,7 +181,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               data-intro attribute the head script sets; unmounting it while
               the intro is still running would strand the scroll lock. */}
           <Preloader />
-          <Cursor />
+          <DesktopCursor />
           <ScrollProgress />
 
           <ShopChrome>

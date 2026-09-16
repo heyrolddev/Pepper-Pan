@@ -119,6 +119,115 @@ body {
 }
 
 /* ---------------------------------------------------------------- */
+/* Landscape                                                         */
+/* ---------------------------------------------------------------- */
+
+/*
+ * A short, wide screen — a phone turned sideways, or a tablet on the counter.
+ *
+ * Two ways to get here, and they share every rule:
+ *
+ *   held    `(orientation: landscape)` with little height. Applies to
+ *           everybody, with no setting to find. Before this, turning the
+ *           phone sideways left a 72px header and a 160px masthead on a
+ *           390px screen — the page's own furniture taking all of it, and
+ *           the food nowhere in sight.
+ *   chosen  `html[data-screen="wide"]`, set from My account. For the tablet
+ *           that lives sideways, where the viewport is tall enough that the
+ *           media query would never fire.
+ *
+ * Everything below is subtraction. Nothing is rearranged, so no page needs
+ * a second layout to maintain — the same page, with its chrome stood down.
+ */
+
+@media (orientation: landscape) and (max-height: 600px) {
+  :root {
+    --nav-h: 56px;
+  }
+}
+
+html[data-screen="wide"] {
+  --nav-h: 56px;
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  .masthead-body {
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+  }
+
+  .masthead-body h1 {
+    font-size: 1.75rem;
+    line-height: 1.1;
+    margin-top: 0.5rem;
+  }
+
+  .masthead-body p {
+    margin-top: 0.375rem;
+    font-size: 0.875rem;
+  }
+
+  /* The intro is a full-screen brand moment. On a screen this short it is a
+     full-screen obstacle, and it is covering the thing somebody turned their
+     phone sideways to see. */
+  .intro-overlay {
+    display: none !important;
+  }
+}
+
+html[data-screen="wide"] .masthead-body {
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+}
+
+html[data-screen="wide"] .masthead-body h1 {
+  font-size: 1.75rem;
+  line-height: 1.1;
+  margin-top: 0.5rem;
+}
+
+html[data-screen="wide"] .masthead-body p {
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+}
+
+/*
+ * Let a narrow column use the width it has been given.
+ *
+ * Most inner pages are a `max-w-md` column down the middle, which is right on
+ * a phone standing up and absurd on one lying down: a 28rem ribbon of form
+ * fields with a third of the screen empty on either side. Widening the
+ * container is the whole fix — the content inside it already reflows.
+ */
+@media (orientation: landscape) and (max-height: 600px) {
+  .wide-when-sideways {
+    max-width: 48rem;
+  }
+}
+
+html[data-screen="wide"] .wide-when-sideways {
+  max-width: 48rem;
+}
+
+/*
+ * The homepage hero, cut down to something a sideways phone can hold.
+ *
+ * It is `min-h-[34rem]` — 544px — with its headline and its order button
+ * justified to the bottom edge. On a 390px-tall screen that put both of them
+ * below the fold, so the one page most people arrive on opened as a
+ * full-screen photo of noodles with no way to buy any.
+ */
+@media (orientation: landscape) and (max-height: 600px) {
+  .hero-band {
+    min-height: 20rem;
+  }
+}
+
+html[data-screen="wide"] .hero-band {
+  min-height: 20rem;
+}
+
+/* ---------------------------------------------------------------- */
 /* Motion                                                            */
 /* ---------------------------------------------------------------- */
 
@@ -262,13 +371,84 @@ body {
   animation: intro-hop 0.9s ease-in-out infinite;
 }
 
+/* Matches the overlay's own 1.1s life in `Preloader`. At 1.9s the bar was
+   still two-thirds full when the screen slid away, so the one element whose
+   job was to say "nearly there" was the one saying it had barely started. */
 .intro-bar {
-  animation: intro-fill 1.9s ease-in-out forwards;
+  animation: intro-fill 1.1s ease-in-out forwards;
+}
+
+/* The reading bar, driven by the scroll position itself rather than by a
+   script watching it — see `ScrollProgress`. Hidden until the browser proves
+   it can animate it, so browsers without scroll timelines get no bar instead
+   of a full-width one frozen at 100%. */
+.scroll-progress {
+  transform: scaleX(0);
+}
+
+@supports (animation-timeline: scroll()) {
+  @keyframes scroll-progress {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  .scroll-progress {
+    animation: scroll-progress linear;
+    animation-timeline: scroll();
+  }
+}
+
+/* Someone who has asked for less motion has not asked for a bar that races
+   across the top of the screen as they read. */
+@media (prefers-reduced-motion: reduce) {
+  .scroll-progress {
+    display: none;
+  }
 }
 
 /* Set by the blocking script for repeat visits / reduced motion. */
 html[data-intro="skip"] .intro-overlay {
   display: none !important;
+}
+
+/*
+ * The overlay leaves on its own, on a clock that starts at first paint.
+ *
+ * `Preloader` has no JavaScript, so this animation is the only thing that
+ * ends it — which is the point: a phone that takes four seconds to boot the
+ * bundle should not be shown the splash screen for four seconds. 1.1s on
+ * screen, 0.7s to slide away, then out of the way for good.
+ *
+ * `visibility: hidden` at the end rather than `display: none`, because
+ * `display` cannot be animated and the element would vanish mid-slide;
+ * `pointer-events: none` throughout the exit so a tap during it reaches the
+ * page underneath rather than the screen that is already leaving.
+ */
+@keyframes intro-out {
+  0%,
+  61% {
+    transform: translateY(0);
+    visibility: visible;
+  }
+  99.9% {
+    transform: translateY(-100%);
+    visibility: visible;
+  }
+  100% {
+    transform: translateY(-100%);
+    visibility: hidden;
+  }
+}
+
+.intro-overlay {
+  animation: intro-out 1.8s cubic-bezier(0.76, 0, 0.24, 1) forwards;
+  /* Nothing in here is interactive — it is decorative and aria-hidden — so a
+     tap aimed at the page during the slide should land on the page. */
+  pointer-events: none;
 }
 
 html.intro-lock,
