@@ -18,7 +18,13 @@ import {
  * quietly doing half the job — but the wide layout applies either way, which
  * is what makes the setting worth having on a tablet propped on the counter.
  */
-export function ScreenToggle() {
+export function ScreenToggle({
+  /** Why this shop's people would want it — the counter tablet in HQ, a
+   *  sideways phone on the customer side. Defaults to the general case. */
+  hint = "For a phone or tablet held sideways.",
+}: {
+  hint?: string;
+} = {}) {
   const [mode, setMode] = useState<ScreenMode>("auto");
   const [canRotate, setCanRotate] = useState(false);
   const [ready, setReady] = useState(false);
@@ -62,9 +68,7 @@ export function ScreenToggle() {
   return (
     <div>
       <p className="font-display text-lg font-black text-ink-950">Screen layout</p>
-      <p className="mt-1 text-sm text-ink-800/70">
-        For a phone or tablet held sideways.
-      </p>
+      <p className="mt-1 max-w-xl text-sm text-ink-800/70">{hint}</p>
 
       <div
         role="radiogroup"
