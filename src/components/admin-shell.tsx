@@ -404,7 +404,11 @@ export function AdminShell({
           </Link>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        {/* `hq-main` is the hook the landscape rules in globals.css use to cut
+            the vertical padding. HQ is worked on a tablet lying flat on the
+            counter, where every row of the till that fits on screen is one
+            fewer scroll with your hands full. */}
+        <main className="hq-main min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
           {/* Off the clock, and the server will refuse everything, so say so
               here rather than letting somebody find out one tap at a time.
               

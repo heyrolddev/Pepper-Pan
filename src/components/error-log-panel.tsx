@@ -28,9 +28,22 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
   const open = errors.filter((e) => !e.resolved);
   const resolved = errors.filter((e) => e.resolved);
 
-  // Nothing wrong, nothing to say. A panel that renders "all good" every day
-  // is a panel the eye stops seeing, including on the day it changes.
-  if (open.length === 0 && resolved.length === 0) return null;
+  /**
+   * Nothing broken, nothing on screen.
+   *
+   * This used to hold on while any resolved rows existed, so a fault dealt
+   * with weeks ago left a permanent "Nothing broken right now" card at the
+   * top of the dashboard with a "1 fixed" chip beside it. That is the exact
+   * failure the panel was written to avoid — a box that says "all good" every
+   * single day is a box the eye stops seeing, including on the day it changes
+   * to say something else.
+   *
+   * The resolved rows are not deleted. They stay in `error_log`, where the
+   * part that matters still works: if the same fault happens again the
+   * database reopens the row by itself, and the panel — and the history
+   * behind it — comes straight back.
+   */
+  if (open.length === 0) return null;
 
   function toggle(id: string, resolvedNow: boolean) {
     startTransition(async () => {
@@ -42,24 +55,18 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
   const shown = showResolved ? resolved : open;
 
   return (
-    <section
-      className={`rounded-3xl p-6 ring-1 sm:p-7 ${
-        open.length > 0
-          ? "bg-brand-50 ring-brand-300"
-          : "bg-cream-100 ring-ink-950/10"
-      }`}
-    >
+    // Always the alarmed treatment now: the panel only exists when something
+    // is open, so a calm version of it would never be seen.
+    <section className="rounded-3xl bg-brand-50 p-6 ring-1 ring-brand-300 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-xl font-black tracking-tight text-ink-950">
-            {open.length > 0
-              ? `${open.length} thing${open.length === 1 ? "" : "s"} broke`
-              : "Nothing broken right now"}
+            {open.length} thing{open.length === 1 ? "" : "s"} broke
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-ink-800/70">
-            {open.length > 0
-              ? "Recorded automatically when a page or a button fails — for you or for a customer. Mark one fixed once you have dealt with it; if the same fault happens again it reopens itself."
-              : "Everything here has been marked fixed."}
+            Recorded automatically when a page or a button fails — for you or
+            for a customer. Mark one fixed once you have dealt with it; if the
+            same fault happens again it reopens itself.
           </p>
         </div>
 

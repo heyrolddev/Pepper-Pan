@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { saveMyPhone } from "@/app/admin/me/actions";
 import { acceptRoleOffer, declineRoleOffer } from "@/app/account/actions";
 import { Field, inputClass } from "@/components/admin-dialog";
+import { ScreenToggle } from "@/components/screen-toggle";
 import { ROLE_BLURBS, ROLE_LABELS, type Role } from "@/lib/permissions";
 
 /**
@@ -152,6 +153,17 @@ export function MyAccount({
             )}
           </div>
         </div>
+      </section>
+
+      {/* Landscape matters more in here than it does on the customer side.
+          A customer holds a phone upright to read a menu; the till, the
+          order board and the inventory tables are worked on a tablet lying
+          flat on the counter all shift. This is the screen that person
+          already comes to, so the setting lives here too. */}
+      <section className="rounded-3xl bg-cream-100 p-6 ring-1 ring-ink-950/10 sm:p-8">
+        <ScreenToggle
+          hint="The till and the order board are worked on a tablet lying flat. Set it once here and every HQ screen follows."
+        />
       </section>
 
       <section className="rounded-3xl border-2 border-dashed border-ink-950/15 p-6 sm:p-8">

@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { peso, FOOD_COST_TARGET, type Margin } from "@/lib/costing";
 import { RecipeEditor, type RecipeOption } from "@/components/recipe-editor";
+import { NewDishDialog } from "@/components/new-dish-dialog";
+import { setMealOnMenu } from "@/app/admin/menu/actions";
 import { MENU_CLASS, type MenuClass } from "@/lib/costing";
 import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
 import { hqTitle } from "@/lib/hq-theme";
@@ -195,6 +198,20 @@ export function DishCosts({
   // Which editor is open on a dish: its recipe, or what it travels in.
   const [editingWhat, setEditingWhat] = useState<"recipe" | "packaging">("recipe");
   const [editingOrderPackaging, setEditingOrderPackaging] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  const router = useRouter();
+  const [publishing, publish] = useTransition();
+  const [publishError, setPublishError] = useState<string | null>(null);
+
+  function toggleOnMenu(d: DishRow) {
+    setPublishError(null);
+    publish(async () => {
+      const result = await setMealOnMenu(d.id, !d.onMenu);
+      if (result.error) setPublishError(result.error);
+      else router.refresh();
+    });
+  }
 
   const summary = useMemo(() => {
     const costed = dishes.filter((d) => d.costed && d.price > 0);
@@ -258,14 +275,32 @@ export function DishCosts({
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h2 className={hqTitle}>Dish costs</h2>
-        <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
-          What each dish costs you to make, worked out from the recipes and
-          ingredient prices you&apos;ve already entered — and what&apos;s left
-          over once it&apos;s sold.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className={hqTitle}>Dish costs</h2>
+          <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
+            What each dish costs you to make, worked out from the recipes and
+            ingredient prices you&apos;ve already entered — and what&apos;s left
+            over once it&apos;s sold.
+          </p>
+        </div>
+        {/* Here rather than only on the Menu screen, because a new dish is a
+            costing question before it is a menu one: what it takes to make and
+            what it leaves you is what decides whether it is worth selling at
+            all. It is added hidden — see NewDishDialog for why that matters. */}
+        <button
+          onClick={() => setAdding(true)}
+          className="shrink-0 rounded-xl bg-ink-950 px-4 py-2.5 text-sm font-bold text-cream-50 transition-colors hover:bg-ink-800"
+        >
+          + Add a dish
+        </button>
       </div>
+
+      {publishError && (
+        <p className="rounded-2xl bg-brand-600 px-5 py-4 text-sm text-cream-50">
+          {publishError}
+        </p>
+      )}
 
       {failed.length > 0 && (
         <p className="rounded-2xl bg-brand-600 px-5 py-4 text-sm text-cream-50">
@@ -467,9 +502,13 @@ export function DishCosts({
                             {categoryOf(d.categories)}
                           </span>
                         )}
+                        {/* "Hidden" reads as something the owner chose to
+                            pull. Most rows carrying it now are dishes added
+                            here and not put live yet, which is a different
+                            state and a different next step. */}
                         {!d.onMenu && (
                           <span className="rounded-full bg-ink-950/10 px-2 py-0.5 font-bold">
-                            Hidden
+                            Not on the menu
                           </span>
                         )}
                         {d.onMenu && !d.available && (
@@ -670,6 +709,39 @@ export function DishCosts({
                           ? "Add take-out packaging"
                           : `Packaging (${d.packaging.length})`}
                       </button>
+
+                      {/* The end of the road that starts with "+ Add a dish".
+                          Offered plainly once there is a recipe, and held back
+                          behind a warning until then — a dish with no recipe
+                          costs ₱0, so the margin above it is not a small
+                          error, it is the wrong number entirely. Never
+                          disabled: it is the owner's shop, and there are
+                          real reasons to sell something before costing it.
+                          It should just never happen by accident. */}
+                      <button
+                        onClick={() => toggleOnMenu(d)}
+                        disabled={publishing}
+                        title={
+                          d.onMenu
+                            ? "Customers can order this now"
+                            : d.costed
+                              ? "Put it in front of customers"
+                              : "No recipe yet, so the margin above is not real"
+                        }
+                        className={`rounded-xl px-4 py-2.5 text-sm font-bold transition-colors disabled:opacity-60 ${
+                          d.onMenu
+                            ? "bg-ink-950/5 text-ink-800/70 hover:bg-ink-950 hover:text-cream-50"
+                            : d.costed
+                              ? "bg-jade-600 text-cream-50 hover:bg-jade-700"
+                              : "bg-gold-400 text-ink-950 hover:bg-gold-300"
+                        }`}
+                      >
+                        {d.onMenu
+                          ? "Take off the menu"
+                          : d.costed
+                            ? "Put it on the menu"
+                            : "Put it on the menu — not costed yet"}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -712,6 +784,20 @@ export function DishCosts({
           initial={orderPackaging}
           target={{ kind: "order-packaging" }}
           onClose={() => setEditingOrderPackaging(false)}
+        />
+      )}
+      {adding && (
+        <NewDishDialog
+          categories={known.map((c) => c.name)}
+          // Show the list the new dish is actually in, and clear any search
+          // that would hide it. "No recipe" is where it lands, and it is also
+          // the next thing to do about it.
+          onAdded={() => {
+            setFilter("uncosted");
+            setQuery("");
+            setSort("name");
+          }}
+          onClose={() => setAdding(false)}
         />
       )}
 

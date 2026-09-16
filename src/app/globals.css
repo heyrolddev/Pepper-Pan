@@ -227,6 +227,23 @@ html[data-screen="wide"] .hero-band {
   min-height: 20rem;
 }
 
+/*
+ * HQ, with its margins stood down.
+ *
+ * The till and the order board are worked on a tablet lying flat, and there
+ * the screen is the constraint: 80px of page padding is a row and a half of
+ * the order queue that somebody has to scroll for with their hands full.
+ */
+@media (orientation: landscape) and (max-height: 600px) {
+  .hq-main {
+    padding-block: 0.75rem;
+  }
+}
+
+html[data-screen="wide"] .hq-main {
+  padding-block: 1rem;
+}
+
 /* ---------------------------------------------------------------- */
 /* Motion                                                            */
 /* ---------------------------------------------------------------- */

@@ -108,6 +108,18 @@ export async function createMeal(input: {
   price: number;
   categories: string[];
   description?: string;
+  /**
+   * Whether it goes live straight away. True from the Menu screen, where
+   * adding a dish *means* putting it on the menu.
+   *
+   * The Dish costs screen passes false, and the reason is worth keeping: a
+   * dish created there has no recipe yet, so it costs ₱0, so its margin is a
+   * lie. Sent live in that state a customer could order it, the sale would
+   * record as pure profit, and nothing would come off the stock — because
+   * there are no ingredients linked to take off. Costing it first is not
+   * bureaucracy; it is what makes every number downstream true.
+   */
+  onMenu?: boolean;
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
   if (!can(viewer, "menu.edit")) {
@@ -126,7 +138,7 @@ export async function createMeal(input: {
       price: input.price,
       categories: cleanCategories(input.categories),
       description: input.description?.trim() || null,
-      is_public: true,
+      is_public: input.onMenu ?? true,
       is_available: true,
     })
     .select("id");
@@ -135,6 +147,41 @@ export async function createMeal(input: {
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
   for (const c of cleanCategories(input.categories)) await rememberCategory(c);
+  revalidateMenu();
+  return { error: null };
+}
+
+/**
+ * Put a dish on the public menu, or take it off.
+ *
+ * Separate from `setMealAvailability`, and the two are not the same question.
+ * Availability is "we have run out today" — a shift decision, which is why
+ * staff may make it. This is "we sell this", which changes what the shop
+ * offers, so it sits with price and recipe under the owner's `menu.edit`.
+ *
+ * It exists so a dish can be costed before it is sold. The Dish costs screen
+ * creates dishes hidden, and this is the one tap that ends that — pressed
+ * once the margin on screen is a real number rather than a placeholder.
+ */
+export async function setMealOnMenu(
+  id: string,
+  onMenu: boolean
+): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what the shop sells." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("meals")
+    .update({ is_public: onMenu })
+    .eq("id", id)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
   revalidateMenu();
   return { error: null };
 }
