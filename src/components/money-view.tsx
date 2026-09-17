@@ -254,7 +254,7 @@ const POTS = [
     key: "bank",
     tone: "bank",
     label: "Bank",
-    note: "Only what you record moving — no sales land here",
+    note: "Transfers taken at the till, and what you record moving",
     start: "bank-start",
   },
 ] as const;

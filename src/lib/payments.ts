@@ -7,8 +7,26 @@ export const PAYMENT_STATUSES = [
 ] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-export const PAYMENT_METHODS = ["cod", "gcash"] as const;
+/**
+ * Every way a payment can be recorded — which is not the same as every way
+ * one can be offered.
+ *
+ * `bank` is deliberately absent from the online checkout: a transfer needs a
+ * reference and somebody to match it against the statement, and the customer
+ * standing at the counter has the confirmation on their phone right there.
+ * The website's picker in `payment-picker.tsx` builds its own list for that
+ * reason, so adding a method here never puts it in front of a customer.
+ *
+ * `cod` is this system's word for cash, kept because it is what every
+ * existing row says. METHOD_LABEL renders it as "Cash" everywhere a person
+ * can see it.
+ */
+export const PAYMENT_METHODS = ["cod", "gcash", "bank"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export function isPaymentMethod(value: unknown): value is PaymentMethod {
+  return PAYMENT_METHODS.includes(value as PaymentMethod);
+}
 
 export const PAYMENT_PLANS = ["full", "downpayment"] as const;
 export type PaymentPlan = (typeof PAYMENT_PLANS)[number];
@@ -38,6 +56,7 @@ export const DEFAULT_PAYMENTS: PaymentSettings = {
 export const METHOD_LABEL: Record<PaymentMethod, string> = {
   cod: "Cash",
   gcash: "GCash",
+  bank: "Bank",
 };
 
 /**

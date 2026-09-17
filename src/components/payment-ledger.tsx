@@ -77,7 +77,15 @@ function bucketOf(row: LedgerRow): Exclude<Bucket, "all"> {
   return isOutstanding(row.payment_status) ? "owed" : "settled";
 }
 
-function Row({ row, startOpen }: { row: LedgerRow; startOpen: boolean }) {
+function Row({
+  row,
+  startOpen,
+  canFix,
+}: {
+  row: LedgerRow;
+  startOpen: boolean;
+  canFix: boolean;
+}) {
   const m = moneyState(row);
   const tone = STATUS_TONES[row.status];
   const who = row.contact_name || "Walk-in";
@@ -165,13 +173,21 @@ function Row({ row, startOpen }: { row: LedgerRow; startOpen: boolean }) {
           total={m.total}
           downpayment={Number(row.downpayment_amount)}
           downpaymentConfirmedAt={row.downpayment_confirmed_at}
+          canFix={canFix}
         />
       </div>
     </Foldable>
   );
 }
 
-export function PaymentLedger({ rows }: { rows: LedgerRow[] }) {
+export function PaymentLedger({
+  rows,
+  canFix = false,
+}: {
+  rows: LedgerRow[];
+  /** Whether this viewer may correct which pot a payment went into. */
+  canFix?: boolean;
+}) {
   const [bucket, setBucket] = useState<Bucket>("attention");
 
   const searchText = useMemo(
@@ -274,6 +290,7 @@ export function PaymentLedger({ rows }: { rows: LedgerRow[] }) {
                     // each row decides for itself rather than the tab deciding
                     // for all of them.
                     startOpen={bucketOf(r) !== "settled"}
+                    canFix={canFix}
                   />
                 ))}
               </ul>

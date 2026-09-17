@@ -88,11 +88,9 @@ export type MoneyPicture = {
    */
   gcash: { enabled: boolean; onHand: number; startedOn: string | null; startedWith: number };
   /**
-   * The bank, if the shop has one.
-   *
-   * Unlike the other two this has no sales flowing in — nobody pays for
-   * noodles by transfer — so it is the opening figure plus whatever the owner
-   * records moving, and nothing else.
+   * The bank, if the shop has one. Counted exactly like the other two:
+   * opening figure, plus transfers taken at the till, plus what the owner
+   * records moving.
    */
   bank: { enabled: boolean; onHand: number; startedOn: string | null; startedWith: number };
   /** Every pot that is actually being counted, added together. */
@@ -271,8 +269,19 @@ export async function loadMoney(): Promise<MoneyPicture> {
 
   let bankOnHand = 0;
   if (bankEnabled && bankStartedOn) {
-    // No sales query here, and that is not an omission: no customer pays by
-    // bank transfer, so the only thing that moves this is the owner saying so.
+    // Bank transfers ARE a thing now — the till takes them — so this counts
+    // sales the same way the other two pots do. It did not when the pot was
+    // added, because there was no way to record one.
+    const { data: bankSales } = await supabase
+      .from("orders")
+      .select("revenue")
+      .gte("date", bankStartedOn)
+      .eq("payment_method", "bank")
+      .neq("status", "cancelled");
+    const takings = ((bankSales ?? []) as { revenue: number }[]).reduce(
+      (s, o) => s + (Number(o.revenue) || 0),
+      0
+    );
     const { data: bankLedger } = await supabase
       .from("cash_ledger")
       .select("type, amount")
@@ -282,7 +291,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
       (s, l) => s + (l.type === "in" ? 1 : -1) * (Number(l.amount) || 0),
       0
     );
-    bankOnHand = bankStartedWith + moved;
+    bankOnHand = bankStartedWith + takings + moved;
   }
 
   /**

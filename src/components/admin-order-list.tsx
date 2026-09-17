@@ -58,7 +58,7 @@ export type AdminOrder = {
 const peso = (n: number) =>
   "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function OrderCard({ order: o }: { order: AdminOrder }) {
+function OrderCard({ order: o, canFix }: { order: AdminOrder; canFix: boolean }) {
   const p = o.customer;
   const money = moneyState(o);
   return (
@@ -214,6 +214,7 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
         total={Number(o.revenue) + Number(o.delivery_fee)}
         downpayment={Number(o.downpayment_amount)}
         downpaymentConfirmedAt={o.downpayment_confirmed_at}
+        canFix={canFix}
       />
 
       {o.fulfillment === "delivery" && o.delivery_address && (
@@ -274,7 +275,7 @@ function OrderCard({ order: o }: { order: AdminOrder }) {
  * is to see the whole queue at once and then reach into one. Scanning is the
  * common case; acting is the deliberate one, and it costs a tap.
  */
-function OrderRow({ order: o }: { order: AdminOrder }) {
+function OrderRow({ order: o, canFix }: { order: AdminOrder; canFix: boolean }) {
   const money = moneyState(o);
   const owed = money.balance > 0;
   const tone = STATUS_TONES[o.status];
@@ -319,7 +320,7 @@ function OrderRow({ order: o }: { order: AdminOrder }) {
         </>
       }
     >
-      <OrderCard order={o} />
+      <OrderCard order={o} canFix={canFix} />
     </Foldable>
   );
 }
@@ -328,12 +329,15 @@ export function AdminOrderList({
   orders,
   loaded,
   total,
+  canFix = false,
 }: {
   orders: AdminOrder[];
   /** How many the board asked for. */
   loaded: number;
   /** How many exist. The difference is the whole reason for the archive. */
   total: number;
+  /** Whether this viewer may correct which pot a payment went into. */
+  canFix?: boolean;
 }) {
   /**
    * The archive, for when the board's slice does not contain the answer.
@@ -415,6 +419,7 @@ export function AdminOrderList({
               onLoad={setArchive}
               total={total}
               loaded={loaded}
+              canFix={canFix}
             />
           );
         }
@@ -448,7 +453,7 @@ export function AdminOrderList({
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {shown.map((o) => (
-                  <OrderRow key={o.id} order={o} />
+                  <OrderRow key={o.id} order={o} canFix={canFix} />
                 ))}
               </ul>
             )}
@@ -472,12 +477,14 @@ function ArchiveResults({
   onLoad,
   total,
   loaded,
+  canFix,
 }: {
   query: string;
   archive: { for: string; rows: AdminOrder[] | null } | null;
   onLoad: (a: { for: string; rows: AdminOrder[] | null }) => void;
   total: number;
   loaded: number;
+  canFix: boolean;
 }) {
   const asked = useRef<string | null>(null);
 
@@ -539,7 +546,7 @@ function ArchiveResults({
         — older than the newest {loaded.toLocaleString()} on the board.
       </p>
       {rows.map((o) => (
-        <OrderRow key={o.id} order={o} />
+        <OrderRow key={o.id} order={o} canFix={canFix} />
       ))}
     </div>
   );

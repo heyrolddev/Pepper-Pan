@@ -2,12 +2,21 @@ import { AdminOrderList } from "@/components/admin-order-list";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { BOARD_LIMIT, loadBoardOrders } from "@/lib/orders-admin-server";
 import { hqTitle } from "@/lib/hq-theme";
+import { can, getViewer } from "@/lib/auth";
 
 // Every figure here is live; nothing about an order board should be cached.
 export const dynamic = "force-dynamic";
 
 export default async function AdminOrdersPage() {
-  const { orders, total, error } = await loadBoardOrders();
+  const [{ orders, total, error }, viewer] = await Promise.all([
+    loadBoardOrders(),
+    getViewer(),
+  ]);
+  // Correcting how an order was paid moves real money between the pots in
+  // Pepper Pan Bank, so it sits with the people who answer for the till.
+  // Hidden rather than shown-and-refused, the way the rest of HQ hides what
+  // a viewer may not do.
+  const canFix = can(viewer, "business");
 
   // A failed query used to render as "no orders yet", which is the worst
   // possible lie for this screen to tell.
@@ -32,7 +41,12 @@ export default async function AdminOrdersPage() {
   return (
     <div className="flex flex-col gap-6">
       <LiveOrdersBanner />
-      <AdminOrderList orders={orders} loaded={BOARD_LIMIT} total={total} />
+      <AdminOrderList
+        orders={orders}
+        loaded={BOARD_LIMIT}
+        total={total}
+        canFix={canFix}
+      />
     </div>
   );
 }

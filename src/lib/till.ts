@@ -1,3 +1,5 @@
+import type { PaymentMethod } from "@/lib/payments";
+
 /**
  * Counting out change.
  *
@@ -65,3 +67,35 @@ export function changeFor(total: number, tendered: number | null): ChangeState {
   if (diff === 0) return { kind: "exact", short: 0, change: 0 };
   return { kind: "change", short: 0, change: diff / 100 };
 }
+
+/**
+ * The till's vocabulary, mapped to the column's.
+ *
+ * The till says "cash" because that is the word on the button and in the
+ * change arithmetic above; the column says "cod" because that is what every
+ * row written since the first migration says. Bank and GCash need no
+ * translation.
+ *
+ * This lives here rather than beside `recordWalkInSale`, where it started,
+ * because a `"use server"` file exports server functions and nothing else —
+ * React rewrites every export into an async reference. A constant array
+ * exported from there reaches a client component as a callable stub, and
+ * `TILL_CHOICES.map` throws at render. TypeScript passes, the production
+ * build passes; only opening the page finds it. So: constants here, actions
+ * there, and the button row and the insert read the same list.
+ */
+export const TILL_CHOICES = ["cash", "gcash", "bank"] as const;
+export type TillMethod = (typeof TILL_CHOICES)[number];
+
+export const TILL_LABEL: Record<TillMethod, string> = {
+  cash: "Cash",
+  gcash: "GCash",
+  bank: "Bank",
+};
+
+/** Which recorded payment method each button at the till stands for. */
+export const METHOD_FOR_TILL: Record<TillMethod, PaymentMethod> = {
+  cash: "cod",
+  gcash: "gcash",
+  bank: "bank",
+};

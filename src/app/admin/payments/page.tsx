@@ -87,7 +87,7 @@ export default async function AdminPaymentsPage() {
 
       <PaymentsTabs
         waiting={waiting}
-        ledger={<PaymentLedger rows={rows} />}
+        ledger={<PaymentLedger rows={rows} canFix={can(viewer, "business")} />}
         settings={<PaymentSettingsForm initial={settings} />}
       />
     </div>
