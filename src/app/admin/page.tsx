@@ -9,8 +9,10 @@ import { LOW_STOCK_SERVINGS } from "@/lib/costing";
 import { ColumnChart, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { DateRangePicker } from "@/components/date-range-picker";
-import { formatDateTime, shopToday } from "@/lib/format-date";
+import { shopToday } from "@/lib/format-date";
 import { StatTile, Delta } from "@/components/stat-tile";
+import { Explain } from "@/components/explain";
+import { RecentOrders } from "@/components/recent-orders";
 import { pesoRound } from "@/lib/costing";
 import { hqTitle } from "@/lib/hq-theme";
 import { ErrorLogPanel } from "@/components/error-log-panel";
@@ -117,6 +119,10 @@ export default async function AdminDashboard({
   // out loud rather than quietly inflating the number.
   const uncosted = (rows: OrderRow[]) =>
     rows.filter((o) => Number(o.revenue || 0) > 0 && Number(o.cogs || 0) <= 0).length;
+  // What the food cost, on its own. Only needed so the Kept tile can show its
+  // working — "revenue minus ingredients" is a sum the owner should be able
+  // to see both halves of.
+  const cogsOf = (rows: OrderRow[]) => rows.reduce((s, o) => s + Number(o.cogs || 0), 0);
   const todays = live.filter((o) => o.date === todayStr);
   const yesterdays = live.filter((o) => o.date === yesterdayStr);
   const monthly = live.filter((o) => o.date >= monthStart);
@@ -195,43 +201,131 @@ export default async function AdminDashboard({
       <section className="flex flex-col gap-4">
         <DateRangePicker from={fromDate} to={toDate} isDefault={!customRange} />
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatTile
-            label="Sales today"
-            value={peso(sum(todays))}
-            detail={`${todays.length} order${todays.length === 1 ? "" : "s"}`}
+          <Explain
+            title="Sales today"
+            what="Everything that came through the shop today, however it was paid for — website, Messenger and the counter alike."
+            lines={[
+              {
+                label: `${todays.length} order${todays.length === 1 ? "" : "s"} today`,
+                value: peso(sum(todays)),
+                note: "Every order dated today that wasn't cancelled.",
+              },
+              {
+                label: "Cancelled today, not counted",
+                value: String(
+                  orders.filter((o) => o.date === todayStr && o.status === "cancelled").length
+                ),
+                note: "A cancelled order earned nothing, so it is left out rather than counted at zero.",
+              },
+              { label: "Yesterday, for comparison", value: peso(sum(yesterdays)) },
+              { label: "= Today's takings", value: peso(sum(todays)), total: true },
+            ]}
+            why="This is money in, not money kept — the ingredients have not come out of it yet. The tile beside it does that. It also counts delivery fees separately, so a busy delivery day doesn't read as a good sales day."
           >
-            <Delta now={sum(todays)} before={sum(yesterdays)} label="yesterday" />
-          </StatTile>
+            <StatTile
+              label="Sales today"
+              value={peso(sum(todays))}
+              detail={`${todays.length} order${todays.length === 1 ? "" : "s"}`}
+            >
+              <Delta now={sum(todays)} before={sum(yesterdays)} label="yesterday" />
+            </StatTile>
+          </Explain>
 
-          <StatTile
-            label={customRange ? "Sales in range" : "Sales this month"}
-            value={peso(sum(inRange))}
-            detail={`${inRange.length} order${inRange.length === 1 ? "" : "s"}`}
-          >
-            <Delta
-              now={sum(inRange)}
-              before={sum(inPrevRange)}
-              label={`the ${spanDays} days before`}
-            />
-          </StatTile>
-          <StatTile
-            label={customRange ? "Kept in range" : "Kept this month"}
-            value={peso(kept(inRange))}
-            detail={
-              uncosted(inRange) > 0
-                ? `Best case — ${uncosted(inRange)} order${
-                    uncosted(inRange) === 1 ? " has" : "s have"
-                  } no cost recorded`
-                : "After ingredients, before everything else"
+          <Explain
+            title={customRange ? "Sales in range" : "Sales this month"}
+            what={
+              customRange
+                ? `Everything the shop took between ${fromDate} and ${toDate}.`
+                : "Everything the shop has taken since the first of the month."
             }
-            tone={uncosted(inRange) > 0 ? "plain" : "good"}
+            lines={[
+              {
+                label: `${inRange.length} order${inRange.length === 1 ? "" : "s"}, ${fromDate} to ${toDate}`,
+                value: peso(sum(inRange)),
+              },
+              {
+                label: `The ${spanDays} day${spanDays === 1 ? "" : "s"} before that`,
+                value: peso(sum(inPrevRange)),
+                note: `${prevFrom} to ${prevTo} — the same length of window, so the comparison is fair.`,
+              },
+              {
+                label: "Difference",
+                value: peso(sum(inRange) - sum(inPrevRange)),
+              },
+              { label: "= Taken in this window", value: peso(sum(inRange)), total: true },
+            ]}
+            why="The comparison is always against the SAME NUMBER OF DAYS immediately before, not against last month — otherwise a range of five days would always look terrible beside a full month, and a range of forty would always look wonderful."
           >
-            <Delta
-              now={kept(inRange)}
-              before={kept(inPrevRange)}
-              label={`the ${spanDays} days before`}
-            />
-          </StatTile>
+            <StatTile
+              label={customRange ? "Sales in range" : "Sales this month"}
+              value={peso(sum(inRange))}
+              detail={`${inRange.length} order${inRange.length === 1 ? "" : "s"}`}
+            >
+              <Delta
+                now={sum(inRange)}
+                before={sum(inPrevRange)}
+                label={`the ${spanDays} days before`}
+              />
+            </StatTile>
+          </Explain>
+
+          <Explain
+            title={customRange ? "Kept in range" : "Kept this month"}
+            what="What was left of the sales after the ingredients that went into them — and before rent, kuryente, sweldo or anything else."
+            lines={[
+              { label: "Taken in this window", value: peso(sum(inRange)) },
+              {
+                label: "− what the ingredients cost",
+                value: peso(cogsOf(inRange)),
+                note: "Frozen onto each order when it was sold, so this is what the food cost that day — not what the same recipe would cost at today's prices.",
+              },
+              {
+                label: "= Kept",
+                value: peso(kept(inRange)),
+                total: true,
+              },
+              {
+                label: "Of every ₱100 taken, kept",
+                value:
+                  sum(inRange) > 0
+                    ? `₱${((kept(inRange) / sum(inRange)) * 100).toFixed(0)}`
+                    : "—",
+              },
+              ...(uncosted(inRange) > 0
+                ? [
+                    {
+                      label: `${uncosted(inRange)} order${uncosted(inRange) === 1 ? "" : "s"} with no cost recorded`,
+                      value: "counted as free",
+                      note: "An order of a dish with no recipe, or one placed before costing existed. Its ingredients are missing from the sum, so the figure above is a ceiling rather than a number.",
+                    },
+                  ]
+                : []),
+            ]}
+            why={
+              uncosted(inRange) > 0
+                ? "Give every dish a recipe on the Dish costs page and this becomes exact. Until then it is the best case — the real figure is lower."
+                : "This is gross profit. It is not what the shop made: rent, kuryente, sweldo and spoilage still come out of it. The Money page takes it the rest of the way to break-even."
+            }
+          >
+            <StatTile
+              label={customRange ? "Kept in range" : "Kept this month"}
+              value={peso(kept(inRange))}
+              detail={
+                uncosted(inRange) > 0
+                  ? `Best case — ${uncosted(inRange)} order${
+                      uncosted(inRange) === 1 ? " has" : "s have"
+                    } no cost recorded`
+                  : "After ingredients, before everything else"
+              }
+              tone={uncosted(inRange) > 0 ? "plain" : "good"}
+            >
+              <Delta
+                now={kept(inRange)}
+                before={kept(inPrevRange)}
+                label={`the ${spanDays} days before`}
+              />
+            </StatTile>
+          </Explain>
           <StatTile
             label="Needs action"
             value={String(needsAction.length)}
@@ -340,37 +434,8 @@ export default async function AdminDashboard({
           </Link>
         </div>
 
-        {orders.length === 0 ? (
-          <p className="mt-4 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-            No orders yet.
-          </p>
-        ) : (
-          <ul className="mt-5 flex flex-col gap-2">
-            {orders.slice(0, 8).map((o) => (
-              <li
-                key={o.id}
-                className="flex items-center justify-between gap-4 rounded-2xl bg-cream-100 px-5 py-3 ring-1 ring-ink-950/10"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-ink-950">
-                    {o.contact_name || "Walk-in"}
-                  </span>
-                  <span className="text-xs text-ink-800/55">
-{formatDateTime(o.created_at)}
-                  </span>
-                </span>
-                <span className="flex items-center gap-4">
-                  <span className="text-xs font-bold uppercase tracking-wide text-ink-800/70">
-                    {o.status}
-                  </span>
-                  <span className="font-display font-black text-ink-950">
-                    {peso(Number(o.revenue))}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <RecentOrders orders={orders.slice(0, 8)} />
+
       </section>
     </div>
   );

@@ -1,6 +1,9 @@
 import { can, getViewer } from "@/lib/auth";
 import { getAllAnnouncements } from "@/lib/announcements-server";
 import { AnnouncementEditor } from "@/components/announcement-editor";
+import { MarketingCalculator } from "@/components/marketing-calculator";
+import { listCampaigns } from "@/app/admin/promos/marketing-actions";
+import { loadShopNormal } from "@/lib/marketing-server";
 import { hqTitle } from "@/lib/hq-theme";
 
 // What is live depends on the clock — a promo scheduled for tomorrow has to
@@ -21,7 +24,14 @@ export default async function AdminPromosPage() {
     );
   }
 
-  const { rows, error } = await getAllAnnouncements();
+  // Read alongside the announcements rather than after them: three
+  // independent queries that the page cannot render without, so waiting for
+  // them one at a time costs three round trips for no reason.
+  const [{ rows, error }, campaigns, normal] = await Promise.all([
+    getAllAnnouncements(),
+    listCampaigns(),
+    loadShopNormal(),
+  ]);
 
   if (error) {
     return (
@@ -40,7 +50,16 @@ export default async function AdminPromosPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
+      {/* Above the editor on purpose. Deciding WHETHER a promo is worth
+          running comes before writing the words for it, and the shop has
+          never had anywhere to answer the first question. */}
+      <MarketingCalculator
+        rows={campaigns.rows}
+        normal={normal}
+        error={campaigns.error}
+      />
+
       <div>
         <h2 className={hqTitle}>Promos &amp; news</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
