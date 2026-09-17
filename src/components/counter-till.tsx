@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/costing";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
+import { TILL_CHOICES, TILL_LABEL, type TillMethod } from "@/lib/till";
 import {
   categoriesUsed,
   orderForMenu,
@@ -62,7 +63,17 @@ export function CounterTill({
   const [ticket, setTicket] = useState<Ticket>({});
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
-  const [method, setMethod] = useState<"cash" | "gcash">("cash");
+  /**
+   * No default, on purpose.
+   *
+   * It used to open on "cash", which is right most of the time and therefore
+   * exactly the problem: a GCash sale rung up in a hurry stayed cash, the
+   * pesos landed in the drawer, and the drawer then failed to balance for a
+   * reason nobody could find at the end of the shift. A tap that is right
+   * four times out of five is worse than one that is asked for, because the
+   * fifth is silent.
+   */
+  const [method, setMethod] = useState<TillMethod | null>(null);
   const [dineIn, setDineIn] = useState(false);
   // What was put on the counter. A string, not a number, so the box can be
   // empty — "nothing typed yet" and "zero pesos" are different answers.
@@ -153,8 +164,12 @@ export function CounterTill({
    */
   const blocker = (): string | null => {
     if (lines.length === 0) return "Add something to the order first.";
+    // Asked for rather than assumed — see the `method` state above for why.
+    if (method === null) return "How did they pay? Tap Cash, GCash or Bank.";
     if (method === "gcash" && !reference.trim())
       return "Type the GCash reference number before recording this.";
+    if (method === "bank" && !reference.trim())
+      return "Type the transfer reference number before recording this.";
     // A name or a deliberate "no name". Not the same as leaving it blank:
     // blank used to be the default and produced records nobody could trace,
     // and a required box with no way out at a lunchtime queue just produces
@@ -192,6 +207,11 @@ export function CounterTill({
       setError(stop);
       return;
     }
+    // After `blocker()`, never before it: an early return here swallowed the
+    // "How did they pay?" message and left the button doing nothing at all,
+    // which is the one outcome worse than a refusal. This line is for the
+    // type checker; `blocker()` is what tells the cashier.
+    if (method === null) return;
     setError(null);
     const paid = Number(tendered) || 0;
     setReview({
@@ -207,7 +227,7 @@ export function CounterTill({
       method,
       tendered: method === "cash" ? paid : null,
       change: method === "cash" ? paid - total : null,
-      reference: method === "gcash" ? reference.trim() || null : null,
+      reference: method === "cash" ? null : reference.trim() || null,
       servedBy: staffName || null,
       customer: customer.trim() || null,
     });
@@ -217,6 +237,15 @@ export function CounterTill({
   function submit() {
     setError(null);
     startTransition(async () => {
+      // `blocker()` already refuses an unpicked method and the review card
+      // cannot open without it, but this is the line that actually spends the
+      // money, so it checks for itself rather than trusting a guard three
+      // functions away that a later edit could move — and says so if it ever
+      // fires, rather than failing silently.
+      if (method === null) {
+        setError("How did they pay? Tap Cash, GCash or Bank.");
+        return;
+      }
       // Captured before the reset below, so the confirmation names the sale
       // that was actually recorded rather than the state of the next one.
       const wasDineIn = dineIn;
@@ -268,7 +297,7 @@ export function CounterTill({
           wasMethod === "cash" && wasTendered >= result.total
             ? wasTendered - result.total
             : null,
-        reference: wasMethod === "gcash" ? wasReference || null : null,
+        reference: wasMethod === "cash" ? null : wasReference || null,
         servedBy: staffName || null,
         customer: wasCustomer || null,
       };
@@ -631,8 +660,8 @@ export function CounterTill({
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                {(["cash", "gcash"] as const).map((m) => (
+              <div className="grid grid-cols-3 gap-2">
+                {TILL_CHOICES.map((m) => (
                   <button
                     key={m}
                     onClick={() => setMethod(m)}
@@ -643,16 +672,18 @@ export function CounterTill({
                         : "bg-ink-950/5 text-ink-800/50 hover:bg-ink-950/10"
                     }`}
                   >
-                    {m === "cash" ? "Cash" : "GCash"}
+                    {TILL_LABEL[m]}
                   </button>
                 ))}
               </div>
 
-              {method === "gcash" && (
+              {(method === "gcash" || method === "bank") && (
                 <input
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  placeholder="GCash reference no."
+                  placeholder={
+                    method === "bank" ? "Transfer reference no." : "GCash reference no."
+                  }
                   className="rounded-xl bg-cream-50 px-3 py-2.5 text-sm ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
                 />
               )}

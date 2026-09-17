@@ -1,10 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setPaymentStatus } from "@/app/admin/orders/actions";
+import {
+  setOrderPaymentMethod,
+  setPaymentStatus,
+} from "@/app/admin/orders/actions";
 import { formatDateTime } from "@/lib/format-date";
 import {
   METHOD_LABEL,
+  PAYMENT_METHODS,
   STATUS_LABEL,
   type PaymentMethod,
   type PaymentPlan,
@@ -36,6 +40,7 @@ export function PaymentVerifier({
   total,
   downpayment,
   downpaymentConfirmedAt,
+  canFix = false,
 }: {
   orderId: string;
   method: PaymentMethod;
@@ -46,9 +51,40 @@ export function PaymentVerifier({
   total: number;
   downpayment: number;
   downpaymentConfirmedAt?: string | null;
+  /**
+   * Whether this viewer may move the sale to a different pot.
+   *
+   * Passed down rather than checked here, and hidden rather than shown and
+   * refused — the same rule the sidebar follows. Staff run the till; deciding
+   * that a recorded payment went somewhere else is the owner's or a manager's
+   * call, and the server enforces that regardless of this flag.
+   */
+  canFix?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [fixing, setFixing] = useState(false);
+
+  /**
+   * Move the sale to the pot it actually went into.
+   *
+   * The everyday case: rung up as cash, paid by GCash after all. Because the
+   * pots in Pepper Pan Bank are worked out from `orders` rather than
+   * accumulated, changing this one field takes the money out of one balance
+   * and puts it in the other, exactly — no compensating entry to get wrong.
+   */
+  function moveTo(next: PaymentMethod) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const res = await setOrderPaymentMethod(orderId, next);
+        if (res.error) setError(res.error);
+        else setFixing(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not change the payment method.");
+      }
+    });
+  }
 
   function set(next: PaymentStatus) {
     setError(null);
@@ -179,6 +215,48 @@ export function PaymentVerifier({
           </button>
         )}
       </div>
+
+      {/* Tucked behind a click rather than shown as three buttons: on a
+          correctly-rung sale this is clutter, and on the rare wrong one it is
+          the only thing that fixes both balances at once. */}
+      {canFix &&
+        (fixing ? (
+          <div className="mt-3 border-t border-ink-950/10 pt-3">
+            <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-ink-800/50">
+              It was really paid by
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {PAYMENT_METHODS.filter((m) => m !== method).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => moveTo(m)}
+                  disabled={pending}
+                  className="rounded-full bg-ink-950 px-4 py-1.5 text-xs font-bold text-cream-50 transition-colors hover:bg-ink-800 disabled:opacity-60"
+                >
+                  {METHOD_LABEL[m]}
+                </button>
+              ))}
+              <button
+                onClick={() => setFixing(false)}
+                disabled={pending}
+                className="rounded-full px-3 py-1.5 text-xs font-bold text-ink-800/60 hover:text-ink-950 disabled:opacity-60"
+              >
+                Never mind
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-ink-800/45">
+              {peso(total)} moves out of {METHOD_LABEL[method]} and into the one
+              you pick. Both balances correct themselves — nothing else to enter.
+            </p>
+          </div>
+        ) : (
+          <button
+            onClick={() => setFixing(true)}
+            className="mt-2 text-[11px] font-bold text-ink-800/45 underline decoration-dotted underline-offset-2 transition-colors hover:text-ink-950"
+          >
+            Paid a different way?
+          </button>
+        ))}
 
       {error && <p className="mt-2 text-xs font-semibold text-brand-700">{error}</p>}
     </div>

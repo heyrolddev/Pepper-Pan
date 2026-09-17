@@ -39,11 +39,11 @@ export type Receipt = {
   total: number;
   /** Dine-in pays no packaging, and the receipt should say which it was. */
   dineIn: boolean;
-  method: "cash" | "gcash";
+  method: "cash" | "gcash" | "bank";
   /** Cash only: what was handed over, and what went back. */
   tendered?: number | null;
   change?: number | null;
-  /** GCash only. */
+  /** GCash and bank transfers — the number the payment can be traced by. */
   reference?: string | null;
   servedBy?: string | null;
   /** Who it is for. Printed so a bag on the counter can be handed over by
@@ -178,13 +178,17 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
   out.push(left(row("TOTAL (PHP)", amount(r.total), cols)));
   out.push(left(""));
 
-  if (r.method === "gcash") {
-    out.push(left(row("Paid by", "GCASH", cols)));
-    if (r.reference) out.push(left(row("Reference", r.reference, cols)));
-  } else {
+  // Cash is the branch with tendered and change; anything else is a
+  // reference. Written as three cases rather than "gcash or else cash",
+  // which is what it was — a bank transfer printed "Paid by CASH" on the one
+  // piece of paper the customer takes home and keeps.
+  if (r.method === "cash") {
     out.push(left(row("Paid by", "CASH", cols)));
     if (r.tendered != null) out.push(left(row("Cash received", amount(r.tendered), cols)));
     if (r.change != null) out.push(left(row("Change", amount(r.change), cols)));
+  } else {
+    out.push(left(row("Paid by", r.method === "bank" ? "BANK" : "GCASH", cols)));
+    if (r.reference) out.push(left(row("Reference", r.reference, cols)));
   }
 
   out.push(left(""));

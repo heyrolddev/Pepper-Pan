@@ -10,15 +10,9 @@ import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { orderLabel } from "@/lib/tickets";
 import { cartQuantityProblem } from "@/lib/orders";
 import { loadAvailability } from "@/lib/costing-server";
-import type { PaymentMethod } from "@/lib/payments";
+import { METHOD_FOR_TILL, type TillMethod } from "@/lib/till";
 
 export type CounterLine = { mealId: string; qty: number };
-
-/** The till's vocabulary, mapped to the column's. */
-const METHOD_FOR_TILL: Record<"cash" | "gcash", PaymentMethod> = {
-  cash: "cod",
-  gcash: "gcash",
-};
 
 export type CounterResult =
   | { error: string; orderId?: undefined; total?: undefined; ticket?: undefined }
@@ -41,7 +35,7 @@ export type CounterResult =
  */
 export async function recordWalkInSale(input: {
   lines: CounterLine[];
-  method: "cash" | "gcash";
+  method: TillMethod;
   reference?: string;
   /** Straight into the day's takings, or onto the kitchen board first. */
   toKitchen: boolean;

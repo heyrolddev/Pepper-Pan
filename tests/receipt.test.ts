@@ -125,3 +125,20 @@ test("chunking loses nothing and respects the size limit", () => {
     Array.from(bytes)
   );
 });
+
+test("a bank transfer prints as a transfer, not as cash", () => {
+  // It used to print "Paid by CASH" — the gcash branch was the only special
+  // case and everything else fell through to the cash one. The receipt is the
+  // only record a customer keeps, and the only one nobody can edit after.
+  const text = textOf({
+    ...sale,
+    method: "bank",
+    tendered: null,
+    change: null,
+    reference: "BPI 88213",
+  });
+  assert.match(text, /Paid by\s+BANK/);
+  assert.match(text, /Reference\s+BPI 88213/);
+  assert.equal(/Cash received/.test(text), false);
+  assert.equal(/Change/.test(text), false);
+});

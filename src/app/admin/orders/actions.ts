@@ -8,7 +8,13 @@ import { syncStockForStatus } from "@/lib/stock-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { pushToStaff } from "@/lib/push";
 import { ORDER_STATUSES, type OrderStatus } from "@/lib/orders";
-import { PAYMENT_STATUSES, type PaymentStatus } from "@/lib/payments";
+import {
+  METHOD_LABEL,
+  PAYMENT_STATUSES,
+  isPaymentMethod,
+  type PaymentMethod,
+  type PaymentStatus,
+} from "@/lib/payments";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { cleanReason } from "@/lib/cancellation";
 import { orderLabel } from "@/lib/tickets";
@@ -218,6 +224,72 @@ export async function setOrderEta(
  * reference against their own GCash records — nothing here can verify it for
  * them, so this only records the human decision.
  */
+/**
+ * Correct which pot a payment went into.
+ *
+ * The one situation this exists for: the cashier rings a sale up as cash and
+ * the customer pays by GCash after all. Until now there was no way to say so
+ * — `payment_method` was written once, at the moment the order was created,
+ * and nothing in the whole system ever updated it. The drawer then counted
+ * money that never arrived and GCash missed money that did, and the only
+ * remedy was a hand-written ledger entry that left the order still claiming
+ * the wrong thing forever.
+ *
+ * WHY THIS ONE FIELD FIXES BOTH BALANCES
+ *
+ * Every pot in Pepper Pan Bank is DERIVED — recomputed from `orders` on each
+ * render, not accumulated from a list of movements. So moving an order from
+ * cash to GCash takes it out of one sum and puts it into the other, exactly,
+ * on the next page load. No compensating entry, no arithmetic, and no chance
+ * of the correction and the order disagreeing later.
+ *
+ * Owner and manager only, and logged with both the old and the new method.
+ * This is the one control here that silently moves money between pots, so
+ * what it did has to be readable a month later.
+ */
+export async function setOrderPaymentMethod(
+  orderId: string,
+  method: PaymentMethod
+): Promise<{ error: string | null }> {
+  if (!isPaymentMethod(method)) return { error: "Unknown payment method." };
+
+  const viewer = await getViewer();
+  if (!can(viewer, "business")) {
+    return { error: "Only the owner or a manager can change how an order was paid." };
+  }
+
+  const supabase = await createClient();
+  const { data: before } = await supabase
+    .from("orders")
+    .select("ticket, contact_name, payment_method, revenue")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!before) return { error: "That order no longer exists." };
+
+  const was = before.payment_method as PaymentMethod;
+  if (was === method) return { error: null };
+
+  const { data, error } = await supabase
+    .from("orders")
+    .update({ payment_method: method })
+    .eq("id", orderId)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
+
+  await record(
+    `${nameOf(viewer)} corrected ${labelOf(before as Named)} — paid by ` +
+      `${METHOD_LABEL[method]}, not ${METHOD_LABEL[was]}. ` +
+      `₱${(Number(before.revenue) || 0).toFixed(2)} moves from ${METHOD_LABEL[was]} ` +
+      `to ${METHOD_LABEL[method]} in Pepper Pan Bank.`,
+    viewer?.profile?.id ?? null
+  );
+
+  revalidateOrders();
+  return { error: null };
+}
+
 export async function setPaymentStatus(
   orderId: string,
   status: PaymentStatus
