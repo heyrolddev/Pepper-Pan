@@ -831,3 +831,107 @@ begin
   end if;
   raise notice 'a bank line is its own pot and nobody else''s';
 end $$;
+
+\echo ''
+\echo '=== 0044 marketing campaigns ==='
+
+\echo '--- a campaign is recorded and moves no money whatsoever ---'
+do $$
+declare drawer numeric; wallet numeric; bank numeric; orders_before bigint; orders_after bigint;
+begin
+  select count(*) into orders_before from orders;
+  select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+    into drawer from cash_ledger where account = 'cash';
+  select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+    into wallet from cash_ledger where account = 'gcash';
+  select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+    into bank from cash_ledger where account = 'bank';
+
+  insert into marketing_campaigns
+    (name, kind, days, spend, baseline_per_day, during_per_day, margin_ratio)
+  values ('Boost ng reel', 'ads', 7, 2000, 4000, 5000, 0.6);
+
+  -- The promise the table's comment makes, checked rather than asserted. If a
+  -- later migration ever wires this to the ledger by accident, this fails.
+  if (select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+        from cash_ledger where account = 'cash') <> drawer then
+    raise exception 'FAIL: recording a campaign moved the drawer';
+  end if;
+  if (select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+        from cash_ledger where account = 'gcash') <> wallet then
+    raise exception 'FAIL: recording a campaign moved the e-wallet';
+  end if;
+  if (select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+        from cash_ledger where account = 'bank') <> bank then
+    raise exception 'FAIL: recording a campaign moved the bank';
+  end if;
+  select count(*) into orders_after from orders;
+  if orders_after <> orders_before then
+    raise exception 'FAIL: recording a campaign created an order';
+  end if;
+  raise notice 'a campaign is working-out, not money — no pot moved and no order appeared';
+end $$;
+
+\echo '--- a campaign that has not run yet is allowed to have no result ---'
+do $$
+declare during numeric;
+begin
+  insert into marketing_campaigns
+    (name, kind, days, spend, baseline_per_day, margin_ratio)
+  values ('Fiesta free taste', 'freebie', 3, 0, 4000, 0.6)
+  returning during_per_day into during;
+  if during is not null then
+    raise exception 'FAIL: a campaign nobody has run yet claims a result';
+  end if;
+  raise notice 'a plan is a row with no result, not a row claiming zero sales';
+end $$;
+
+\echo '--- the figures that would produce nonsense are refused ---'
+do $$
+begin
+  begin
+    insert into marketing_campaigns (name, kind, days, baseline_per_day, margin_ratio)
+    values ('Zero days', 'ads', 0, 4000, 0.6);
+    raise exception 'FAIL: a campaign that ran for no days was accepted';
+  exception when check_violation then null;
+  end;
+
+  begin
+    insert into marketing_campaigns (name, kind, days, baseline_per_day, margin_ratio)
+    values ('Impossible margin', 'ads', 7, 4000, 1.4);
+    raise exception 'FAIL: a margin above 100%% was accepted';
+  exception when check_violation then null;
+  end;
+
+  begin
+    -- Nobody can come back who never came in the first place.
+    insert into marketing_campaigns
+      (name, kind, days, baseline_per_day, margin_ratio, new_customers, returned)
+    values ('More returns than customers', 'freebie', 7, 4000, 0.6, 5, 9);
+    raise exception 'FAIL: more people came back than ever turned up';
+  exception when check_violation then null;
+  end;
+
+  begin
+    insert into marketing_campaigns (name, kind, days, baseline_per_day, margin_ratio)
+    values ('Unknown kind', 'billboard', 7, 4000, 0.6);
+    raise exception 'FAIL: an unknown kind of campaign was accepted';
+  exception when check_violation then null;
+  end;
+
+  raise notice 'zero days, an impossible margin, impossible returns and an unknown kind are all refused';
+end $$;
+
+\echo '--- a signed-out visitor cannot read the shop advertising budget ---'
+do $$
+declare visible bigint;
+begin
+  set local role anon;
+  select count(*) into visible from marketing_campaigns;
+  reset role;
+  if visible <> 0 then
+    raise exception 'FAIL: % campaigns readable from a browser session', visible;
+  end if;
+  raise notice 'what the shop spends on ads is not public, unlike the promos themselves';
+end $$;
+RESET ROLE;
