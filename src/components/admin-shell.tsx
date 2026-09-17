@@ -54,9 +54,19 @@ const GROUPS: Group[] = [
     title: "Every day",
     items: [
       { href: "/admin", label: "Today", icon: "◉" },
-      // First row after Today, because the moment somebody needs it is the
-      // moment they are looking at a number they don't recognise — and that
-      // happens on the screen they open first.
+      // Second, by the owner's own ask, and it earns the place: break-even,
+      // what the drawer should hold and what is still owed are what somebody
+      // opens HQ to check after Today itself. It sat under "Understand" with
+      // the reports, three groups down, which is where you put a thing you
+      // read monthly — not the one you glance at between orders.
+      //
+      // Named apart from "Payments" on purpose: that one is how customers pay
+      // the shop, this one is what the shop pays out. Sharing the ₱ icon as
+      // well would have made two very different screens look like a pair.
+      { href: "/admin/money", label: "Costs & cash", icon: "◆", needs: "business" },
+      // Near the top, because the moment somebody needs it is the moment they
+      // are looking at a number they don't recognise — and that now happens on
+      // the two screens directly above it.
       { href: "/admin/ask", label: "Ask HQ", icon: "✽", needs: "assistant" },
       { href: "/admin/counter", label: "Counter", icon: "◫", needs: "till" },
       { href: "/admin/orders", label: "Orders", icon: "▤", badge: "orders", needs: "orders" },
@@ -88,10 +98,6 @@ const GROUPS: Group[] = [
     title: "Understand",
     items: [
       { href: "/admin/analytics", label: "Analytics", icon: "◈", needs: "business" },
-      // Named apart from "Payments" on purpose: that one is how customers pay
-      // the shop, this one is what the shop pays out. Sharing the ₱ icon as
-      // well would have made two very different screens look like a pair.
-      { href: "/admin/money", label: "Costs & cash", icon: "◆", needs: "business" },
       { href: "/admin/reviews", label: "Reviews", icon: "★", needs: "chat" },
       { href: "/admin/customers", label: "Customers", icon: "◑", needs: "business" },
       { href: "/admin/staff", label: "Staff", icon: "◔", badge: "staff", needs: "staff.manage" },

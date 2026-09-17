@@ -9,6 +9,12 @@ import {
   recordRestock,
   saveIngredient,
 } from "@/app/admin/inventory/actions";
+import {
+  PAID_FROM,
+  PAID_FROM_HINTS,
+  PAID_FROM_LABELS,
+  type PaidFrom,
+} from "@/lib/money-accounts";
 
 export type EditableIngredient = {
   id: string;
@@ -332,6 +338,10 @@ export function RestockForm({
   const [supplier, setSupplier] = useState("");
   const [expiry, setExpiry] = useState("");
   const [updateCost, setUpdateCost] = useState(true);
+  // Cash by default because that is how a market run is actually paid for,
+  // and because a default of "not yet paid" would quietly reinstate the bug
+  // this form exists to close.
+  const [paidFrom, setPaidFrom] = useState<PaidFrom>("cash");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
@@ -352,6 +362,7 @@ export function RestockForm({
         supplier,
         expiryDate: expiry || null,
         updateStandardCost: updateCost,
+        paidFrom,
       });
       if (r.error !== null) {
         setError(r.error);
@@ -418,6 +429,33 @@ export function RestockForm({
             )}
           </div>
         )}
+
+        {/* Where the money came from, asked here because this is the only
+            moment the amount is known. The delivery used to move stock and no
+            pesos at all, so the drawer counted every sale in and no
+            ingredient out. */}
+        <Field
+          label="Paid with"
+          hint={amount > 0 ? PAID_FROM_HINTS[paidFrom] : "It comes out of this pot."}
+        >
+          <div className="grid grid-cols-3 gap-2">
+            {PAID_FROM.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setPaidFrom(option)}
+                aria-pressed={paidFrom === option}
+                className={`rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                  paidFrom === option
+                    ? "bg-ink-950 text-cream-50"
+                    : "bg-ink-950/[0.05] text-ink-950 hover:bg-ink-950/10"
+                }`}
+              >
+                {PAID_FROM_LABELS[option]}
+              </button>
+            ))}
+          </div>
+        </Field>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Supplier" hint="Optional.">
