@@ -87,7 +87,15 @@ export type MoneyPicture = {
    * that. `total` is what the shop holds across both.
    */
   gcash: { enabled: boolean; onHand: number; startedOn: string | null; startedWith: number };
-  /** Cash plus the e-wallet — only the pots actually being counted. */
+  /**
+   * The bank, if the shop has one.
+   *
+   * Unlike the other two this has no sales flowing in — nobody pays for
+   * noodles by transfer — so it is the opening figure plus whatever the owner
+   * records moving, and nothing else.
+   */
+  bank: { enabled: boolean; onHand: number; startedOn: string | null; startedWith: number };
+  /** Every pot that is actually being counted, added together. */
   totalHeld: number;
   ledger: LedgerEntry[];
   receivables: Receivable[];
@@ -122,7 +130,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
     supabase
       .from("settings")
       .select(
-        "open_days_per_month, cash_balance_enabled, cash_balance_starting_amount, cash_balance_start_date, gcash_balance_enabled, gcash_balance_starting_amount, gcash_balance_start_date, payback_from"
+        "open_days_per_month, cash_balance_enabled, cash_balance_starting_amount, cash_balance_start_date, gcash_balance_enabled, gcash_balance_starting_amount, gcash_balance_start_date, bank_balance_enabled, bank_balance_starting_amount, bank_balance_start_date, payback_from"
       )
       .eq("id", 1)
       .maybeSingle(),
@@ -254,6 +262,27 @@ export async function loadMoney(): Promise<MoneyPicture> {
       0
     );
     gcashOnHand = gcashStartedWith + takings + moved;
+  }
+
+  // ---- the bank --------------------------------------------------------
+  const bankEnabled = Boolean(settingsRow?.bank_balance_enabled);
+  const bankStartedOn = settingsRow?.bank_balance_start_date ?? null;
+  const bankStartedWith = Number(settingsRow?.bank_balance_starting_amount) || 0;
+
+  let bankOnHand = 0;
+  if (bankEnabled && bankStartedOn) {
+    // No sales query here, and that is not an omission: no customer pays by
+    // bank transfer, so the only thing that moves this is the owner saying so.
+    const { data: bankLedger } = await supabase
+      .from("cash_ledger")
+      .select("type, amount")
+      .eq("account", "bank")
+      .gte("date", bankStartedOn);
+    const moved = ((bankLedger ?? []) as { type: string; amount: number }[]).reduce(
+      (s, l) => s + (l.type === "in" ? 1 : -1) * (Number(l.amount) || 0),
+      0
+    );
+    bankOnHand = bankStartedWith + moved;
   }
 
   /**
@@ -456,7 +485,16 @@ export async function loadMoney(): Promise<MoneyPicture> {
     // Only pots that are switched on. A zero from a pot nobody is counting is
     // not a balance of nothing, it is the absence of an answer, and adding it
     // in would present a guess as a total.
-    totalHeld: (cashEnabled ? onHand : 0) + (gcashEnabled ? gcashOnHand : 0),
+    bank: {
+      enabled: bankEnabled,
+      onHand: bankOnHand,
+      startedOn: bankStartedOn,
+      startedWith: bankStartedWith,
+    },
+    totalHeld:
+      (cashEnabled ? onHand : 0) +
+      (gcashEnabled ? gcashOnHand : 0) +
+      (bankEnabled ? bankOnHand : 0),
     ledger,
     receivables,
     owed,

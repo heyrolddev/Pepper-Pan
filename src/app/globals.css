@@ -53,6 +53,25 @@
   --color-chili-600: #d95f0e;
   --color-chili-700: #b04709;
 
+  /* Wallet blue — for GCash, and only for GCash.
+
+     The one cool hue in a warm palette, and it is here because the thing it
+     names is already blue in every Filipino's head: a GCash row in any other
+     colour has to be read, where this one is recognised. It is deliberately
+     not offered as a general accent — a second blue anywhere on the site
+     would cost this one its meaning. Warmed slightly off the brand's own
+     electric blue so it sits on cream without buzzing. */
+  --color-wallet-50: #eef4ff;
+  --color-wallet-100: #dbe7fe;
+  --color-wallet-200: #bfd4fe;
+  --color-wallet-300: #93b4fd;
+  --color-wallet-400: #608ffa;
+  --color-wallet-500: #3b6bf6;
+  --color-wallet-600: #234ceb;
+  --color-wallet-700: #1c3bd8;
+  --color-wallet-800: #1d33af;
+  --color-wallet-900: #1d318a;
+
   /* Warm ink — near-black with a red undertone, never a cold grey */
   --color-ink-700: #3d2620;
   --color-ink-800: #2a1a16;

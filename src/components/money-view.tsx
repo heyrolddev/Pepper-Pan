@@ -18,9 +18,11 @@ import {
   setPaybackFrom,
   startCashTracking,
   startGcashTracking,
+  startBankTracking,
 } from "@/app/admin/money/actions";
 import { hqTitle } from "@/lib/hq-theme";
 import { Explain } from "@/components/explain";
+import { ACCOUNT_SHORT, type Account } from "@/lib/money-accounts";
 
 /**
  * The money the costing screens can't see.
@@ -144,6 +146,126 @@ function Row({
   );
 }
 
+/**
+ * One pot of money, in its own colour.
+ *
+ * Colour is doing real work here rather than decorating: three balances
+ * stacked in the same ink all read as one list to scan, and the owner is not
+ * scanning — they are looking for one of them. Green is the drawer because
+ * green is cash everywhere; blue is GCash because GCash is blue in every
+ * Filipino's head, so the row is recognised instead of read; the bank is ink,
+ * the quietest of the three, because it is the pot that moves least.
+ *
+ * A pot nobody has opened shows its own "Start counting" rather than a zero.
+ * ₱0.00 is a real answer — an empty account — and it is not the one to give
+ * for an account that does not exist.
+ */
+const POT_TONES = {
+  cash: {
+    bar: "bg-jade-600",
+    tint: "bg-jade-50",
+    ring: "ring-jade-600/20",
+    value: "text-jade-700",
+  },
+  wallet: {
+    bar: "bg-wallet-600",
+    tint: "bg-wallet-50",
+    ring: "ring-wallet-600/20",
+    value: "text-wallet-700",
+  },
+  bank: {
+    bar: "bg-ink-800",
+    tint: "bg-ink-950/[0.04]",
+    ring: "ring-ink-950/10",
+    value: "text-ink-950",
+  },
+} as const;
+
+type PotTone = keyof typeof POT_TONES;
+
+function Pot({
+  tone,
+  label,
+  note,
+  state,
+  onStart,
+}: {
+  tone: PotTone;
+  label: string;
+  /** What flows into it, in the owner's words. */
+  note: string;
+  state: { enabled: boolean; onHand: number };
+  onStart: () => void;
+}) {
+  const skin = POT_TONES[tone];
+
+  if (!state.enabled) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-ink-950/[0.03] px-4 py-3 ring-1 ring-ink-950/5">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-ink-800/45">{label}</p>
+          <p className="mt-0.5 text-xs text-ink-800/35">Not counted yet</p>
+        </div>
+        <button
+          onClick={onStart}
+          className="shrink-0 rounded-xl bg-ink-950/5 px-4 py-2 text-sm font-bold text-ink-800 ring-1 ring-ink-950/10 transition-colors hover:bg-ink-950 hover:text-cream-50"
+        >
+          Start counting
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`flex items-center gap-3 overflow-hidden rounded-2xl ${skin.tint} py-3 pr-4 ring-1 ${skin.ring}`}
+    >
+      <span aria-hidden className={`h-10 w-1.5 shrink-0 rounded-r-full ${skin.bar}`} />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-ink-950">{label}</p>
+        <p className="mt-0.5 text-xs text-ink-800/50">{note}</p>
+      </div>
+      <span
+        className={`shrink-0 font-display text-xl font-black tabular-nums ${skin.value}`}
+      >
+        {peso(state.onHand)}
+      </span>
+    </div>
+  );
+}
+
+/** The three pots, in the order the money is most likely to be. */
+const POTS = [
+  {
+    key: "cash",
+    tone: "cash",
+    label: "Cash in the drawer",
+    note: "Cash sales in, supplies and labas out",
+    start: "cash-start",
+  },
+  {
+    key: "gcash",
+    tone: "wallet",
+    label: "GCash",
+    note: "GCash sales in, anything paid from it out",
+    start: "gcash-start",
+  },
+  {
+    key: "bank",
+    tone: "bank",
+    label: "Bank",
+    note: "Only what you record moving — no sales land here",
+    start: "bank-start",
+  },
+] as const;
+
+/** What the one field on a "start counting" dialog is asking for. */
+const STARTS = {
+  "cash-start": "In the drawer now (₱)",
+  "gcash-start": "In GCash now (₱)",
+  "bank-start": "In the bank now (₱)",
+} as const;
+
 function useAction() {
   const [busy, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +281,7 @@ function useAction() {
 
 export function MoneyView({ money }: { money: MoneyPicture }) {
   const [dialog, setDialog] = useState<
-    "cost" | "cash-start" | "gcash-start" | "cash-entry" | "utang" | "asset" | null
+    "cost" | "cash-start" | "gcash-start" | "bank-start" | "cash-entry" | "utang" | "asset" | null
   >(null);
   const [collecting, setCollecting] = useState<string | null>(null);
   const { busy, error, run } = useAction();
@@ -168,6 +290,19 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
     money.breakEvenDaily === null
       ? null
       : money.avgDailyRevenue - money.breakEvenDaily;
+
+  // Is any pot being counted at all? Drives both the total and the empty state
+  // — a "What Pepper Pan holds: ₱0.00" above three unopened pots is a lie.
+  const anyPot = money.cash.enabled || money.gcash.enabled || money.bank.enabled;
+
+  // The pots money may actually be filed into. Order matters: the drawer is
+  // first, so it is the default in the dialog, which is where the money is
+  // most of the time.
+  const openPots: Account[] = [
+    ...(money.cash.enabled ? (["cash"] as const) : []),
+    ...(money.gcash.enabled ? (["gcash"] as const) : []),
+    ...(money.bank.enabled ? (["bank"] as const) : []),
+  ];
 
   return (
     <div className="flex flex-col gap-8">
@@ -184,6 +319,125 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
           {error}
         </p>
       )}
+
+      {/* ---- everything the shop holds ----
+
+          Above the drawer rather than replacing it. "How much does Pepper Pan
+          have" and "does the drawer balance" are two different questions, and
+          only the second one can be checked against a physical count — fold
+          an untouchable e-wallet balance into the drawer figure and that
+          check, the one self-correcting number on this screen, is gone. */}
+      <Panel
+        title="Pepper Pan Bank"
+        hint="Every pot the shop's money sits in, added up. Each one is counted on its own so the drawer can still be checked against what you physically count."
+        action={
+          anyPot ? (
+            <button
+              onClick={() => setDialog("cash-entry")}
+              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
+            >
+              + Money in or out
+            </button>
+          ) : undefined
+        }
+      >
+        {!anyPot ? (
+          <p className="text-sm text-ink-800/60">
+            Nothing is being counted yet. Start with whichever pot you know the
+            balance of right now — the others can wait.
+          </p>
+        ) : null}
+
+        <div className="flex flex-col gap-2">
+          {POTS.map((pot) => (
+            <Pot
+              key={pot.key}
+              tone={pot.tone}
+              label={pot.label}
+              note={pot.note}
+              state={money[pot.key]}
+              onStart={() => setDialog(pot.start)}
+            />
+          ))}
+        </div>
+
+        {anyPot && (
+          <>
+            <div className="mt-4 flex items-center justify-between border-t-2 border-ink-950/15 pt-3">
+              <span className="text-sm font-bold text-ink-800/70">
+                What Pepper Pan holds
+              </span>
+              <span className="font-display text-2xl font-black tabular-nums text-ink-950">
+                {peso(money.totalHeld)}
+              </span>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-ink-800/50">
+              Money customers still owe you is not in here — that is{" "}
+              {peso(money.owed, 0)} under Utang below, and it is not yours
+              until it is collected.
+            </p>
+          </>
+        )}
+      </Panel>
+
+      {/* ---- cash ---- */}
+      <Panel
+        title="Cash in the drawer"
+        hint={
+          money.cash.enabled
+            ? `Counting from ${formatDate(money.cash.startedOn!)}, starting at ${peso(money.cash.startedWith, 0)}. Every cash sale, every cancellation, and anything put in or taken out — with whose till it was on.`
+            : "Start from what's in the drawer right now — nothing retroactive, because a balance rebuilt from guesses looks authoritative and drifts."
+        }
+        // No button of its own any more: "Money in or out" moved up to Pepper
+        // Pan Bank when it learned to ask which pot, and two buttons doing the
+        // same job is how one of them ends up writing to the wrong one.
+        action={
+          money.cash.enabled ? undefined : (
+            <button
+              onClick={() => setDialog("cash-start")}
+              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
+            >
+              Start counting
+            </button>
+          )
+        }
+      >
+        {money.cash.enabled && (
+          <>
+            <p className="font-display text-3xl font-black tabular-nums text-ink-950">
+              {peso(money.cash.onHand)}
+            </p>
+            {/* Five, newest first, and the rest a button away.
+                
+                It was a hard `.slice(0, 8)` — eight rows, and everything
+                before that simply gone, with nothing on screen to say so.
+                The drawer not balancing is exactly when somebody needs to go
+                back further than the last eight entries. */}
+            <HistoryList
+              className="mt-4"
+              items={money.ledger}
+              keyOf={(l) => l.id}
+              dateOf={(l) => l.date}
+              initial={4}
+              noun="entries"
+              empty="Nothing yet — no sales, and nothing put in or taken out."
+              render={(l) => (
+                <Row
+                  label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Cash in" : "Cash out")}`}
+                  value={`${l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
+                  tone={l.type === "in" ? "good" : "bad"}
+                  /* Marked, because the two kinds behave differently: a sale
+                     line follows its order — cancel the order and the line
+                     turns into a reversal — while a typed entry stays exactly
+                     as it was entered. Somebody chasing a shortfall needs to
+                     know which they are looking at. */
+                  badge={l.derived ? "from a sale" : undefined}
+                />
+              )}
+            />
+          </>
+        )}
+      </Panel>
 
       {/* ---- the headline ---- */}
       <Explain
@@ -438,123 +692,6 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
         )}
       </Panel>
 
-      {/* ---- everything the shop holds ----
-
-          Above the drawer rather than replacing it. "How much does Pepper Pan
-          have" and "does the drawer balance" are two different questions, and
-          only the second one can be checked against a physical count — fold
-          an untouchable e-wallet balance into the drawer figure and that
-          check, the one self-correcting number on this screen, is gone. */}
-      <Panel
-        title="Pepper Pan Bank"
-        hint="Every pot the shop's money sits in, added up. Each one is counted on its own so the drawer can still be checked against what you physically count."
-        action={
-          money.gcash.enabled ? undefined : (
-            <button
-              onClick={() => setDialog("gcash-start")}
-              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
-            >
-              Add GCash
-            </button>
-          )
-        }
-      >
-        {!money.cash.enabled && !money.gcash.enabled ? (
-          <p className="text-sm text-ink-800/60">
-            Nothing is being counted yet. Start with the drawer below, and add
-            GCash here once you know what is in it.
-          </p>
-        ) : (
-          <>
-            <Row
-              label="Cash in the drawer"
-              value={money.cash.enabled ? peso(money.cash.onHand) : "not counted"}
-              badge={money.cash.enabled ? undefined : "off"}
-            />
-            <Row
-              label="GCash"
-              value={money.gcash.enabled ? peso(money.gcash.onHand) : "not counted"}
-              badge={money.gcash.enabled ? undefined : "off"}
-            />
-            <div className="mt-2 flex items-center justify-between border-t-2 border-ink-950/15 pt-3">
-              <span className="text-sm font-bold text-ink-800/70">
-                What Pepper Pan holds
-              </span>
-              <span className="font-display text-2xl font-black tabular-nums text-ink-950">
-                {peso(money.totalHeld)}
-              </span>
-            </div>
-            <p className="mt-3 text-xs leading-relaxed text-ink-800/50">
-              Money customers still owe you is not in here — that is{" "}
-              {peso(money.owed, 0)} under Utang below, and it is not yours
-              until it is collected.
-            </p>
-          </>
-        )}
-      </Panel>
-
-      {/* ---- cash ---- */}
-      <Panel
-        title="Cash in the drawer"
-        hint={
-          money.cash.enabled
-            ? `Counting from ${formatDate(money.cash.startedOn!)}, starting at ${peso(money.cash.startedWith, 0)}. Every cash sale, every cancellation, and anything put in or taken out — with whose till it was on.`
-            : "Start from what's in the drawer right now — nothing retroactive, because a balance rebuilt from guesses looks authoritative and drifts."
-        }
-        action={
-          money.cash.enabled ? (
-            <button
-              onClick={() => setDialog("cash-entry")}
-              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
-            >
-              + Money in or out
-            </button>
-          ) : (
-            <button
-              onClick={() => setDialog("cash-start")}
-              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
-            >
-              Start counting
-            </button>
-          )
-        }
-      >
-        {money.cash.enabled && (
-          <>
-            <p className="font-display text-3xl font-black tabular-nums text-ink-950">
-              {peso(money.cash.onHand)}
-            </p>
-            {/* Five, newest first, and the rest a button away.
-                
-                It was a hard `.slice(0, 8)` — eight rows, and everything
-                before that simply gone, with nothing on screen to say so.
-                The drawer not balancing is exactly when somebody needs to go
-                back further than the last eight entries. */}
-            <HistoryList
-              className="mt-4"
-              items={money.ledger}
-              keyOf={(l) => l.id}
-              dateOf={(l) => l.date}
-              initial={8}
-              noun="entries"
-              empty="Nothing yet — no sales, and nothing put in or taken out."
-              render={(l) => (
-                <Row
-                  label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Cash in" : "Cash out")}`}
-                  value={`${l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
-                  tone={l.type === "in" ? "good" : "bad"}
-                  /* Marked, because the two kinds behave differently: a sale
-                     line follows its order — cancel the order and the line
-                     turns into a reversal — while a typed entry stays exactly
-                     as it was entered. Somebody chasing a shortfall needs to
-                     know which they are looking at. */
-                  badge={l.derived ? "from a sale" : undefined}
-                />
-              )}
-            />
-          </>
-        )}
-      </Panel>
 
       {/* ---- utang ---- */}
       <Panel
@@ -684,7 +821,9 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
         rule for how, and every rule is arbitrary.
       </p>
 
-      {dialog && <MoneyDialog which={dialog} onClose={() => setDialog(null)} />}
+      {dialog && (
+        <MoneyDialog which={dialog} pots={openPots} onClose={() => setDialog(null)} />
+      )}
       {collecting && (
         <CollectDialog
           receivable={money.receivables.find((r) => r.id === collecting)!}
@@ -699,9 +838,12 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
 
 function MoneyDialog({
   which,
+  pots,
   onClose,
 }: {
-  which: "cost" | "cash-start" | "gcash-start" | "cash-entry" | "utang" | "asset";
+  which: "cost" | "cash-start" | "gcash-start" | "bank-start" | "cash-entry" | "utang" | "asset";
+  /** The pots actually being counted, so money cannot be filed into a closed one. */
+  pots: Account[];
   onClose: () => void;
 }) {
   const { busy, error, run } = useAction();
@@ -709,11 +851,14 @@ function MoneyDialog({
   const [b, setB] = useState("");
   const [c, setC] = useState("");
   const [dir, setDir] = useState<"in" | "out">("out");
+  // Defaults to whichever pot is listed first — the drawer, whenever it is on.
+  const [account, setAccount] = useState<Account>(pots[0] ?? "cash");
 
   const config = {
     cost: { title: "Add a monthly bill", sub: "Anything that arrives every month whether you open or not." },
     "cash-start": { title: "Start counting cash", sub: "How much is in the drawer right now?" },
     "gcash-start": { title: "Start counting GCash", sub: "How much is in the e-wallet right now? Nothing before today is counted." },
+    "bank-start": { title: "Start counting the bank", sub: "How much is in the account right now? Nothing before today is counted." },
     "cash-entry": { title: "Money in or out", sub: "Cash sales are counted already — this is everything else." },
     utang: { title: "Record utang", sub: "Who owes, and how much." },
     asset: { title: "Add what you put in", sub: "Equipment, the cart, the signage." },
@@ -725,8 +870,9 @@ function MoneyDialog({
     if (which === "cost") run(() => saveFixedCost({ label: a, amount }), onClose);
     else if (which === "cash-start") run(() => startCashTracking(Number(a) || 0), onClose);
     else if (which === "gcash-start") run(() => startGcashTracking(Number(a) || 0), onClose);
+    else if (which === "bank-start") run(() => startBankTracking(Number(a) || 0), onClose);
     else if (which === "cash-entry")
-      run(() => addCashEntry({ type: dir, amount: Number(a) || 0, note: b }), onClose);
+      run(() => addCashEntry({ type: dir, amount: Number(a) || 0, note: b, account }), onClose);
     else if (which === "utang")
       run(() => addReceivable({ customer: a, amount, phone: c }), onClose);
     else run(() => saveAsset({ name: a, amount }), onClose);
@@ -756,6 +902,31 @@ function MoneyDialog({
                 </button>
               ))}
             </div>
+            {/* Which pot, asked before the amount. A movement recorded on
+                the wrong one is worse than an unrecorded movement: the total
+                is right, both balances are wrong, and nothing on screen says
+                so. Only pots being counted are offered. */}
+            {pots.length > 1 && (
+              <Field label="Which pot">
+                <div className="grid grid-cols-3 gap-2">
+                  {pots.map((acc) => (
+                    <button
+                      key={acc}
+                      type="button"
+                      onClick={() => setAccount(acc)}
+                      aria-pressed={account === acc}
+                      className={`rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                        account === acc
+                          ? "bg-ink-950 text-cream-50"
+                          : "bg-ink-950/[0.05] text-ink-950 hover:bg-ink-950/10"
+                      }`}
+                    >
+                      {ACCOUNT_SHORT[acc]}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
             <Field label="How much (₱)">
               <input value={a} onChange={(e) => setA(e.target.value)} type="number"
                 step="0.01" min="0" inputMode="decimal" autoFocus className={inputClass} />
@@ -765,8 +936,8 @@ function MoneyDialog({
                 placeholder="e.g. bought ice, tricycle fare" className={inputClass} />
             </Field>
           </>
-        ) : which === "cash-start" ? (
-          <Field label="In the drawer now (₱)">
+        ) : STARTS[which as keyof typeof STARTS] ? (
+          <Field label={STARTS[which as keyof typeof STARTS]}>
             <input value={a} onChange={(e) => setA(e.target.value)} type="number"
               step="0.01" min="0" inputMode="decimal" autoFocus className={inputClass} />
           </Field>

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
+import { ACCOUNT_SHORT, isAccount, type Account } from "@/lib/money-accounts";
 
 type Result = { error: string | null };
 
@@ -140,21 +141,58 @@ export async function startGcashTracking(openingAmount: number): Promise<Result>
   return { error: null };
 }
 
+/**
+ * Start counting the bank, the same way the drawer and the e-wallet are.
+ *
+ * No sales query anywhere for this one: nobody pays for noodles by transfer,
+ * so the balance is the opening figure plus what the owner records moving.
+ */
+export async function startBankTracking(openingAmount: number): Promise<Result> {
+  const owner = await requireOwner();
+  if (!owner) return { error: "Only the owner can start counting the bank." };
+  if (!(openingAmount >= 0)) return { error: "How much is in the bank now?" };
+
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("settings")
+    .update({
+      bank_balance_enabled: true,
+      bank_balance_starting_amount: openingAmount,
+      bank_balance_start_date: shopToday(),
+    })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+  await log(
+    `Started counting the bank from ₱${openingAmount.toFixed(2)}`,
+    owner.profile?.id ?? null
+  );
+  done();
+  return { error: null };
+}
+
 export async function addCashEntry(input: {
   type: "in" | "out";
   amount: number;
   category?: string;
   note?: string;
+  /**
+   * Which pot moved. Defaults to the drawer, which every caller meant before
+   * there was more than one — and which every row written before 0042 was.
+   */
+  account?: Account;
 }): Promise<Result> {
   const viewer = await getViewer();
   if (!can(viewer, "business")) return { error: "Only the owner can record cash." };
   if (!(input.amount > 0)) return { error: "How much?" };
+
+  const account: Account = isAccount(input.account) ? input.account : "cash";
 
   const supabase = createAdminClient();
   const { error } = await supabase.from("cash_ledger").insert({
     date: shopToday(),
     type: input.type,
     amount: input.amount,
+    account,
     category: input.category?.trim() || null,
     note: input.note?.trim() || null,
     logged_by: viewer!.profile?.full_name?.trim() || viewer!.email,
@@ -162,7 +200,7 @@ export async function addCashEntry(input: {
   if (error) return { error: error.message };
 
   await log(
-    `Cash ${input.type === "in" ? "in" : "out"} ₱${input.amount.toFixed(2)}${
+    `${ACCOUNT_SHORT[account]} ${input.type === "in" ? "in" : "out"} ₱${input.amount.toFixed(2)}${
       input.note?.trim() ? ` — ${input.note.trim()}` : ""
     }`,
     viewer!.profile?.id ?? null
