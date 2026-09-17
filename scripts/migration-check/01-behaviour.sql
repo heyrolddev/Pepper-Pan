@@ -789,3 +789,45 @@ begin
   if amount <> 0 then raise exception 'FAIL: GCash opens at %, expected 0', amount; end if;
   raise notice 'GCash is off until the owner says what is in it';
 end $$;
+
+-- ============================================================
+-- 0043 — the third pot
+-- ============================================================
+\echo ''
+\echo '=== 0043 bank balance ==='
+
+\echo '--- the bank is off, at zero, with no start date ---'
+do $$
+declare enabled boolean; amount numeric; started date;
+begin
+  select bank_balance_enabled, bank_balance_starting_amount, bank_balance_start_date
+    into enabled, amount, started from settings where id = 1;
+  if enabled is not false then
+    raise exception 'FAIL: the bank is counted by default — a shop without one would see a row of zero';
+  end if;
+  if amount <> 0 then raise exception 'FAIL: the bank opens at %, expected 0', amount; end if;
+  if started is not null then raise exception 'FAIL: the bank has a start date nobody set'; end if;
+  raise notice 'the bank is absent until the owner opens it, not empty';
+end $$;
+
+\echo '--- a bank line is accepted and stays out of the other two pots ---'
+do $$
+declare bank numeric; drawer numeric; wallet numeric;
+begin
+  insert into cash_ledger (date, type, amount, account, note)
+  values (current_date, 'in', 5000, 'bank', 'deposited the week''s takings');
+
+  select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+    into bank from cash_ledger where account = 'bank';
+  if bank <> 5000 then raise exception 'FAIL: the bank reads %, expected 5000', bank; end if;
+
+  -- The three sums must not overlap. Each row has exactly one account, so a
+  -- peso can only ever be in one pot — this is the guard against a total that
+  -- double-counts.
+  select count(*) into drawer from cash_ledger where account = 'cash' and note = 'deposited the week''s takings';
+  select count(*) into wallet from cash_ledger where account = 'gcash' and note = 'deposited the week''s takings';
+  if drawer <> 0 or wallet <> 0 then
+    raise exception 'FAIL: a bank line also turned up in another pot';
+  end if;
+  raise notice 'a bank line is its own pot and nobody else''s';
+end $$;
