@@ -109,6 +109,37 @@ export async function startCashTracking(openingAmount: number): Promise<Result> 
   return { error: null };
 }
 
+/**
+ * Start counting the e-wallet, the same way the drawer is counted.
+ *
+ * A start date and an opening figure, and nothing retroactive. Without them
+ * the balance would be every GCash sale since the shop opened — a running
+ * total that only ever climbs, which looks authoritative and is wrong from
+ * the first cash-out.
+ */
+export async function startGcashTracking(openingAmount: number): Promise<Result> {
+  const owner = await requireOwner();
+  if (!owner) return { error: "Only the owner can start counting GCash." };
+  if (!(openingAmount >= 0)) return { error: "How much is in GCash now?" };
+
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("settings")
+    .update({
+      gcash_balance_enabled: true,
+      gcash_balance_starting_amount: openingAmount,
+      gcash_balance_start_date: shopToday(),
+    })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+  await log(
+    `Started counting GCash from ₱${openingAmount.toFixed(2)}`,
+    owner.profile?.id ?? null
+  );
+  done();
+  return { error: null };
+}
+
 export async function addCashEntry(input: {
   type: "in" | "out";
   amount: number;

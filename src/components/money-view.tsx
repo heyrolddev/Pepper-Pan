@@ -17,8 +17,10 @@ import {
   setOpenDays,
   setPaybackFrom,
   startCashTracking,
+  startGcashTracking,
 } from "@/app/admin/money/actions";
 import { hqTitle } from "@/lib/hq-theme";
+import { Explain } from "@/components/explain";
 
 /**
  * The money the costing screens can't see.
@@ -157,7 +159,7 @@ function useAction() {
 
 export function MoneyView({ money }: { money: MoneyPicture }) {
   const [dialog, setDialog] = useState<
-    "cost" | "cash-start" | "cash-entry" | "utang" | "asset" | null
+    "cost" | "cash-start" | "gcash-start" | "cash-entry" | "utang" | "asset" | null
   >(null);
   const [collecting, setCollecting] = useState<string | null>(null);
   const { busy, error, run } = useAction();
@@ -184,6 +186,53 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
       )}
 
       {/* ---- the headline ---- */}
+      <Explain
+        title="Break-even a day"
+        what="What the shop has to take in on a trading day just to stand still — before a single peso is profit."
+        lines={
+          money.breakEvenDaily === null
+            ? [{ label: "Not enough to work it out yet", value: "—", total: true }]
+            : [
+                {
+                  label: "Monthly bills",
+                  value: peso(money.monthlyFixed, 0),
+                  note: "Rent, kuryente, tubig, sweldo — everything in the list below.",
+                },
+                {
+                  label: "Spoilage, scaled to a month",
+                  value: peso(money.monthlyWasteRate, 0),
+                  note: `From ${peso(money.wasteForWindow, 0)} thrown away over ${money.windowDays} day${money.windowDays === 1 ? "" : "s"}.`,
+                },
+                {
+                  label: "= To cover every month",
+                  value: peso(money.monthlyFixed + money.monthlyWasteRate, 0),
+                },
+                {
+                  label: "÷ what's left of each peso after ingredients",
+                  value: `${((money.marginRatio ?? 0) * 100).toFixed(0)}%`,
+                  note: `${peso(money.grossProfit, 0)} kept out of ${peso(money.revenue, 0)} taken.`,
+                },
+                {
+                  label: "= Sales needed each month",
+                  value: peso(
+                    (money.monthlyFixed + money.monthlyWasteRate) / (money.marginRatio || 1),
+                    0
+                  ),
+                },
+                {
+                  label: `÷ ${money.openDays} open days a month`,
+                  value: "",
+                  note: "Set in the shop's settings — change it if you open more or fewer days.",
+                },
+                {
+                  label: "Break-even a day",
+                  value: peso(money.breakEvenDaily, 0),
+                  total: true,
+                },
+              ]
+        }
+        why="Three things move this. Your bills move it the moment you edit them below. Spoilage moves it as you record waste. And your margin moves it as you sell — but only from new sales: every order keeps the ingredient cost it had on the day, so changing an ingredient price never rewrites what you already sold."
+      >
       <section
         className={`overflow-hidden rounded-3xl p-6 sm:p-8 ${
           money.breakEvenDaily === null
@@ -233,23 +282,81 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
           </>
         )}
       </section>
+      </Explain>
 
       {/* ---- the window ---- */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: "Taken", value: peso(money.revenue, 0), sub: `${money.windowDays} trading days` },
-          { label: "Ingredients", value: peso(money.cogs, 0), sub: "What the food cost" },
-          { label: "Bills for those days", value: peso(money.oeForWindow, 0), sub: `${peso(money.dailyOE, 0)} a day` },
+          {
+            label: "Taken",
+            value: peso(money.revenue, 0),
+            sub: `${money.windowDays} trading days`,
+            what: "Everything customers paid over the window — the top line, before any cost comes off it.",
+            lines: [
+              {
+                label: "Every order that went through",
+                value: peso(money.revenue, 0),
+                note: `Counted over ${money.windowDays} day${money.windowDays === 1 ? "" : "s"} the shop actually traded, not 30 calendar days.`,
+              },
+              { label: "Cancelled orders", value: "not counted" },
+              { label: "Taken", value: peso(money.revenue, 0), total: true },
+            ],
+            why: "Counter sales and website orders both land here. Days the shop was shut are left out entirely — averaging a week of sales across a month would make every day look four times worse than it was.",
+          },
+          {
+            label: "Ingredients",
+            value: peso(money.cogs, 0),
+            sub: "What the food cost",
+            what: "What the food in those orders cost to make, added up from the recipes.",
+            lines: [
+              {
+                label: "Cost of everything sold",
+                value: peso(money.cogs, 0),
+                note: "Each order carries the ingredient cost it had on the day it was sold.",
+              },
+              {
+                label: "As a share of what you took",
+                value: money.revenue > 0 ? `${((money.cogs / money.revenue) * 100).toFixed(0)}%` : "—",
+              },
+              { label: "Left after ingredients", value: peso(money.grossProfit, 0), total: true },
+            ],
+            why: "This is frozen per order, on purpose. Restocking at a new price changes what the next order costs, never what last week's did — otherwise last month's profit would quietly rewrite itself every time the market price moved.",
+          },
+          {
+            label: "Bills for those days",
+            value: peso(money.oeForWindow, 0),
+            sub: `${peso(money.dailyOE, 0)} a day`,
+            what: "The share of your monthly bills that belongs to the days in this window.",
+            lines: [
+              { label: "Monthly bills", value: peso(money.monthlyFixed, 0) },
+              { label: `÷ ${money.openDays} open days a month`, value: peso(money.dailyOE, 0) },
+              {
+                label: `× ${money.windowDays} trading day${money.windowDays === 1 ? "" : "s"}`,
+                value: peso(money.oeForWindow, 0),
+                total: true,
+              },
+            ],
+            why: "Rent arrives whether or not anybody buys anything, so it is spread across the days you open rather than charged to one. Edit the bills below and this moves straight away.",
+          },
           {
             label: "Actually earned",
             value: peso(money.netProfit, 0),
             sub: "After everything",
             tone: money.netProfit >= 0 ? "good" : "bad",
+            what: "What is left once the food, the bills and the spoilage are all paid for.",
+            lines: [
+              { label: "Taken", value: peso(money.revenue, 0) },
+              { label: "− Ingredients", value: peso(money.cogs, 0) },
+              { label: "− Bills for those days", value: peso(money.oeForWindow, 0) },
+              { label: "− Thrown away", value: peso(money.wasteForWindow, 0) },
+              { label: "Actually earned", value: peso(money.netProfit, 0), total: true },
+            ],
+            why: "The honest number. It is not cash in your pocket — money customers still owe you is in the takings, and buying stock for next week comes out of the drawer without showing here.",
           },
         ].map((s) => (
+          <Explain key={s.label} title={s.label} what={s.what} lines={s.lines} why={s.why}>
           <div
-            key={s.label}
-            className={`rounded-3xl p-4 ring-1 sm:p-5 ${
+            className={`h-full rounded-3xl p-4 ring-1 sm:p-5 ${
               s.tone === "good"
                 ? "bg-jade-600 text-cream-50 ring-jade-700/30"
                 : s.tone === "bad"
@@ -265,6 +372,7 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
             </p>
             <p className="mt-1 text-[11px] leading-snug opacity-70">{s.sub}</p>
           </div>
+          </Explain>
         ))}
       </div>
 
@@ -327,6 +435,61 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
             a month, and break-even counts it — it&apos;s as real a cost as the
             rent.
           </p>
+        )}
+      </Panel>
+
+      {/* ---- everything the shop holds ----
+
+          Above the drawer rather than replacing it. "How much does Pepper Pan
+          have" and "does the drawer balance" are two different questions, and
+          only the second one can be checked against a physical count — fold
+          an untouchable e-wallet balance into the drawer figure and that
+          check, the one self-correcting number on this screen, is gone. */}
+      <Panel
+        title="Pepper Pan Bank"
+        hint="Every pot the shop's money sits in, added up. Each one is counted on its own so the drawer can still be checked against what you physically count."
+        action={
+          money.gcash.enabled ? undefined : (
+            <button
+              onClick={() => setDialog("gcash-start")}
+              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
+            >
+              Add GCash
+            </button>
+          )
+        }
+      >
+        {!money.cash.enabled && !money.gcash.enabled ? (
+          <p className="text-sm text-ink-800/60">
+            Nothing is being counted yet. Start with the drawer below, and add
+            GCash here once you know what is in it.
+          </p>
+        ) : (
+          <>
+            <Row
+              label="Cash in the drawer"
+              value={money.cash.enabled ? peso(money.cash.onHand) : "not counted"}
+              badge={money.cash.enabled ? undefined : "off"}
+            />
+            <Row
+              label="GCash"
+              value={money.gcash.enabled ? peso(money.gcash.onHand) : "not counted"}
+              badge={money.gcash.enabled ? undefined : "off"}
+            />
+            <div className="mt-2 flex items-center justify-between border-t-2 border-ink-950/15 pt-3">
+              <span className="text-sm font-bold text-ink-800/70">
+                What Pepper Pan holds
+              </span>
+              <span className="font-display text-2xl font-black tabular-nums text-ink-950">
+                {peso(money.totalHeld)}
+              </span>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-ink-800/50">
+              Money customers still owe you is not in here — that is{" "}
+              {peso(money.owed, 0)} under Utang below, and it is not yours
+              until it is collected.
+            </p>
+          </>
         )}
       </Panel>
 
@@ -538,7 +701,7 @@ function MoneyDialog({
   which,
   onClose,
 }: {
-  which: "cost" | "cash-start" | "cash-entry" | "utang" | "asset";
+  which: "cost" | "cash-start" | "gcash-start" | "cash-entry" | "utang" | "asset";
   onClose: () => void;
 }) {
   const { busy, error, run } = useAction();
@@ -550,6 +713,7 @@ function MoneyDialog({
   const config = {
     cost: { title: "Add a monthly bill", sub: "Anything that arrives every month whether you open or not." },
     "cash-start": { title: "Start counting cash", sub: "How much is in the drawer right now?" },
+    "gcash-start": { title: "Start counting GCash", sub: "How much is in the e-wallet right now? Nothing before today is counted." },
     "cash-entry": { title: "Money in or out", sub: "Cash sales are counted already — this is everything else." },
     utang: { title: "Record utang", sub: "Who owes, and how much." },
     asset: { title: "Add what you put in", sub: "Equipment, the cart, the signage." },
@@ -560,6 +724,7 @@ function MoneyDialog({
     const amount = Number(b) || 0;
     if (which === "cost") run(() => saveFixedCost({ label: a, amount }), onClose);
     else if (which === "cash-start") run(() => startCashTracking(Number(a) || 0), onClose);
+    else if (which === "gcash-start") run(() => startGcashTracking(Number(a) || 0), onClose);
     else if (which === "cash-entry")
       run(() => addCashEntry({ type: dir, amount: Number(a) || 0, note: b }), onClose);
     else if (which === "utang")

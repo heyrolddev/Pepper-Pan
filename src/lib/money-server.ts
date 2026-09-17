@@ -79,6 +79,16 @@ export type MoneyPicture = {
   netProfit: number;
 
   cash: { enabled: boolean; onHand: number; startedOn: string | null; startedWith: number };
+  /**
+   * The e-wallet, counted the same way as the drawer and kept apart from it.
+   *
+   * Separate on purpose: the drawer's value is that it can be checked against
+   * a physical count, and folding in a balance nobody can count would destroy
+   * that. `total` is what the shop holds across both.
+   */
+  gcash: { enabled: boolean; onHand: number; startedOn: string | null; startedWith: number };
+  /** Cash plus the e-wallet — only the pots actually being counted. */
+  totalHeld: number;
   ledger: LedgerEntry[];
   receivables: Receivable[];
   owed: number;
@@ -112,7 +122,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
     supabase
       .from("settings")
       .select(
-        "open_days_per_month, cash_balance_enabled, cash_balance_starting_amount, cash_balance_start_date, payback_from"
+        "open_days_per_month, cash_balance_enabled, cash_balance_starting_amount, cash_balance_start_date, gcash_balance_enabled, gcash_balance_starting_amount, gcash_balance_start_date, payback_from"
       )
       .eq("id", 1)
       .maybeSingle(),
@@ -193,15 +203,57 @@ export async function loadMoney(): Promise<MoneyPicture> {
       (s, o) => s + (Number(o.revenue) || 0),
       0
     );
+    // `.eq("account", "cash")` is load-bearing, not tidiness. Since migration
+    // 0042 a ledger line says which pot it moved, and restocking paid by
+    // GCash writes one — unfiltered, that spend would come straight out of
+    // the drawer figure, which is money that never left the drawer.
     const { data: allLedger } = await supabase
       .from("cash_ledger")
       .select("type, amount")
+      .eq("account", "cash")
       .gte("date", startedOn);
     const moved = ((allLedger ?? []) as { type: string; amount: number }[]).reduce(
       (s, l) => s + (l.type === "in" ? 1 : -1) * (Number(l.amount) || 0),
       0
     );
     onHand = startedWith + takings + moved;
+  }
+
+  // ---- the e-wallet ----------------------------------------------------
+  /**
+   * The same arithmetic as the drawer, on the other pot.
+   *
+   * Off until the owner says what was in it and from when, for the same
+   * reason the drawer is: without a starting point this would be every GCash
+   * sale since the shop opened, which is not a balance — it is a total, and
+   * it would only ever climb.
+   */
+  const gcashEnabled = Boolean(settingsRow?.gcash_balance_enabled);
+  const gcashStartedOn = settingsRow?.gcash_balance_start_date ?? null;
+  const gcashStartedWith = Number(settingsRow?.gcash_balance_starting_amount) || 0;
+
+  let gcashOnHand = 0;
+  if (gcashEnabled && gcashStartedOn) {
+    const { data: gcashSales } = await supabase
+      .from("orders")
+      .select("revenue")
+      .gte("date", gcashStartedOn)
+      .eq("payment_method", "gcash")
+      .neq("status", "cancelled");
+    const takings = ((gcashSales ?? []) as { revenue: number }[]).reduce(
+      (s, o) => s + (Number(o.revenue) || 0),
+      0
+    );
+    const { data: gcashLedger } = await supabase
+      .from("cash_ledger")
+      .select("type, amount")
+      .eq("account", "gcash")
+      .gte("date", gcashStartedOn);
+    const moved = ((gcashLedger ?? []) as { type: string; amount: number }[]).reduce(
+      (s, l) => s + (l.type === "in" ? 1 : -1) * (Number(l.amount) || 0),
+      0
+    );
+    gcashOnHand = gcashStartedWith + takings + moved;
   }
 
   /**
@@ -395,6 +447,16 @@ export async function loadMoney(): Promise<MoneyPicture> {
     wasteForWindow,
     netProfit,
     cash: { enabled: cashEnabled, onHand, startedOn, startedWith },
+    gcash: {
+      enabled: gcashEnabled,
+      onHand: gcashOnHand,
+      startedOn: gcashStartedOn,
+      startedWith: gcashStartedWith,
+    },
+    // Only pots that are switched on. A zero from a pot nobody is counting is
+    // not a balance of nothing, it is the absence of an answer, and adding it
+    // in would present a guess as a total.
+    totalHeld: (cashEnabled ? onHand : 0) + (gcashEnabled ? gcashOnHand : 0),
     ledger,
     receivables,
     owed,

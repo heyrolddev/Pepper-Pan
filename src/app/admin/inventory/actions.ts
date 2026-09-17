@@ -5,6 +5,7 @@ import { can, getViewer } from "@/lib/auth";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
+import { isPaidFrom, type PaidFrom } from "@/lib/money-accounts";
 
 type Result = { error: string | null };
 
@@ -219,6 +220,21 @@ export async function recordRestock(input: {
   expiryDate?: string | null;
   /** Whether to move the standard cost to this delivery's price. */
   updateStandardCost: boolean;
+  /**
+   * Which pot the money came out of, or that none did yet.
+   *
+   * This used to not exist, and neither did the deduction. The delivery was
+   * written to `ingredient_lots`, `ingredients`, `purchase_log` and the
+   * activity log — and nothing at all to `cash_ledger`. So the drawer figure
+   * counted every sale in and no ingredient out: not a slow drift, but
+   * permanently high by the total of every delivery the shop has ever taken.
+   *
+   * The screen's own help text conceded it — "that gap is usually a labas for
+   * supplies that nobody wrote down" — and left it to the owner to type in.
+   * Asking somebody to enter the same peso figure twice is exactly how the
+   * second one stops happening, and the form already knows the number.
+   */
+  paidFrom?: PaidFrom;
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can record a delivery." };
@@ -276,12 +292,45 @@ export async function recordRestock(input: {
     cost: input.amountPaid,
   });
 
+  /**
+   * The money leaves too.
+   *
+   * Written after the stock, never before: a ledger line for a delivery that
+   * failed to record would take pesos out of the drawer for ingredients that
+   * never arrived, and that is the one error here nobody would spot — a
+   * shortfall with no stock to explain it.
+   *
+   * A failure to write this is reported but does not fail the restock. The
+   * delivery physically happened; refusing to record it because the ledger
+   * line would not write leaves the shelf and the system further apart than
+   * a missing ledger row does.
+   */
+  const paidFrom: PaidFrom = isPaidFrom(input.paidFrom) ? input.paidFrom : "cash";
+  if (paidFrom !== "unpaid" && input.amountPaid > 0) {
+    const { error: ledgerError } = await supabase.from("cash_ledger").insert({
+      date: today,
+      type: "out",
+      account: paidFrom,
+      amount: input.amountPaid,
+      category: "Stock",
+      note: `${input.qty} ${ing.unit} of ${ing.name}` +
+        (input.supplier?.trim() ? ` — ${input.supplier.trim()}` : ""),
+      logged_by: viewer.profile?.id ?? null,
+    });
+    if (ledgerError) {
+      console.error(`[inventory] restock ledger line: ${ledgerError.message}`);
+    }
+  }
+
   const priceMoved = Math.abs(lotCost - Number(ing.cost)) > 0.0001;
   await log(
     "inventory",
     `Restocked ${input.qty} ${ing.unit} of "${ing.name}" for ₱${input.amountPaid.toFixed(2)}` +
+      (paidFrom === "unpaid"
+        ? " — not paid yet, so no money moved"
+        : ` — paid from ${paidFrom === "gcash" ? "GCash" : "the drawer"}`) +
       (input.updateStandardCost && priceMoved
-        ? ` — cost per ${ing.unit} now ₱${lotCost.toFixed(4)}`
+        ? `; cost per ${ing.unit} now ₱${lotCost.toFixed(4)}`
         : ""),
     viewer.profile?.id ?? null
   );

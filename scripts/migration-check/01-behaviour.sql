@@ -709,3 +709,83 @@ do $$ begin
   end if;
   raise notice 'revenue only — the margin stays walled off';
 end $$;
+
+-- ============================================================
+-- 0042 — the pots, and stock purchases actually leaving one
+-- ============================================================
+\echo ''
+\echo '=== 0042 money accounts ==='
+
+select act_as_service();
+reset role;
+
+\echo '--- every ledger row has a pot, and old rows are the drawer ---'
+do $$
+declare bad int;
+begin
+  -- Rows written before 0042 must land on 'cash': they were all drawer
+  -- movements, and defaulting them anywhere else would move money that never
+  -- moved.
+  insert into cash_ledger (date, type, amount, note)
+  values (current_date, 'out', 250, 'pre-0042 style row, no account named');
+
+  select count(*) into bad from cash_ledger where account is null;
+  if bad > 0 then raise exception 'FAIL: % ledger rows have no pot', bad; end if;
+
+  select count(*) into bad from cash_ledger
+   where note = 'pre-0042 style row, no account named' and account <> 'cash';
+  if bad > 0 then raise exception 'FAIL: a row with no account named did not land in the drawer';
+  end if;
+  raise notice 'a row that names no pot is the drawer, as every old row was';
+end $$;
+
+\echo '--- an unknown pot is refused rather than silently kept ---'
+do $$ begin
+  begin
+    insert into cash_ledger (date, type, amount, account, note)
+    values (current_date, 'out', 10, 'paymaya', 'a pot nobody added');
+    raise exception 'FAIL: cash_ledger accepted an account it does not know';
+  exception when check_violation then
+    raise notice 'an unknown pot is refused';
+  end;
+end $$;
+
+\echo '--- the drawer and the e-wallet do not touch each other ---'
+do $$
+declare drawer numeric; wallet numeric;
+begin
+  insert into cash_ledger (date, type, amount, account, note) values
+    (current_date, 'out', 500, 'cash',  'stock paid from the drawer'),
+    (current_date, 'out', 300, 'gcash', 'stock paid from the e-wallet');
+
+  select coalesce(sum(amount), 0) into drawer
+    from cash_ledger where account = 'cash' and note = 'stock paid from the drawer';
+  select coalesce(sum(amount), 0) into wallet
+    from cash_ledger where account = 'gcash' and note = 'stock paid from the e-wallet';
+
+  if drawer <> 500 then raise exception 'FAIL: the drawer line is %, expected 500', drawer; end if;
+  if wallet <> 300 then raise exception 'FAIL: the e-wallet line is %, expected 300', wallet; end if;
+
+  -- The bug this guards: money-server reads the drawer with
+  -- `.eq("account","cash")`. Without the filter the GCash spend above would
+  -- come out of the drawer, which is money that never left it.
+  select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+    into drawer from cash_ledger where account = 'cash';
+  if exists (select 1 from cash_ledger where account = 'gcash' and account = 'cash') then
+    raise exception 'FAIL: a row is in two pots at once';
+  end if;
+  raise notice 'a GCash spend never lands in the drawer total';
+end $$;
+
+\echo '--- the e-wallet has its own start, and is off until set ---'
+do $$
+declare enabled boolean; amount numeric;
+begin
+  select gcash_balance_enabled, gcash_balance_starting_amount
+    into enabled, amount from settings where id = 1;
+  if enabled is not false then
+    raise exception 'FAIL: GCash counting is on by default — a balance nobody opened would read as real';
+  end if;
+  if amount <> 0 then raise exception 'FAIL: GCash opens at %, expected 0', amount; end if;
+  raise notice 'GCash is off until the owner says what is in it';
+end $$;
