@@ -663,6 +663,12 @@ export function StaffView({
           initial={3}
           noun="shifts"
           empty="No shifts recorded yet. They start appearing the first time someone clocks in from the sidebar."
+          // Same reasoning as the cash drawer: a shift card is tall, so
+          // expanding a season of them in place buries the button that undoes
+          // it. The dialog keeps this panel the same height whatever the list
+          // is doing, and the dates go with it.
+          modal
+          modalTitle="Every shift"
           render={(r) => <ShiftCard r={r} />}
         />
       </section>
