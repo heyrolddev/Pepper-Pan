@@ -420,6 +420,13 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
               dateOf={(l) => l.date}
               initial={4}
               noun="entries"
+              // Behind a dialog rather than expanding down the page. This is
+              // the longest list in HQ — every cash sale since counting
+              // started — and expanded in place it buried its own "Show
+              // fewer" under a hundred rows. The dates live in there too,
+              // where they are used.
+              modal
+              modalTitle="Cash in the drawer"
               empty="Nothing yet — no sales, and nothing put in or taken out."
               render={(l) => (
                 <Row
