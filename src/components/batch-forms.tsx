@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import { formatDateTimeFull } from "@/lib/format-date";
 import {
+  adjustBatchStock,
   batchHistory,
   createBatch,
   deleteBatch,
@@ -487,6 +488,142 @@ function HistoryDialog({
           disagree with itself.
         </p>
       </div>
+    </AdminDialog>
+  );
+}
+
+/**
+ * Count a batch, the way an ingredient gets counted.
+ *
+ * The tub says 600g and the system says 800g. Until now there was no way to
+ * say so: a batch's stock could go up by making more and down by selling or
+ * writing off, and nothing could simply set it to what is there.
+ *
+ * Offers the same fork as the ingredient count, for the same reason. Short
+ * because it went off is a write-off and reaches spoilage, which is in
+ * break-even. Short because somebody measured wrong is a correction and does
+ * not. Whoever is holding the tub is the only person who knows which, and
+ * this is the moment they know it.
+ */
+export function CountBatchForm({
+  batch,
+  onWaste,
+  onClose,
+}: {
+  batch: { id: string; name: string; stock: number; yieldUnit: string };
+  onWaste?: () => void;
+  onClose: () => void;
+}) {
+  const [counted, setCounted] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  const c = counted === "" ? null : Number(counted);
+  const variance = c === null ? 0 : c - batch.stock;
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const r = await adjustBatchStock({
+        batchId: batch.id,
+        countedQty: c ?? 0,
+        note,
+      });
+      if (r.error !== null) {
+        setError(r.error);
+        return;
+      }
+      onClose();
+    });
+  }
+
+  return (
+    <AdminDialog
+      title={`Count ${batch.name}`}
+      subtitle="What's actually in the tub, not what the system thinks."
+      onClose={onClose}
+      busy={busy}
+    >
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <div className="rounded-xl bg-ink-950/5 px-4 py-3 text-sm text-ink-800/70">
+          The system says{" "}
+          <strong className="font-display tabular-nums text-ink-950">
+            {batch.stock.toLocaleString("en-PH")} {batch.yieldUnit}
+          </strong>
+          .
+        </div>
+
+        <Field label={`Counted (${batch.yieldUnit})`}>
+          <input
+            value={counted}
+            onChange={(e) => setCounted(e.target.value)}
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            autoFocus
+            className={inputClass}
+          />
+        </Field>
+
+        {c !== null && Math.abs(variance) > 0.0001 && (
+          <div
+            className={`rounded-xl px-4 py-3 text-sm ${
+              variance < 0 ? "bg-brand-600/10" : "bg-jade-500/15"
+            }`}
+          >
+            <strong className="font-display tabular-nums text-ink-950">
+              {variance > 0 ? "+" : ""}
+              {variance.toFixed(2)} {batch.yieldUnit}
+            </strong>{" "}
+            <span className="text-ink-800/70">
+              — {variance < 0 ? "less" : "more"} than expected.
+            </span>
+
+            {variance < 0 && onWaste && (
+              <div className="mt-3 border-t border-ink-950/10 pt-3">
+                <p className="text-xs leading-relaxed text-ink-800/70">
+                  Do you know where it went? If it spoiled or was thrown away,
+                  write it off instead — a correction says the count was wrong,
+                  and only a write-off reaches your spoilage figure.
+                </p>
+                <button
+                  type="button"
+                  onClick={onWaste}
+                  className="mt-2 rounded-xl bg-brand-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-cream-50 transition-colors hover:bg-brand-700"
+                >
+                  Write it off instead →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <Field label="Why" hint="Optional, but it's what makes the log useful.">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. measured properly this time"
+            className={inputClass}
+          />
+        </Field>
+
+        {error && (
+          <p className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-cream-50">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={busy || c === null}
+          className="w-full rounded-2xl bg-ink-950 py-3.5 font-display text-lg font-black text-cream-50 transition-colors hover:bg-ink-800 disabled:bg-ink-950/15 disabled:text-ink-800/40"
+        >
+          {busy ? "Saving…" : "Correct the count"}
+        </button>
+      </form>
     </AdminDialog>
   );
 }

@@ -459,7 +459,13 @@ export function MoneyView({
                 back further than the last eight entries. */}
             <HistoryList
               className="mt-4"
-              items={money.ledger}
+              // The drawer's lines only. Every pot shares one `cash_ledger`
+              // table and the balances have filtered on `account` since
+              // 0042, but this list never did — so a GCash transfer showed
+              // up in the drawer's own history while being correctly left
+              // out of the drawer's total. The one list whose whole job is
+              // to explain a figure was showing rows that figure excludes.
+              items={money.ledger.filter((l) => l.account === "cash")}
               keyOf={(l) => l.id}
               dateOf={(l) => l.date}
               initial={4}

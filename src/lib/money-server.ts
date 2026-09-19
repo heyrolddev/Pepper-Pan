@@ -9,6 +9,7 @@ import {
   type SpendKind,
   type TankLife,
 } from "@/lib/spending";
+import { isAccount, type Account } from "@/lib/money-accounts";
 
 /**
  * What the shop actually earns.
@@ -34,6 +35,16 @@ export type LedgerEntry = {
   amount: number;
   category: string | null;
   note: string | null;
+  /**
+   * Which pot the line moved.
+   *
+   * `cash_ledger` gained this column in 0042 and every balance has filtered
+   * on it since — but the list read for the HISTORY never did, so a GCash
+   * transfer appeared in the drawer's own history while being correctly left
+   * out of the drawer's total. The one list in HQ whose whole job is to
+   * explain a balance was showing lines that balance does not contain.
+   */
+  account: Account;
   /**
    * Whether this line was typed in or worked out from a sale.
    *
@@ -350,6 +361,9 @@ export async function loadMoney(): Promise<MoneyPicture> {
   ).map((l) => ({
     ...l,
     amount: Number(l.amount) || 0,
+    // Rows written before 0042 were all the drawer, which is what the
+    // column's default backfilled — so a missing value can only mean cash.
+    account: isAccount(l.account) ? l.account : "cash",
     // Migration 0045. Null on every row written before it, which sorts those
     // last within their day rather than wrongly first.
     at: l.created_at ?? null,
@@ -522,6 +536,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
               date: o.date,
               type: "out",
               amount,
+              account: "cash",
               category: "sale",
               /**
                * Named from `cancelled_by`, and only from `cancelled_by`.
@@ -548,6 +563,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
               date: o.date,
               type: "in",
               amount,
+              account: "cash",
               category: "sale",
               // Safe on the sale line: `logged_by` is exactly who took it.
               note: `${what}${who ? ` · took by ${who}` : ""}`,

@@ -29,7 +29,10 @@ export type ExplainKind =
   | "payback"
   | "dish_margin"
   | "stock"
-  | "today";
+  | "today"
+  | "pots"
+  | "supplier_utang"
+  | "running_costs";
 
 export type GuideTopic = {
   id: string;
@@ -208,25 +211,120 @@ export const TOPICS: GuideTopic[] = [
     answer:
       "Break-even is the sales a day that covers everything — so anything above it is real profit and anything below it is money out.\n\n" +
       "The maths:\n" +
-      "• monthly fixed costs + a month's worth of waste\n" +
+      "• monthly fixed costs\n" +
+      "• + a month's worth of waste\n" +
+      "• + a month's worth of running costs — gas, supplies, repairs\n" +
       "• ÷ your margin (the share of each peso left after ingredients)\n" +
       "• ÷ days you open per month\n\n" +
-      "Dividing by the margin is the step people skip. If only 60 centavos of each peso survives the ingredients, you have to sell ₱1.67 to cover every ₱1 of rent — not ₱1.",
+      "Dividing by the margin is the step people skip. If only 60 centavos of each peso survives the ingredients, you have to sell ₱1.67 to cover every ₱1 of rent — not ₱1.\n\n" +
+      "Running costs were added to this sum later than the rest, and the reason is worth knowing: before that, the target was too low every single day, and nothing on the screen could have shown it — because the sum it appeared in was self-consistent.",
   },
   {
     id: "cash",
     group: "Money",
-    question: "How is 'cash on hand' worked out?",
-    triggers: ["cash on hand", "cash", "drawer", "pera", "laman ng kahon", "kaha", "cash balance"],
+    question: "How is 'cash in the drawer' worked out?",
+    triggers: ["cash on hand", "cash", "drawer", "pera", "laman ng kahon", "kaha", "cash balance", "cash in the drawer"],
     numbers: "cash",
     where: { href: "/admin/money", label: "Costs & cash" },
     answer:
-      "Cash on hand is what should be in the drawer right now:\n" +
+      "Cash in the drawer is what should be in the physical box right now:\n" +
       "• the amount you started with, on the date you set\n" +
-      "• plus every CASH sale since then\n" +
-      "• plus or minus anything you recorded in the cash ledger\n\n" +
-      "GCash is deliberately left out. That money never touched the drawer, so counting it would make the drawer look permanently over.\n\n" +
+      "• plus every sale rung up as CASH\n" +
+      "• plus or minus anything you recorded in the ledger against the drawer\n\n" +
+      "GCash and Bank are counted exactly the same way, but each in its own pot, and neither is folded in here. The drawer earns its keep by being checkable against a physical count, and adding a balance nobody can count would destroy the one self-correcting number on the screen.\n\n" +
       "If the real drawer and this number disagree, that gap is the useful part — it is usually an unrecorded 'labas' for supplies. Add it to the ledger and they agree again.",
+  },
+  {
+    id: "pots",
+    group: "Money",
+    question: "Cash, GCash and Bank — why three, and what is the total?",
+    triggers: [
+      "pots", "three pots", "gcash balance", "bank", "bpi", "total money",
+      "magkano lahat ng pera", "pepper pan bank", "e wallet", "ewallet",
+      "how much money do i have", "total held", "bank balance", "saang pera",
+    ],
+    numbers: "pots",
+    where: { href: "/admin/money", label: "Costs & cash" },
+    answer:
+      "The shop's money sits in three pots, and each one is counted the same way: an opening figure on a date you set, plus what the till took into it, plus or minus whatever you recorded moving.\n\n" +
+      "• CASH IN THE DRAWER, in green — the physical notes\n" +
+      "• GCASH, in blue — the e-wallet\n" +
+      "• BANK — what was transferred to the account\n\n" +
+      "They are kept apart rather than added into one figure because only the drawer can be checked against a physical count, and that check is the one thing in here that corrects itself. The total is shown as a total.\n\n" +
+      "At the counter you say how each order was paid, so it lands in the right pot with nobody sorting it out afterwards. Rung up wrong? On Orders or on Payments, change how that order was paid. Every pot is worked out afresh from the orders each time the screen loads, so the money simply moves from one sum to the other — no correcting entry, and no chance of the fix and the order disagreeing a month later.\n\n" +
+      "One thing the total does NOT do is take off what you owe suppliers. Those pesos really are in the drawer. The screen shows both figures and the subtraction, so you can see what you are holding and what is actually yours.",
+  },
+  {
+    id: "supplier-utang",
+    group: "Money",
+    question: "Utang sa supplier — what does the shop owe?",
+    triggers: [
+      "utang sa supplier", "supplier debt", "owe supplier", "owed to suppliers",
+      "may utang ako sa", "unpaid delivery", "hindi pa bayad sa supplier",
+      "credit from supplier", "pay supplier", "bayaran ang supplier", "i owe",
+      "what do i owe", "lista sa tindahan",
+    ],
+    numbers: "supplier_utang",
+    where: { href: "/admin/money", label: "Costs & cash" },
+    answer:
+      "This is the opposite direction to the other Utang panel. That one is customers who owe you; this is what YOU owe.\n\n" +
+      "It fills itself. Record a delivery — or a spend — and choose 'Not yet paid', and the debt is written here with the supplier's name frozen onto it, so renaming or removing the supplier later cannot erase who you owed.\n\n" +
+      "Paying is one tap for the whole thing, one tap for half, or a box for any other amount. THAT is the moment the money leaves a pot — not the delivery. The cash genuinely is still in the drawer until the supplier is actually paid, and a ledger line written at delivery time would make the drawer fail a physical count.\n\n" +
+      "The stock arrives either way. Buying on credit moves goods without moving money, and both halves of that are recorded.",
+  },
+  {
+    id: "running-costs",
+    group: "Money",
+    question: "Gamit at gastos — where do supplies, gas and repairs go?",
+    triggers: [
+      "running cost", "gamit at gastos", "supplies", "paper towel", "alcohol",
+      "repair", "batteries", "consumable", "hindi sangkap", "non ingredient",
+      "gastos na hindi sangkap", "spend", "nagastos", "walis", "sabon",
+    ],
+    numbers: "running_costs",
+    where: { href: "/admin/money", label: "Costs & cash" },
+    answer:
+      "Three kinds of money leave a food business, and they are not the same thing.\n\n" +
+      "• INGREDIENTS become a dish. Measured per serving — which is exactly what makes an order's COGS a fact rather than an estimate. They live in Inventory.\n" +
+      "• ASSETS are money turned into a thing that is still there afterwards: a freezer, a storage box, the cart. Not a cost at all. The question they answer is payback.\n" +
+      "• RUNNING COSTS are used up and gone with nothing to show for them — paper towels, alcohol, batteries, a gas refill, a wok repair. Those go in Gamit at gastos.\n\n" +
+      "That third kind is the one that had nowhere to go, so it went nowhere. They are not fixed costs, because they do not arrive on the first of the month, and they are not ingredients, because no recipe uses them.\n\n" +
+      "Now they are averaged into a monthly rate and added into break-even beside waste — so the daily target finally includes them.",
+  },
+  {
+    id: "gas-tank",
+    group: "Money",
+    question: "How does it know when the gas will run out?",
+    triggers: [
+      "gas", "lpg", "tangke", "tank", "kailan mauubos ang gas", "refill",
+      "22kg", "11kg", "gas due", "gas tank", "when will the gas run out",
+    ],
+    where: { href: "/admin/money", label: "Costs & cash" },
+    answer:
+      "From the dates, not from a stock level.\n\n" +
+      "Gas looked like an obvious ingredient: it has a quantity, it runs out, and running out stops the shop. But an ingredient earns its place by being consumed in a MEASURED amount per dish, and nobody can weigh the gas that went into one bowl. Making it one would have put a guess inside every COGS figure downstream, to buy a stock level nobody could keep accurate anyway.\n\n" +
+      "So instead: record each refill with its size — 22kg, 11kg — and what it cost. The gap between refills of the same size IS the usage. Two of a size and there is an estimate; from there it sharpens on its own, and a busy month shortens it without anybody adjusting a setting.\n\n" +
+      "That also handles the two things that made this awkward. The price moves between refills, which is fine, because every purchase carries its own amount. And a tank does not last a fixed number of days — which is the whole point of measuring it this way.",
+  },
+  {
+    id: "marketing-calc",
+    group: "Money",
+    question: "Did the ads / promo / free taste actually pay?",
+    triggers: [
+      "marketing", "ads", "advertising", "roas", "campaign", "boosted post",
+      "free taste", "giveaway", "libre", "discount", "tawad", "sulit ba",
+      "did the promo work", "marketing calculator", "budget for ads",
+      "worth it ba", "kumita ba ang promo",
+    ],
+    where: { href: "/admin/promos", label: "Promos & news" },
+    answer:
+      "The calculator at the top of Promos & news. It works both ways round: BEFORE you spend, to see what the campaign would have to bring in; AFTER, to see whether it did.\n\n" +
+      "Three traps it is built to keep you out of.\n\n" +
+      "1. COUNTING ALL THE SALES. \"We spent ₱2,000 and took ₱18,000\" is not a result — the shop would have taken something that week anyway. Only the gap above a usual day counts, so the baseline is a required box rather than a refinement.\n\n" +
+      "2. COUNTING SALES INSTEAD OF PROFIT. ₱10,000 of extra noodles is not ₱10,000 of extra money; those ingredients still had to be bought. Which gives the one number worth knowing before you spend anything — break-even ROAS = 1 ÷ your margin. At a 60% margin, every peso of ad money has to bring back ₱1.67 of sales just to stand still.\n\n" +
+      "3. TREATING A DISCOUNT AS A CASH COST. It isn't one. It costs margin, and it costs it on every sale including the ones that would have happened anyway. Twenty per cent off a 60%-margin dish does not leave 40% of the margin — it leaves 40 points out of 60, which is two thirds. You then need half again as many sales just to end up where you started.\n\n" +
+      "It will also tell you \"too close to call\". Sales move on their own, so an uplift smaller than the shop's ordinary day-to-day swing is not a marketing result, and saying so is more honest than a confident number that is really a coin flip.\n\n" +
+      "\"See the calculation\" shows every step in order. If one line looks wrong, that is the box to change.",
   },
   {
     id: "utang",
@@ -267,7 +365,7 @@ export const TOPICS: GuideTopic[] = [
       "There are four places to look, and they answer different questions.\n\n" +
       "1. CASH — Costs & cash shows what should be in the drawer. Count the real drawer and compare. A gap is usually an unrecorded 'labas' for supplies, not a person.\n\n" +
       "2. STOCK — Inventory → an ingredient → Count. Type what is actually on the shelf and it shows the difference AND what that difference cost you. Ingredients walking out shows up here before it shows up in the money.\n\n" +
-      "3. WHO CHANGED WHAT — the Staff screen carries an activity log: price changes, stock adjustments, role changes, who and when.\n\n" +
+      "3. WHO CHANGED WHAT — the History tab. Every restock, price change, count, cancellation and peso moved, in order, with the name of whoever did it. Narrow it to a date range or to one kind and read what actually happened that day.\n\n" +
       "4. SHIFTS — each finished shift records what was rung up during it. A shift that took much less than the same shift usually does is a question worth asking, though it is not on its own an answer.\n\n" +
       "One honest warning: none of these proves anything by itself. The most common cause of all four looking wrong is simply that something was not recorded — a restock, a waste, a cash withdrawal. Check that first, kasi mas madalas 'yun kaysa sa pagnanakaw.",
   },
@@ -285,7 +383,24 @@ export const TOPICS: GuideTopic[] = [
       "Two numbers come out of it:\n" +
       "• What you keep — price minus cost, in pesos\n" +
       "• Food cost % — the cost as a share of the price\n\n" +
-      "The rule of thumb for a stall is to keep food cost at or under 30%. Above 40% and the dish is working for the supplier, not for you. A dish with no recipe yet shows as uncosted rather than as free — an unknown cost is not a zero cost.",
+      "The rule of thumb for a stall is to keep food cost at or under 30%. Above 40% and the dish is working for the supplier, not for you. A dish with no recipe yet shows as uncosted rather than as free — an unknown cost is not a zero cost.\n\n" +
+      "The selling price is edited on this same screen, right beside the cost. That is deliberate: the only sensible moment to decide a price is the moment you can see what the plate costs and what it would keep.",
+  },
+  {
+    id: "dish-price",
+    group: "The kitchen",
+    question: "How do I change what a dish sells for?",
+    triggers: [
+      "change the price", "edit the price", "raise the price", "set the price",
+      "taasan ang presyo", "palitan ang presyo", "pricing", "price of a dish",
+      "repricing", "magkano ibebenta", "change price", "new price",
+    ],
+    where: { href: "/admin/costing", label: "Dish costs" },
+    answer:
+      "On Dish costs, right beside the cost. That is deliberate: the only sensible moment to decide a price is the moment you can see what the plate costs to make and what it would keep.\n\n" +
+      "Type a new price and what you keep and the food cost % move with it, before you save. Aim for 30% food cost or under.\n\n" +
+      "The change goes into History with your name on it, and orders already sold keep the price they were sold at. Putting a price up does not rewrite last week's profit.\n\n" +
+      "There is also a Duplicate button on the same screen. It copies the dish with its recipe and packaging, which is the fast way to add a size or a variant without rebuilding the recipe by hand.",
   },
   {
     id: "menu-engineering",
@@ -311,19 +426,37 @@ export const TOPICS: GuideTopic[] = [
     answer:
       "Stock moves by itself as you sell. Ring up a dish and its recipe is deducted from the ingredients; cancel it and the stock comes back.\n\n" +
       "'Makeable servings' is the useful number: for each dish, how many more you could make with what is on the shelf right now. It is limited by whichever ingredient runs out first — twenty portions of noodles and two eggs means two servings, not twenty.\n\n" +
-      "When a dish falls to zero makeable servings it is marked sold out on the website automatically, so nobody orders what you cannot cook.",
+      "When a dish falls to zero makeable servings it is marked sold out on the website automatically, so nobody orders what you cannot cook.\n\n" +
+      "Finding things: the search box at the top looks through ingredients and batches at once, and anything hidden always sorts to the bottom rather than in among what you actually use. Each ingredient and batch carries its own History button too, for the question \"what happened to the chicken on Tuesday\".",
   },
   {
     id: "restock",
     group: "The kitchen",
     question: "How do I record a delivery / restock?",
-    triggers: ["restock", "delivery of supplies", "bumili", "pumalengke", "bought ingredients", "add stock", "resupply", "supplier", "record a delivery", "delivery of ingredients", "bought stock", "received stock", "new stock", "papalitan ng stock"],
+    triggers: ["restock", "delivery of supplies", "bumili", "pumalengke", "bought ingredients", "add stock", "resupply", "record a delivery", "delivery of ingredients", "bought stock", "received stock", "new stock", "papalitan ng stock"],
     where: { href: "/admin/inventory", label: "Inventory" },
     answer:
       "Inventory → find the ingredient → Restock.\n\n" +
       "Put in how much you bought and what you paid IN TOTAL for that amount. The unit price is worked out from that, so you can type what is on the receipt instead of doing arithmetic at the market.\n\n" +
+      "Two more taps and it is a complete record. WHO you bought from is a chip off your supplier list, so nobody has to spell the name again. HOW you paid picks the pot it came out of — cash, GCash, bank, or 'Not yet paid', which takes nothing out of any pot and files the amount under Utang sa supplier instead.\n\n" +
       "That new price becomes the cost used for dishes made from then on. Orders already sold keep the price they were sold at — a price rise should not rewrite last week's profit.\n\n" +
       "If the delivery has an expiry date, add it. Expiring lots are flagged before they turn into waste.",
+  },
+  {
+    id: "suppliers",
+    group: "The kitchen",
+    question: "What is the Suppliers tab for?",
+    triggers: [
+      "supplier list", "suppliers", "tindahan", "saan bumili", "where to buy",
+      "supplier number", "contact of supplier", "palengke", "vendor",
+      "suppliers tab", "add a supplier",
+    ],
+    where: { href: "/admin/suppliers", label: "Suppliers" },
+    answer:
+      "Who you buy from, how to reach them, where they are, and what they sell.\n\n" +
+      "Once somebody is on that list, recording a delivery is a tap instead of typing their name again — which is how one supplier ends up spelled three ways and its purchase history split into three.\n\n" +
+      "Staff and managers can see it, because the person standing in front of the empty shelf is rarely you, and the phone number is most useful to them. Adding and editing stays with you and your manager.\n\n" +
+      "Stop buying somewhere? Mark them inactive rather than removing them. They drop out of the chips at restock time, and every delivery you already recorded still points at a name that exists.",
   },
   {
     id: "batch",
@@ -334,7 +467,41 @@ export const TOPICS: GuideTopic[] = [
     answer:
       "A batch is something you make once and use across many dishes — the black pepper sauce, a marinade.\n\n" +
       "Give it a recipe once. Then 'Produce a batch' deducts all its ingredients in one go and adds the finished batch to stock, priced at what those ingredients actually cost.\n\n" +
-      "Dishes that use it then draw from the batch rather than from raw ingredients, so the cost of a plate includes its share of the sauce without you working it out each time.",
+      "Dishes that use it then draw from the batch rather than from raw ingredients, so the cost of a plate includes its share of the sauce without you working it out each time.\n\n" +
+      "A batch also has a Count and a History of its own, the same as an ingredient — which matters, because a batch is the thing most likely to drift. A little more sauce comes out one day than the yield says it should.",
+  },
+  {
+    id: "batch-in-batch",
+    group: "The kitchen",
+    question: "Can a batch be made from another batch?",
+    triggers: [
+      "batch inside", "batch in a batch", "sub batch", "liquid butter",
+      "ji pai", "batch of a batch", "batch ingredient", "batch sa batch",
+      "nested batch", "another batch", "batch within", "batch sa loob",
+      "made from a batch",
+    ],
+    where: { href: "/admin/inventory", label: "Inventory" },
+    answer:
+      "Yes. A line in a batch recipe can point at an ingredient off the shelf OR at another batch — liquid butter inside the marinated ji pai.\n\n" +
+      "Before that, the only way to say it was to re-list every ingredient of the butter inside the ji pai recipe. Which costed the butter twice in two places, hid the fact that the butter specifically was running out, and left the ji pai quietly wrong the day the butter recipe changed.\n\n" +
+      "Making the ji pai CONSUMES butter that already exists. It does not go and make the butter first. That is the real kitchen behaviour, and it is also what makes the whole thing safe: running out of butter fails in exactly the way running out of chicken fails, rather than setting something running in circles.\n\n" +
+      "Costing does follow the chain, because the cost of ji pai per gram depends on the cost of butter per gram. Nothing is counted twice — the butter's own ingredients were already spent at the moment the butter was made.",
+  },
+  {
+    id: "count",
+    group: "The kitchen",
+    question: "The number is wrong. How do I correct the stock?",
+    triggers: [
+      "count", "bilang", "adjust stock", "mali ang bilang", "recount",
+      "correct the stock", "actual count", "edit the stock", "fix inventory",
+      "stock is wrong", "hindi tugma ang stock",
+    ],
+    where: { href: "/admin/inventory", label: "Inventory" },
+    answer:
+      "Inventory → the ingredient or the batch → Count. Type what is ACTUALLY there.\n\n" +
+      "It shows you the difference and what that difference cost, and then asks the question that matters: was the food real and is now gone, or was the book simply wrong?\n\n" +
+      "Only the first is a write-off. A write-off is costed and reaches your spoilage figure and your break-even; a correction does not, because charging the shop for a bookkeeping slip would quietly inflate the one number you use to judge the kitchen.\n\n" +
+      "Count more often than feels necessary on the two or three ingredients that cost the most. Those are the ones where being wrong is expensive.",
   },
   {
     id: "waste",
@@ -343,7 +510,8 @@ export const TOPICS: GuideTopic[] = [
     triggers: ["waste", "spoiled", "nasira", "expired", "throw away", "itinapon", "basura", "sayang", "spoiled food", "wasted food", "napanis", "food thrown"],
     where: { href: "/admin/inventory", label: "Inventory" },
     answer:
-      "Inventory → the ingredient → Waste. Say how much and why (spoiled, dropped, staff meal).\n\n" +
+      "Inventory → the ingredient or batch → Waste. Say how much, and which of the two it was.\n\n" +
+      "The toggle at the top is the whole point. WASTE is spoiled, spilt, burnt, dropped, past its date. INTERNAL USE is a staff meal, a tasting, a sample for a customer, a photo shoot. Both cost money, but only one of them is a problem — and a single figure that mixes them is either an unfair indictment of your kitchen or a hiding place for real spoilage, depending which way the mix runs.\n\n" +
       "It matters for two reasons. It takes the stock off the shelf so your counts stay true — and it costs the waste at what you actually paid, so you can see what spoilage is costing you a month.\n\n" +
       "That figure is fed into break-even, treated as an ongoing cost the same as rent. Waste you do not record does not disappear; it just shows up later as stock that is missing and profit that is lower than it should be.",
   },
@@ -380,7 +548,43 @@ export const TOPICS: GuideTopic[] = [
     answer:
       "Counter is the till. Tap the dishes, and the order is recorded exactly like an online one — so stock moves, profit is counted, and it shows in the day's takings.\n\n" +
       "Say whether it is dine-in or take-out. That decides whether packaging is charged.\n\n" +
+      "Then say how they paid — Cash, GCash or Bank. That is the button that puts the money in the right pot, so nobody has to reconcile it later. Nothing is chosen for you, on purpose: it used to open on Cash, which is right most of the time and therefore exactly the problem — a GCash sale rung up in a hurry stayed cash. Cash brings up the change calculator; GCash and Bank ask for the reference instead.\n\n" +
       "For change: type what the customer handed you and the sukli is worked out for you. There are quick buttons for the usual notes, and it will tell you plainly if what they gave is short.",
+  },
+  {
+    id: "counter-badges",
+    group: "Every day",
+    question: "What do the badges on the counter buttons mean?",
+    triggers: [
+      "badge", "no stock", "no recipe", "counter only", "grey badge",
+      "walang badge", "bakit walang", "why no badge", "sold out badge",
+      "what does the badge mean", "anong ibig sabihin ng badge",
+    ],
+    where: { href: "/admin/counter", label: "Counter" },
+    answer:
+      "Four things a dish button can tell you, and they are four different problems.\n\n" +
+      "• NOTHING AT ALL — plenty on the shelf. Carry on.\n" +
+      "• \"5 LEFT\", in gold — five or fewer servings' worth of ingredients. Time to think about restocking.\n" +
+      "• \"NO STOCK · WHY?\", in red — something in the recipe has run out. Tap it and it names which ingredient, how much you needed and how much you had.\n" +
+      "• \"NO RECIPE\", in grey — this is the one worth understanding. It does NOT mean there is none left. It means the dish has no recipe, so nothing can be worked out about it: no stock count, no cost, no margin. It used to show no badge at all, which looked exactly like \"plenty\".\n\n" +
+      "\"COUNTER ONLY\" is separate from all four — the dish is hidden from the website, but you can still ring it up here.\n\n" +
+      "So a grey badge is a job, not a warning. Give the dish a recipe and it starts telling you the truth.",
+  },
+  {
+    id: "history",
+    group: "Every day",
+    question: "Where can I see everything that happened?",
+    triggers: [
+      "history", "activity", "audit", "kasaysayan", "what happened",
+      "anong nangyari", "who changed", "sino nag", "timeline",
+      "record of changes", "activity log", "history tab",
+    ],
+    where: { href: "/admin/history", label: "History" },
+    answer:
+      "History. Every restock, price change, count, cancelled order, batch made, shift clocking in and peso moved, in the order it happened, with the name of whoever did it.\n\n" +
+      "The newest three sit on the page; \"See everything\" opens the rest, folded by day with today already open. Narrow it by date range, or by kind — orders, inventory, movement, menu, money, staff.\n\n" +
+      "This is the screen to open when a number looks wrong and you want to know what touched it. Owner and manager only: it is the business's diary.\n\n" +
+      "Every ingredient and every batch also has its own History button in Inventory, which is this same log filtered down to that one thing.",
   },
   {
     id: "orders",
@@ -391,7 +595,8 @@ export const TOPICS: GuideTopic[] = [
     answer:
       "Orders is the board: new → preparing → ready → completed.\n\n" +
       "Moving one to 'preparing' tells the customer their food has started, and starts the ETA. Ready means they can collect. Completed closes it and folds it away so the board stays short.\n\n" +
-      "Cancelling puts the ingredients back on the shelf. That is the point of doing it here rather than just ignoring the order.",
+      "Cancelling puts the ingredients back on the shelf. That is the point of doing it here rather than just ignoring the order.\n\n" +
+      "If an order was rung up as cash and the customer actually paid by GCash, change it here. The pots are worked out from the orders themselves, so the money moves from one to the other on the next load — no correcting entry, and the order stops claiming the wrong thing. Owner and manager only, and it is written into History both ways round.",
   },
   {
     id: "sold-out",
@@ -416,7 +621,8 @@ export const TOPICS: GuideTopic[] = [
       "• NEWS — dated, opens to its own page. A closure, a new dish\n" +
       "• DINE-IN SPECIAL — the big line in the gold band\n" +
       "• COMING SOON — the line under it\n\n" +
-      "Any of them can carry a photo or a short video. Give it an end date and it takes itself off the homepage that night — which is the whole point: a promo you have to remember to switch off is a promo that stays up, and a customer arrives on Tuesday with a screenshot of a deal that ended on Sunday.",
+      "Any of them can carry a photo or a short video. Give it an end date and it takes itself off the homepage that night — which is the whole point: a promo you have to remember to switch off is a promo that stays up, and a customer arrives on Tuesday with a screenshot of a deal that ended on Sunday.\n\n" +
+      "Above all four is the calculator: what a promo, some ads or a free taste would have to bring in, and afterwards whether it did. Worth running before you print the tarpaulin, not after.",
   },
   {
     id: "inbox",
@@ -426,7 +632,8 @@ export const TOPICS: GuideTopic[] = [
     where: { href: "/admin/inbox", label: "Inbox" },
     answer:
       "Inbox holds every conversation from the website's chat. Ask Pepper Pan answers the easy ones by itself — hours, prices, delivery, where you are — and anything it cannot answer waits for you.\n\n" +
-      "Take over a thread and type; the customer sees it live. If it is a question you will be asked again, use 'Teach this answer' and Ask Pepper Pan will handle it next time.",
+      "Take over a thread and type; the customer sees it live. If it is a question you will be asked again, use 'Teach this answer' and Ask Pepper Pan will handle it next time.\n\n" +
+      "You do not have to watch the screen for it. The moment Ask Pepper Pan decides it cannot handle something, the thread is flagged and a notification goes out — so a customer question nobody could answer does not sit unread for six hours. Messenger threads land in the same inbox and raise the same flag.",
   },
 
   // ---------------- People ------------------------------------------
@@ -491,12 +698,13 @@ export const TOPICS: GuideTopic[] = [
     id: "payments",
     group: "Setting up",
     question: "How does GCash payment work?",
-    triggers: ["gcash", "payment", "bayad", "qr", "reference", "cod", "cash on delivery", "downpayment", "paano magbayad"],
+    triggers: ["gcash", "payment", "bayad", "qr", "reference", "cod", "cash on delivery", "downpayment", "paano magbayad", "how do customers pay"],
     where: { href: "/admin/payments", label: "Payments" },
     answer:
       "Two screens, deliberately named apart. PAYMENTS is how customers pay you — your GCash name, number and QR. COSTS & CASH is what you pay out.\n\n" +
       "A customer paying by GCash sends the reference number after paying. It lands on Payments waiting for you to confirm, and the order is not treated as paid until you do.\n\n" +
-      "Order-ahead has to be paid before it is cooked. That is on purpose — food cooked for somebody who never arrives is a loss you cannot undo.",
+      "Order-ahead has to be paid before it is cooked. That is on purpose — food cooked for somebody who never arrives is a loss you cannot undo.\n\n" +
+      "At the counter it is simpler: you tap Cash, GCash or Bank as you ring the order up, and the money is filed in that pot straight away. Tapped the wrong one? Change it on Orders or on Payments and the pots follow.",
   },
   {
     id: "alerts",
