@@ -3,6 +3,7 @@ import { loadMoney } from "@/lib/money-server";
 import { loadAvailability, loadCostBook, loadSalesVolume } from "@/lib/costing-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { marginFor, peso, pesoRound } from "@/lib/costing";
+import { SPEND_LABEL, type SpendKind } from "@/lib/spending";
 import type { ExplainKind } from "@/lib/hq-guide";
 
 /**
@@ -70,6 +71,12 @@ export async function explain(kind: ExplainKind): Promise<string | null> {
         return await stock();
       case "today":
         return await today();
+      case "pots":
+        return await pots();
+      case "supplier_utang":
+        return await supplierUtang();
+      case "running_costs":
+        return await runningCosts();
     }
   } catch (e) {
     // A failed sum must never be presented as a sum. Better to say the
@@ -144,20 +151,22 @@ async function breakEven(): Promise<string> {
   const monthlyTarget = daily * m.openDays;
   const gap = m.avgDailyRevenue - daily;
 
+  const toCover = m.monthlyFixed + m.monthlyWasteRate + m.monthlyRunningRate;
   const table = sum([
     ["  Fixed costs a month", peso(m.monthlyFixed)],
     ["+ Waste, as a month", peso(m.monthlyWasteRate)],
-    ["= To cover every month", peso(m.monthlyFixed + m.monthlyWasteRate)],
+    ["+ Gas, supplies, repairs", peso(m.monthlyRunningRate)],
+    ["= To cover every month", peso(toCover)],
   ]);
   return [
     `Your numbers:`,
     ``,
-    ...table.lines.slice(0, 2),
+    ...table.lines.slice(0, 3),
     table.rule,
-    table.lines[2],
+    table.lines[3],
     ``,
     `Of every peso you take, ${pct(m.marginRatio)} survives the ingredients.`,
-    `So you must SELL ${peso(m.monthlyFixed + m.monthlyWasteRate)} ÷ ${pct(
+    `So you must SELL ${peso(toCover)} ÷ ${pct(
       m.marginRatio
     )} = ${peso(monthlyTarget)} a month`,
     ``,
@@ -176,8 +185,19 @@ async function cash(): Promise<string> {
   if (!m.cash.enabled || !m.cash.startedOn) {
     return "Cash tracking is switched off, so there is no drawer figure to explain. Turn it on in Costs & cash by saying what was in the drawer and on what date — everything after that is counted from there.";
   }
-  const movedIn = m.ledger.filter((l) => l.type === "in").reduce((s, l) => s + l.amount, 0);
-  const movedOut = m.ledger.filter((l) => l.type !== "in").reduce((s, l) => s + l.amount, 0);
+  /**
+   * Typed drawer lines only.
+   *
+   * Two filters, both load-bearing. `account` because every pot shares one
+   * ledger table and a GCash transfer never went near the drawer; `derived`
+   * because cash sales are listed in the ledger for the history's sake but
+   * are not movements ON TOP of the sales — counting them here would put
+   * every sale under "money put in" and leave "cash sales" reading zero,
+   * which is a sum that adds up perfectly and describes nothing.
+   */
+  const typed = m.ledger.filter((l) => l.account === "cash" && !l.derived);
+  const movedIn = typed.filter((l) => l.type === "in").reduce((s, l) => s + l.amount, 0);
+  const movedOut = typed.filter((l) => l.type !== "in").reduce((s, l) => s + l.amount, 0);
   const takings = m.cash.onHand - m.cash.startedWith - (movedIn - movedOut);
 
   const table = sum([
@@ -412,4 +432,148 @@ async function today(): Promise<string> {
     ``,
     `"Kept" here is before your daily operating expense. Ask me about net profit for the number that has rent taken out of it.`,
   ].join("\n");
+}
+
+/**
+ * The three pots, and why the total is not one number.
+ *
+ * Read from the same snapshot the money screen renders, so a pot that
+ * disagrees with the screen is impossible rather than merely unlikely.
+ */
+async function pots(): Promise<string> {
+  const m = await loadMoney();
+  const live = (
+    [
+      ["Cash in the drawer", m.cash],
+      ["GCash", m.gcash],
+      ["Bank", m.bank],
+    ] as const
+  ).filter(([, pot]) => pot.enabled);
+
+  if (live.length === 0) {
+    return "None of the three pots is being counted yet. Switch one on in Costs & cash by saying what was in it and on what date — everything after that date is counted from there.";
+  }
+
+  const table = sum([
+    ...live.map(
+      ([label, pot]) =>
+        [`  ${label}`, peso(pot.onHand), `(from ${pot.startedOn})`] as [
+          string,
+          string,
+          string,
+        ]
+    ),
+    ["= Held in total", peso(m.totalHeld)],
+  ]);
+
+  return [
+    `What the shop is holding right now:`,
+    ``,
+    ...table.lines.slice(0, live.length),
+    table.rule,
+    table.lines[live.length],
+    ``,
+    m.owedToSuppliers > 0
+      ? `Of that, ${peso(
+          m.owedToSuppliers
+        )} is already spoken for — it is what you owe suppliers. Actually yours: ${peso(
+          m.totalHeld - m.owedToSuppliers
+        )}.`
+      : `You owe your suppliers nothing, so all of it is yours.`,
+    ``,
+    `The pots are kept apart rather than added up because only the drawer can be counted by hand. Fold an untouchable balance into it and that check — the one number in here that corrects itself — is gone.`,
+    live.length < 3
+      ? `\n${3 - live.length === 1 ? "One pot is" : "Two pots are"} switched off and not counted at all.`
+      : null,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
+/** What the shop owes, which is the opposite direction to `utang`. */
+async function supplierUtang(): Promise<string> {
+  const m = await loadMoney();
+  const open = m.debts.filter((d) => d.paid < d.amount);
+  if (open.length === 0) {
+    return "You owe your suppliers nothing right now — every delivery taken on credit has been settled.";
+  }
+  const lines = open
+    .slice(0, 8)
+    .map(
+      (d) =>
+        `  • ${d.supplierName || "(no supplier named)"} — ${peso(d.amount - d.paid)}` +
+        `${d.paid > 0 ? `  (${peso(d.amount)} less ${peso(d.paid)} already paid)` : ""}` +
+        `  ${d.description}`
+    );
+  return [
+    `${open.length} unpaid ${open.length === 1 ? "debt" : "debts"}, ${peso(
+      m.owedToSuppliers
+    )} in total:`,
+    ``,
+    ...lines,
+    open.length > 8 ? `  …and ${open.length - 8} more.` : null,
+    ``,
+    `You are holding ${peso(m.totalHeld)} across all pots, so what is actually yours is ${peso(
+      m.totalHeld - m.owedToSuppliers
+    )}.`,
+    ``,
+    `Nothing has left a pot for these yet, and that is right: the pesos really are still in the drawer. They leave when you tap paid — which is also the moment the drawer would show it, if you counted.`,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
+/** Supplies, gas and repairs — and what they add to the daily target. */
+async function runningCosts(): Promise<string> {
+  const m = await loadMoney();
+
+  if (m.runningCosts.length === 0) {
+    return [
+      "Nothing recorded under Gamit at gastos yet, so your break-even is being worked out from fixed costs and waste alone.",
+      "",
+      "That makes the daily target too low, and it will stay too low invisibly — the sum is self-consistent either way. Paper towels, alcohol, batteries, a gas refill, a wok repair: record them as you buy them and the target corrects itself.",
+    ].join("\n");
+  }
+
+  const byKind = new Map<string, number>();
+  for (const r of m.runningCosts) {
+    byKind.set(r.kind, (byKind.get(r.kind) ?? 0) + r.amount);
+  }
+  const ranked = [...byKind.entries()].sort((a, b) => b[1] - a[1]);
+
+  const table = sum([
+    ...ranked.map(([kind, amount]) => [`  ${SPEND_LABEL[kind as SpendKind] ?? kind}`, peso(amount)] as [string, string]),
+    ["= Spent in the window", peso(m.runningForWindow)],
+  ]);
+
+  const dueTanks = m.tanks.filter((t) => t.dueNow);
+
+  return [
+    `Gamit at gastos, ${overWindow(m.windowDays)}:`,
+    ``,
+    ...table.lines.slice(0, ranked.length),
+    table.rule,
+    table.lines[ranked.length],
+    ``,
+    `As a monthly rate that is ${peso(
+      m.monthlyRunningRate
+    )}, and that figure goes into break-even beside your ${peso(
+      m.monthlyWasteRate
+    )} of waste. Without it the daily target would read lower than the truth.`,
+    m.tanks.length > 0 ? `` : null,
+    ...m.tanks.map((t) =>
+      t.days === null
+        ? `Gas ${t.size}: only ${t.refills} refill${
+            t.refills === 1 ? "" : "s"
+          } recorded, so there is no pattern yet — one refill is a date, not a life.`
+        : `Gas ${t.size}: lasts about ${t.days} days here, from ${t.refills} refills. The last one went in ${t.sinceLast} day${
+            t.sinceLast === 1 ? "" : "s"
+          } ago at ${peso(t.lastPaid)}.${t.dueNow ? " DUE NOW." : ""}`
+    ),
+    dueTanks.length > 0
+      ? `\nBuy the spare before the shift, not during it. A tank dying mid-service costs more than the tank.`
+      : null,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
 }
