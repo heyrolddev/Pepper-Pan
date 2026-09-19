@@ -935,3 +935,245 @@ begin
   raise notice 'what the shop spends on ads is not public, unlike the promos themselves';
 end $$;
 RESET ROLE;
+
+\echo ''
+\echo '=== 0045 suppliers, debts and running costs ==='
+
+\echo '--- two ledger lines on the same day can now be told apart ---'
+do $$
+declare first_note text;
+begin
+  delete from cash_ledger;
+  insert into cash_ledger (date, type, amount, note, account)
+    values (current_date, 'out', 500, 'earlier', 'cash');
+  perform pg_sleep(0.01);
+  insert into cash_ledger (date, type, amount, note, account)
+    values (current_date, 'in', 900, 'later', 'cash');
+
+  -- The bug this fixes: ordering by `date` alone ties every row written on
+  -- the same day, and a stable sort then reads them back in assembly order
+  -- rather than in the order they happened.
+  select note into first_note
+    from cash_ledger order by date desc, created_at desc limit 1;
+  if first_note <> 'later' then
+    raise exception 'FAIL: same-day lines still cannot be ordered — newest read as %', first_note;
+  end if;
+  raise notice 'the newest line of the day reads first, which date alone could never decide';
+  delete from cash_ledger;
+end $$;
+
+\echo '--- a supplier is a row, not three spellings ---'
+do $$
+declare sid uuid;
+begin
+  insert into suppliers (name, phone, place, sells)
+    values ('Aling Nena', '0917 555 1234', 'Apalit public market', 'chicken, gulay')
+    returning id into sid;
+  if sid is null then raise exception 'FAIL: the supplier was not saved'; end if;
+  raise notice 'a supplier carries how to reach them and what they sell';
+end $$;
+
+\echo '--- an unpaid delivery becomes a debt and moves no money ---'
+do $$
+declare drawer numeric; owed numeric;
+begin
+  select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+    into drawer from cash_ledger where account = 'cash';
+
+  insert into supplier_debts (supplier_name, description, amount, source)
+    values ('Aling Nena', '12kg chicken', 2100, 'restock');
+
+  if (select coalesce(sum(case when type = 'in' then amount else -amount end), 0)
+        from cash_ledger where account = 'cash') <> drawer then
+    raise exception 'FAIL: recording a debt moved the drawer — the cash is still in it until the supplier is paid';
+  end if;
+
+  select sum(amount - paid) into owed from supplier_debts where paid < amount;
+  if owed <> 2100 then raise exception 'FAIL: the shop owes %, expected 2100', owed; end if;
+  raise notice 'the debt is recorded and the drawer is untouched, because the cash has not left yet';
+end $$;
+
+\echo '--- a part payment is a fact, not a boolean ---'
+do $$
+declare still_owed numeric;
+begin
+  update supplier_debts set paid = 800 where description = '12kg chicken';
+  select amount - paid into still_owed from supplier_debts where description = '12kg chicken';
+  if still_owed <> 1300 then
+    raise exception 'FAIL: 1300 should still be owed, got %', still_owed;
+  end if;
+
+  begin
+    update supplier_debts set paid = 5000 where description = '12kg chicken';
+    raise exception 'FAIL: the shop paid more than it owed';
+  exception when check_violation then null;
+  end;
+
+  raise notice 'part payments accumulate, and nobody can overpay a debt';
+end $$;
+
+\echo '--- gas is a running cost, and keeps the tank size while the price moves ---'
+do $$
+declare spent numeric; sizes int;
+begin
+  insert into running_costs (label, kind, amount, size_label, spent_on) values
+    ('Gas refill', 'gas', 2040, '22kg', current_date - 30),
+    ('Gas refill', 'gas', 1100, '11kg', current_date - 15),
+    ('Gas refill', 'gas', 1980, '22kg', current_date - 2),
+    ('Alcohol, paper towels', 'supplies', 340, null, current_date - 5);
+
+  select sum(amount) into spent from running_costs where kind = 'gas';
+  if spent <> 5120 then raise exception 'FAIL: gas spend reads %, expected 5120', spent; end if;
+
+  -- Three refills at three different prices, two tank sizes. The price moving
+  -- must not stop the shop knowing which size it bought.
+  select count(distinct size_label) into sizes from running_costs where kind = 'gas';
+  if sizes <> 2 then raise exception 'FAIL: expected two tank sizes, got %', sizes; end if;
+
+  raise notice 'gas at a different price each time still adds up, and the tank size survives';
+end $$;
+
+\echo '--- an unknown kind of spend is refused ---'
+do $$
+begin
+  begin
+    insert into running_costs (label, kind, amount) values ('Mystery', 'sangkap', 100);
+    raise exception 'FAIL: an unknown kind was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into running_costs (label, kind, amount) values ('Free lunch', 'supplies', 0);
+    raise exception 'FAIL: a spend of zero was accepted';
+  exception when check_violation then null;
+  end;
+  raise notice 'an unknown kind and a spend of nothing are both refused';
+end $$;
+
+\echo '--- what the shop owes is not public, and not the shift''s business ---'
+do $$
+declare visible bigint;
+begin
+  set local role anon;
+  select count(*) into visible from supplier_debts;
+  reset role;
+  if visible <> 0 then
+    raise exception 'FAIL: % debts readable from a browser session', visible;
+  end if;
+  raise notice 'a signed-out visitor cannot read what Pepper Pan owes';
+end $$;
+RESET ROLE;
+
+\echo ''
+\echo '=== 0046 batches inside batches ==='
+
+\echo '--- a batch can be made of another batch, and is priced through it ---'
+do $$
+declare per_unit numeric;
+begin
+  insert into ingredients (id, name, unit, cost, stock)
+    values ('butter', 'Butter', 'g', 1, 100000),
+           ('chicken', 'Chicken', 'g', 0.2, 100000)
+    on conflict (id) do update set cost = excluded.cost, stock = excluded.stock;
+
+  insert into batches (id, name, yield_qty, yield_unit, batch_stock)
+    values ('liquid-butter', 'Liquid butter', 500, 'g', 0),
+           ('ji-pai', 'Marinated ji pai', 1000, 'g', 0)
+    on conflict (id) do update set yield_qty = excluded.yield_qty, batch_stock = 0;
+
+  delete from batch_ingredients where batch_id in ('liquid-butter', 'ji-pai');
+  insert into batch_ingredients (batch_id, ref_type, ref_id, qty) values
+    ('liquid-butter', 'inv', 'butter', 500),
+    ('ji-pai', 'inv', 'chicken', 1000),
+    ('ji-pai', 'batch', 'liquid-butter', 100);
+
+  -- 500g butter at P1 over a 500g yield = P1.00/g.
+  if round(batch_cost_per_unit('liquid-butter'), 4) <> 1 then
+    raise exception 'FAIL: liquid butter prices at %, expected 1', batch_cost_per_unit('liquid-butter');
+  end if;
+  -- 1000g chicken at P0.20 = P200, plus 100g butter at P1 = P100, over 1000g.
+  per_unit := batch_cost_per_unit('ji-pai');
+  if round(per_unit, 4) <> 0.3 then
+    raise exception 'FAIL: ji pai prices at %, expected 0.30 — the sub-batch is not being counted', per_unit;
+  end if;
+  raise notice 'a sub-batch carries its own price up into the parent';
+end $$;
+
+\echo '--- making the parent draws down the sub-batch, and nothing twice ---'
+do $$
+declare butter_before numeric; butter_after numeric;
+declare chicken_before numeric; chicken_after numeric;
+declare jipai_after numeric; cost numeric;
+begin
+  -- Stock the butter first, exactly as the kitchen would.
+  perform produce_batch('liquid-butter', 2);       -- 1000g of butter
+  select batch_stock into butter_before from batches where id = 'liquid-butter';
+  select stock into chicken_before from ingredients where id = 'chicken';
+
+  cost := produce_batch('ji-pai', 1);              -- needs 1000g chicken + 100g butter
+
+  select batch_stock into butter_after from batches where id = 'liquid-butter';
+  select stock into chicken_after from ingredients where id = 'chicken';
+  select batch_stock into jipai_after from batches where id = 'ji-pai';
+
+  if butter_before - butter_after <> 100 then
+    raise exception 'FAIL: butter fell by %, expected 100', butter_before - butter_after;
+  end if;
+  if chicken_before - chicken_after <> 1000 then
+    raise exception 'FAIL: chicken fell by %, expected 1000', chicken_before - chicken_after;
+  end if;
+  -- The load-bearing one. Making ji pai must NOT also consume the butter's
+  -- own ingredients: that butter was already paid for when it was made, and
+  -- taking it again would bill the shop twice for the same 500g.
+  if chicken_before - chicken_after > 1000 then
+    raise exception 'FAIL: the sub-batch ingredients were consumed a second time';
+  end if;
+  if jipai_after <> 1000 then
+    raise exception 'FAIL: ji pai stock is %, expected 1000', jipai_after;
+  end if;
+  raise notice 'the parent takes the sub-batch off the shelf, and the sub-batch''s own ingredients are not taken again';
+end $$;
+
+\echo '--- running out of a sub-batch fails like running out of anything else ---'
+do $$
+declare butter numeric;
+begin
+  update batches set batch_stock = 50 where id = 'liquid-butter';
+  begin
+    perform produce_batch('ji-pai', 1);   -- needs 100g, only 50g there
+    raise exception 'FAIL: a batch was made out of butter that did not exist';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  select batch_stock into butter from batches where id = 'liquid-butter';
+  if butter <> 50 then
+    raise exception 'FAIL: a refused batch still moved the butter — now %', butter;
+  end if;
+  raise notice 'not enough of a sub-batch stops the whole thing, and moves nothing';
+end $$;
+
+\echo '--- a batch cannot be made of itself ---'
+do $$
+begin
+  begin
+    insert into batch_ingredients (batch_id, ref_type, ref_id, qty)
+      values ('ji-pai', 'batch', 'ji-pai', 10);
+    raise exception 'FAIL: a batch listing itself was accepted';
+  exception when check_violation then null;
+  end;
+  raise notice 'a batch listing itself is refused by the database, not just by the form';
+end $$;
+
+\echo '--- a recipe loop prices at zero rather than hanging the till ---'
+do $$
+declare per_unit numeric;
+begin
+  -- Only reachable by a hand edit or an import: the app refuses both ends.
+  insert into batch_ingredients (batch_id, ref_type, ref_id, qty)
+    values ('liquid-butter', 'batch', 'ji-pai', 10);
+  per_unit := batch_cost_per_unit('ji-pai');
+  if per_unit is null then
+    raise exception 'FAIL: a loop returned null instead of a number';
+  end if;
+  raise notice 'a circular recipe returns a number and stops, so a sale can still be rung up';
+  delete from batch_ingredients where batch_id = 'liquid-butter' and ref_type = 'batch';
+end $$;

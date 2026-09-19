@@ -11,6 +11,7 @@ import {
   saveMealPackaging,
   saveOrderPackaging,
 } from "@/app/admin/inventory/actions";
+import { setDishPrice } from "@/app/admin/costing/actions";
 
 /** Something a recipe line can point at. */
 export type RecipeOption = {
@@ -31,9 +32,11 @@ export type RecipeLine = { refType: "inv" | "batch"; refId: string; qty: number 
  *
  * One editor for both dishes and batches, because they are the same shape —
  * a list of "this much of that" — and two of these would drift the day one
- * of them gained a feature. A dish may draw on batches as well as
- * ingredients; a batch may only use ingredients, since a batch made of
- * batches is a recursion nobody at the stall asked for.
+ * of them gained a feature. Both may draw on ingredients and on batches: a
+ * batch made of batches is exactly how liquid butter gets into marinated ji
+ * pai without its thirteen ingredients being re-listed there. The caller
+ * excludes a batch from its own option list; the server refuses a loop that
+ * goes round more than one corner.
  *
  * The running cost is the point of the screen. Editing a recipe without
  * seeing what it does to the cost is editing blind, and the number that
@@ -65,16 +68,31 @@ export function RecipeEditor({
   const [lines, setLines] = useState<RecipeLine[]>(initial);
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
+  /**
+   * What it sells for, editable right here.
+   *
+   * It used to be read-only on this dialog and changeable only on the Menu
+   * tab — which is the one screen that cannot show you the margin you are
+   * changing it against. So repricing meant reading the cost here,
+   * remembering it, and typing the new price somewhere else. There is only
+   * one `meals.price`, so changing it here changes the menu and the counter
+   * by construction; nothing is being kept in step.
+   */
+  const [sellFor, setSellFor] = useState(price === null ? "" : String(price));
 
   const byId = useMemo(
     () => new Map(options.map((o) => [`${o.kind}:${o.id}`, o])),
     [options]
   );
-  const allowed = useMemo(
-    () =>
-      target.kind === "batch" ? options.filter((o) => o.kind === "inv") : options,
-    [options, target.kind]
-  );
+  // Every option is offered, for a dish and for a batch alike. A batch used
+  // to be restricted to ingredients; migration 0046 made "liquid butter
+  // inside marinated ji pai" expressible, and the caller is what excludes a
+  // batch from its own recipe.
+  const allowed = options;
+
+  // The live figure the margin below is measured against, so the readout
+  // moves as the price is typed rather than after it is saved.
+  const sell = price === null ? null : Number(sellFor) || 0;
 
   const priced = lines.map((l) => {
     const o = byId.get(`${l.refType}:${l.refId}`);
@@ -89,6 +107,18 @@ export function RecipeEditor({
     e.preventDefault();
     setError(null);
     startTransition(async () => {
+      // The price first, when it changed. If the recipe save then fails the
+      // owner sees the new price with the old recipe — visible, and fixable
+      // by saving again. The other order hides the failure: a saved recipe
+      // and a price that silently did not move looks entirely fine.
+      if (target.kind === "meal" && price !== null && sell !== null && sell !== price) {
+        const p = await setDishPrice({ mealId: target.mealId, price: sell });
+        if (p.error !== null) {
+          setError(p.error);
+          return;
+        }
+      }
+
       const r =
         target.kind === "meal"
           ? await saveMealRecipe({ mealId: target.mealId, lines })
@@ -96,10 +126,7 @@ export function RecipeEditor({
             ? await saveMealPackaging({ mealId: target.mealId, lines })
             : target.kind === "order-packaging"
               ? await saveOrderPackaging({ lines })
-              : await saveBatchRecipe({
-                  batchId: target.batchId,
-                  lines: lines.map((l) => ({ ingredientId: l.refId, qty: l.qty })),
-                });
+              : await saveBatchRecipe({ batchId: target.batchId, lines });
       if (r.error !== null) {
         setError(r.error);
         return;
@@ -111,6 +138,39 @@ export function RecipeEditor({
   return (
     <AdminDialog title={title} subtitle={subtitle} onClose={onClose} busy={busy}>
       <form onSubmit={submit} className="flex flex-col gap-4">
+        {/* The two packaging dialogs are the same shape and mean opposite
+            things, and getting them the wrong way round is silent: the bag
+            filed per dish charges four bags for a four-dish order, which is
+            exactly how the old duplicate dishes got it wrong. So each one
+            says which it is, in the sentence that matters, before any line
+            is edited. */}
+        {(target.kind === "packaging" || target.kind === "order-packaging") && (
+          <p
+            className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+              target.kind === "packaging"
+                ? "bg-chili-500/15 text-ink-800/80"
+                : "bg-gold-400/20 text-ink-800/80"
+            }`}
+          >
+            {target.kind === "packaging" ? (
+              <>
+                <strong className="text-ink-950">Once per serving.</strong> Two
+                of this dish in one order uses two of everything here — the
+                container, the fork, the spoon. The <strong>bag</strong> does
+                not belong here: it is one per order however many dishes go in
+                it, and lives under &ldquo;What every take-out order
+                includes&rdquo;.
+              </>
+            ) : (
+              <>
+                <strong className="text-ink-950">Once per order.</strong>{" "}
+                However many dishes are in it. The bag belongs here. Anything
+                used once per serving — a container, a fork — belongs on the
+                dish instead, or a four-dish order will be charged one fork.
+              </>
+            )}
+          </p>
+        )}
         <ul className="flex flex-col gap-2">
           {lines.map((l, i) => {
             const o = byId.get(`${l.refType}:${l.refId}`);
@@ -211,21 +271,47 @@ export function RecipeEditor({
               {peso(total)}
             </span>
           </div>
-          {price !== null && price > 0 && (
-            <div className="mt-2 flex items-baseline justify-between border-t border-cream-50/15 pt-2 text-sm">
-              <span className="opacity-70">
-                Sells for {peso(price, 0)} — you keep
-              </span>
-              <span
-                className={`font-display text-lg font-black tabular-nums ${
-                  price - total < 0 ? "text-brand-300" : "text-jade-300"
-                }`}
-              >
-                {peso(price - total)}
-                <span className="ml-2 text-xs font-bold opacity-60">
-                  {((total / price) * 100).toFixed(0)}% food cost
+          {price !== null && (
+            <div className="mt-2 border-t border-cream-50/15 pt-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm opacity-70">Sells for</span>
+                <span className="relative flex w-32 items-center">
+                  <span className="pointer-events-none absolute left-3 text-sm font-bold opacity-50">
+                    ₱
+                  </span>
+                  <input
+                    value={sellFor}
+                    onChange={(e) => setSellFor(e.target.value)}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    aria-label="Selling price"
+                    className="w-full rounded-xl bg-cream-50/10 py-2 pl-7 pr-2 text-right font-display text-lg font-black tabular-nums text-cream-50 ring-1 ring-cream-50/20 focus:outline-none focus:ring-2 focus:ring-gold-400"
+                  />
                 </span>
-              </span>
+              </div>
+              {sell !== null && sell > 0 && (
+                <div className="mt-2 flex items-baseline justify-between text-sm">
+                  <span className="opacity-70">You keep</span>
+                  <span
+                    className={`font-display text-lg font-black tabular-nums ${
+                      sell - total < 0 ? "text-brand-300" : "text-jade-300"
+                    }`}
+                  >
+                    {peso(sell - total)}
+                    <span className="ml-2 text-xs font-bold opacity-60">
+                      {((total / sell) * 100).toFixed(0)}% food cost
+                    </span>
+                  </span>
+                </div>
+              )}
+              {sell !== null && sell !== price && (
+                <p className="mt-2 text-xs opacity-60">
+                  Saving changes the price on the menu and at the counter too —
+                  there is only one price.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -245,7 +331,9 @@ export function RecipeEditor({
             ? "Saving…"
             : target.kind === "packaging" || target.kind === "order-packaging"
               ? "Save the packaging"
-              : "Save the recipe"}
+              : sell !== null && sell !== price
+                ? "Save the price and recipe"
+                : "Save the recipe"}
         </button>
       </form>
     </AdminDialog>
@@ -267,7 +355,7 @@ export function ProduceBatchForm({
   onClose,
 }: {
   batch: { id: string; name: string; yieldQty: number; yieldUnit: string; stock: number };
-  recipe: { ingredientId: string; qty: number }[];
+  recipe: RecipeLine[];
   options: RecipeOption[];
   onClose: () => void;
 }) {
@@ -276,16 +364,22 @@ export function ProduceBatchForm({
   const [busy, startTransition] = useTransition();
 
   const times = Number(multiplier) || 0;
+  // Keyed by kind as well as id, because an ingredient and a batch may share
+  // neither namespace nor guarantee of distinctness — and a recipe line now
+  // points at either.
   const byId = useMemo(
-    () => new Map(options.filter((o) => o.kind === "inv").map((o) => [o.id, o])),
+    () => new Map(options.map((o) => [`${o.kind}:${o.id}`, o])),
     [options]
   );
 
   const needs = recipe.map((r) => {
-    const o = byId.get(r.ingredientId);
+    const o = byId.get(`${r.refType}:${r.refId}`);
     const needed = r.qty * times;
     return {
-      name: o?.name ?? "Deleted ingredient",
+      // A line pointing at a batch that has been deleted reads differently
+      // from one pointing at a deleted ingredient, and the person about to
+      // cook needs to know which shelf to go and look at.
+      name: o?.name ?? (r.refType === "batch" ? "Deleted batch" : "Deleted ingredient"),
       unit: o?.unit ?? "",
       needed,
       have: o?.stock ?? 0,

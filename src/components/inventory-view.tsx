@@ -14,6 +14,14 @@ import {
   type RecipeOption,
 } from "@/components/recipe-editor";
 import { WasteForm } from "@/components/waste-form";
+import {
+  AddBatchButton,
+  BatchHistoryDialog,
+  EditBatchForm,
+  IngredientHistoryDialog,
+  NewBatchForm,
+} from "@/components/batch-forms";
+import type { Supplier } from "@/lib/suppliers";
 import { hqTitle } from "@/lib/hq-theme";
 
 export type StockRow = {
@@ -74,14 +82,16 @@ type Editing =
   | { kind: "new" }
   | { kind: "waste" }
   | { kind: "edit" | "restock" | "count"; row: StockRow }
-  | { kind: "produce" | "recipe"; batch: BatchRow }
+  | { kind: "produce" | "recipe" | "batch-history" | "batch-edit"; batch: BatchRow }
+  | { kind: "new-batch" }
+  | { kind: "history"; row: StockRow }
   | null;
 
 export type BatchRow = {
   id: string;
   name: string;
   /** What goes into one batch, so the produce dialog can check the shelf. */
-  recipe: { ingredientId: string; qty: number }[];
+  recipe: { refType: "inv" | "batch"; refId: string; qty: number }[];
   yieldQty: number;
   yieldUnit: string;
   stock: number;
@@ -169,6 +179,7 @@ export function InventoryView({
   thinHistory,
   canSeeCosts,
   canManage,
+  suppliers = [],
   failed,
 }: {
   stock: StockRow[];
@@ -179,6 +190,8 @@ export function InventoryView({
   usageDays: number;
   thinHistory: boolean;
   canSeeCosts: boolean;
+  /** The saved list, so a delivery's supplier is tapped rather than retyped. */
+  suppliers?: Supplier[];
   /**
    * May this person move stock, or only look at it?
    *
@@ -269,6 +282,21 @@ export function InventoryView({
       .filter((b) => !q || b.name.toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [batches, query]);
+
+  /**
+   * Searching looks in both lists at once.
+   *
+   * The tabs are the right way to BROWSE — an ingredient and a batch are
+   * different kinds of thing and a mixed list of 200 of them helps nobody.
+   * But searching is not browsing: somebody building a recipe is looking for
+   * "butter", and whether it turns out to be a shelf item or something the
+   * shop cooks is exactly what they do not know yet. Scoping the box to the
+   * open tab meant the answer was one tab away and silent about it.
+   *
+   * So while there is a query, both sections render, each labelled. The tabs
+   * come back the moment the box is cleared.
+   */
+  const searching = query.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-8">
@@ -497,8 +525,16 @@ export function InventoryView({
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
           {([
-            { key: "stock" as const, label: "Ingredients", n: stock.length },
-            { key: "batches" as const, label: "Batches", n: batches.length },
+            {
+              key: "stock" as const,
+              label: "Ingredients",
+              n: searching ? shownStock.length : stock.length,
+            },
+            {
+              key: "batches" as const,
+              label: "Batches",
+              n: searching ? shownBatches.length : batches.length,
+            },
           ]).map((t) => (
             <button
               key={t.key}
@@ -521,7 +557,7 @@ export function InventoryView({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={tab === "stock" ? "Search an ingredient…" : "Search a batch…"}
+            placeholder="Search ingredients and batches…"
             className="min-w-0 flex-1 rounded-xl bg-cream-100 px-4 py-2.5 text-sm text-ink-950 ring-1 ring-ink-950/10 placeholder:text-ink-800/40 focus:outline-none focus:ring-2 focus:ring-gold-400"
           />
           {tab === "stock" && (
@@ -584,7 +620,23 @@ export function InventoryView({
         )}
       </div>
 
-      {tab === "stock" ? (
+      {searching && (
+        <p className="text-sm text-ink-800/55">
+          Showing everything that matches{" "}
+          <strong className="text-ink-950">&ldquo;{query.trim()}&rdquo;</strong> —
+          ingredients and batches together, because a recipe is built from
+          both and which one a thing is isn&apos;t what you&apos;re searching
+          for.
+        </p>
+      )}
+
+      {searching && (
+        <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/45">
+          Ingredients · {shownStock.length}
+        </p>
+      )}
+
+      {searching || tab === "stock" ? (
         shownStock.length === 0 ? (
           <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
             {query ? `Nothing matches “${query}”.` : "Nothing to show."}
@@ -678,6 +730,16 @@ export function InventoryView({
                   >
                     Count
                   </button>
+                  {/* Count · Edit · History, in that order — what the shelf
+                      says, what the thing is, and why the number is what it
+                      is. The third was missing, so "where did 400g go" had no
+                      answer short of guessing. */}
+                  <button
+                    onClick={() => setEditing({ kind: "history", row: s })}
+                    className="rounded-xl bg-ink-950/5 px-3 py-2 text-xs font-bold text-ink-800/70 transition-colors hover:bg-ink-950/10"
+                  >
+                    History
+                  </button>
                   <button
                     onClick={() => setEditing({ kind: "edit", row: s })}
                     className="rounded-xl bg-ink-950/5 px-3 py-2 text-xs font-bold text-ink-800/70 transition-colors hover:bg-ink-950/10"
@@ -690,11 +752,24 @@ export function InventoryView({
             ))}
           </ul>
         )
-      ) : shownBatches.length === 0 ? (
-        <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-          {query ? `Nothing matches “${query}”.` : "No batches yet."}
+      ) : null}
+
+      {searching && (
+        <p className="mt-2 text-[11px] font-black uppercase tracking-widest text-ink-800/45">
+          Batches · {shownBatches.length}
         </p>
+      )}
+
+      {!searching && tab === "stock" ? null : shownBatches.length === 0 ? (
+        <div className="flex flex-col gap-3">
+          {canManage && <AddBatchButton onClick={() => setEditing({ kind: "new-batch" })} />}
+          <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
+            {query ? `Nothing matches “${query}”.` : "No batches yet."}
+          </p>
+        </div>
       ) : (
+        <div className="flex flex-col gap-3">
+        {canManage && <AddBatchButton onClick={() => setEditing({ kind: "new-batch" })} />}
         <ul className="grid gap-3 lg:grid-cols-2">
           {shownBatches.map((b) => {
             const low = b.reorder > 0 && b.stock <= b.reorder;
@@ -707,15 +782,29 @@ export function InventoryView({
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                   <p className="min-w-0 font-bold text-ink-950">{b.name}</p>
-                  <p className="shrink-0 text-sm tabular-nums text-ink-800/70">
-                    <strong
-                      className={`font-display text-base ${
-                        low ? "text-brand-600" : "text-ink-950"
-                      }`}
+                  <p className="flex shrink-0 items-baseline gap-2 text-sm tabular-nums text-ink-800/70">
+                    <span>
+                      <strong
+                        className={`font-display text-base ${
+                          low ? "text-brand-600" : "text-ink-950"
+                        }`}
+                      >
+                        {b.stock.toLocaleString("en-PH")}
+                      </strong>{" "}
+                      {b.yieldUnit} made
+                    </span>
+                    {/* Right beside the number it explains. A batch's stock
+                        moves for four different reasons — made, sold, drawn
+                        on by a bigger batch, thrown away — and until now the
+                        figure just changed with nothing saying which. */}
+                    <button
+                      onClick={() => setEditing({ kind: "batch-history", batch: b })}
+                      aria-label={`History for ${b.name}`}
+                      title="Why is it this much?"
+                      className="grid h-6 w-6 place-items-center rounded-full bg-ink-950/8 text-[11px] font-black text-ink-800/50 transition-colors hover:bg-ink-950 hover:text-cream-50"
                     >
-                      {b.stock.toLocaleString("en-PH")}
-                    </strong>{" "}
-                    {b.yieldUnit} made
+                      ↻
+                    </button>
                   </p>
                 </div>
 
@@ -777,12 +866,21 @@ export function InventoryView({
                       Recipe
                     </button>
                   )}
+                  {canManage && (
+                    <button
+                      onClick={() => setEditing({ kind: "batch-edit", batch: b })}
+                      className="rounded-xl bg-ink-950/5 px-3 py-2 text-xs font-bold text-ink-800/70 transition-colors hover:bg-ink-950/10"
+                    >
+                      Edit
+                    </button>
+                  )}
                 </div>
                 )}
               </li>
             );
           })}
         </ul>
+        </div>
       )}
 
       {/* Keyed on the row so opening a second ingredient's form resets every
@@ -824,11 +922,13 @@ export function InventoryView({
         <RestockForm
           key={editing.row.id}
           ingredient={editable(editing.row)}
+          suppliers={suppliers}
           onClose={() => setEditing(null)}
         />
       )}
       {editing?.kind === "count" && (
         <CountForm
+          onWaste={() => setEditing({ kind: "waste" })}
           key={editing.row.id}
           ingredient={editable(editing.row)}
           onClose={() => setEditing(null)}
@@ -845,7 +945,60 @@ export function InventoryView({
             stock: editing.batch.stock,
           }}
           recipe={editing.batch.recipe}
-          options={ingredientOptions}
+          // Batches as well: producing marinated ji pai draws down liquid
+          // butter, and the shortfall warning has to be able to see it.
+          options={[
+            ...ingredientOptions,
+            ...batches.map((b) => ({
+              id: b.id,
+              name: b.name,
+              unit: b.yieldUnit,
+              unitCost: b.perUnit,
+              kind: "batch" as const,
+              stock: b.stock,
+            })),
+          ]}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "history" && (
+        <IngredientHistoryDialog
+          key={editing.row.id}
+          row={{
+            id: editing.row.id,
+            name: editing.row.name,
+            stock: editing.row.stock,
+            unit: editing.row.unit,
+          }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "batch-edit" && (
+        <EditBatchForm
+          key={editing.batch.id}
+          batch={{
+            id: editing.batch.id,
+            name: editing.batch.name,
+            yieldQty: editing.batch.yieldQty,
+            yieldUnit: editing.batch.yieldUnit,
+            reorder: editing.batch.reorder,
+            stock: editing.batch.stock,
+          }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "new-batch" && (
+        <NewBatchForm onClose={() => setEditing(null)} />
+      )}
+      {editing?.kind === "batch-history" && (
+        <BatchHistoryDialog
+          key={editing.batch.id}
+          batch={{
+            id: editing.batch.id,
+            name: editing.batch.name,
+            stock: editing.batch.stock,
+            yieldUnit: editing.batch.yieldUnit,
+          }}
           onClose={() => setEditing(null)}
         />
       )}
@@ -855,10 +1008,25 @@ export function InventoryView({
           title={`Recipe for ${editing.batch.name}`}
           subtitle={`Makes ${editing.batch.yieldQty.toLocaleString("en-PH")} ${editing.batch.yieldUnit} a batch.`}
           price={null}
-          options={ingredientOptions}
+          options={[
+            ...ingredientOptions,
+            // A batch may be made of other batches — liquid butter inside
+            // marinated ji pai. Itself excluded: the database refuses that
+            // row anyway, and offering it is offering a mistake.
+            ...batches
+              .filter((b) => b.id !== editing.batch.id)
+              .map((b) => ({
+                id: b.id,
+                name: b.name,
+                unit: b.yieldUnit,
+                unitCost: b.perUnit,
+                kind: "batch" as const,
+                stock: b.stock,
+              })),
+          ]}
           initial={editing.batch.recipe.map((r) => ({
-            refType: "inv" as const,
-            refId: r.ingredientId,
+            refType: r.refType,
+            refId: r.refId,
             qty: r.qty,
           }))}
           target={{ kind: "batch", batchId: editing.batch.id }}

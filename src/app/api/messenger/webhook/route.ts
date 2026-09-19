@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { askAssistant, type ChatTurn } from "@/lib/assistant";
+import { notifyNeedsHuman } from "@/lib/notify";
 
 /**
  * Facebook Messenger webhook — "Ask Pepper Pan" on the shop's Page.
@@ -160,6 +161,13 @@ export async function POST(request: Request) {
           ...(reply.needsHuman ? { needs_human: true, handled: false } : {}),
         })
         .eq("id", threadId);
+
+      // Same handoff, same push. A Messenger question the assistant could
+      // not answer is exactly as urgent as one from the website, and it is
+      // the channel most likely to be read hours late.
+      if (reply.needsHuman && threadId) {
+        await notifyNeedsHuman({ threadId, question: text ?? "" });
+      }
 
       await sendToMessenger(senderId, reply.text);
     }

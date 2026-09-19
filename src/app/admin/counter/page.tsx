@@ -2,7 +2,7 @@ import { getViewer, isStaff } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CounterTill, type CounterMeal } from "@/components/counter-till";
 import { shopToday } from "@/lib/format-date";
-import { loadAvailability } from "@/lib/costing-server";
+import { loadStockPicture } from "@/lib/costing-server";
 import type { MenuCategory } from "@/lib/categories";
 
 // The menu can be 86'd mid-service from the Menu screen; a cached till would
@@ -36,9 +36,15 @@ export default async function AdminCounterPage() {
   ]);
   const categories = (catRows ?? []) as MenuCategory[];
 
-  const makeable = await loadAvailability();
+  const { makeable, limits } = await loadStockPicture();
   const rows: CounterMeal[] = ((meals ?? []) as CounterMeal[])
-    .map((m) => ({ ...m, makeable: makeable.get(m.id) ?? null }))
+    .map((m) => ({
+      ...m,
+      makeable: makeable.get(m.id) ?? null,
+      // Why, not just how many. A cashier with a customer in front of them
+      // needs to know what to go and fetch or cook.
+      limits: limits.get(m.id) ?? [],
+    }))
     .filter(
     // Sold out is sold out at the counter too — the whole point of 86ing
     // something is that nobody sells it. Hidden-from-the-website dishes stay,

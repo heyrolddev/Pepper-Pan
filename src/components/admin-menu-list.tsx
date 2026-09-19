@@ -37,15 +37,28 @@ export function AdminMenuList({
   // same rule the customer's menu uses. A back-office screen that disagrees
   // with the customer's about what is in Drinks is worse than no filter,
   // because the owner then fixes the wrong thing.
-  const shown = useMemo(
-    () =>
-      activeCategory
-        ? meals.filter((m) =>
-            (m.categories ?? []).some((c) => c.trim() === activeCategory)
-          )
-        : meals,
-    [meals, activeCategory]
-  );
+  const shown = useMemo(() => {
+    const list = activeCategory
+      ? meals.filter((m) =>
+          (m.categories ?? []).some((c) => c.trim() === activeCategory)
+        )
+      : meals;
+
+    /**
+     * Hidden dishes go last, always — browsing and searching alike.
+     *
+     * The menu is read to answer "what are customers seeing", and a hidden
+     * dish is not part of that answer. Mixed through the list they are rows
+     * the eye has to recognise and reject one at a time; at the bottom they
+     * are a group, still findable by typing "hidden", and out of the way of
+     * the job.
+     *
+     * Sold out sits between the two. It IS on the menu — the customer sees it
+     * greyed out, and it is the thing most likely to want turning back on.
+     */
+    const rank = (m: AdminMeal) => (!m.is_public ? 2 : !m.is_available ? 1 : 0);
+    return [...list].sort((a, b) => rank(a) - rank(b));
+  }, [meals, activeCategory]);
 
   return (
     <div className="flex flex-col gap-4">

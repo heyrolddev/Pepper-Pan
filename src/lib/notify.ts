@@ -286,3 +286,54 @@ export async function notifyNewOrder(orderId: string): Promise<void> {
     // missed ping; a thrown one would be a lost sale.
   }
 }
+
+/**
+ * A customer the assistant could not help.
+ *
+ * When the answer is "I'm not sure about that one — but the owner can answer
+ * it", a real person is waiting on a real question and nobody knows. The
+ * thread gets flagged `needs_human` and shows in the Inbox, which is perfect
+ * for somebody already looking at the Inbox and useless at seven in the
+ * evening with a wok in each hand.
+ *
+ * So it pushes. Collapsed per thread on purpose — the opposite call from a
+ * new order: five messages in one conversation are one person to ring back,
+ * and five buzzes for them would teach the shop to ignore the buzz.
+ */
+export async function notifyNeedsHuman(input: {
+  threadId: string;
+  /** What they actually asked, so the shop can judge whether to stop cooking. */
+  question: string;
+}): Promise<void> {
+  if (!pushConfigured()) return;
+
+  try {
+    const db = createAdminClient();
+    const { data: thread } = await db
+      .from("chat_threads")
+      .select("id, contact_name, handled, needs_human")
+      .eq("id", input.threadId)
+      .maybeSingle();
+
+    // Already flagged and already dealt with means somebody is on it. A push
+    // now would be telling them about their own reply.
+    if (thread?.handled) return;
+
+    const who = (thread?.contact_name ?? "").trim() || "Someone";
+    const asked = input.question.trim();
+    const short = asked.length > 90 ? `${asked.slice(0, 89)}…` : asked;
+
+    await pushToStaff({
+      title: `${who} needs a person`,
+      body: short || "The assistant couldn't answer their question.",
+      url: "/admin/inbox",
+      // One per conversation. A chat is a conversation, not a queue of
+      // separate things to do.
+      tag: `needs-human-${input.threadId}`,
+    });
+  } catch {
+    // The thread is already flagged and already in the Inbox. A silent
+    // notification is a missed ping; a thrown one would take the customer's
+    // reply down with it.
+  }
+}

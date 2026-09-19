@@ -9,12 +9,14 @@ import {
   recordRestock,
   saveIngredient,
 } from "@/app/admin/inventory/actions";
+import { quickAddSupplier } from "@/app/admin/suppliers/actions";
 import {
   PAID_FROM,
   PAID_FROM_HINTS,
   PAID_FROM_LABELS,
   type PaidFrom,
 } from "@/lib/money-accounts";
+import type { Supplier } from "@/lib/suppliers";
 
 export type EditableIngredient = {
   id: string;
@@ -328,14 +330,28 @@ function DeleteIngredient({
 
 export function RestockForm({
   ingredient,
+  suppliers = [],
   onClose,
 }: {
   ingredient: EditableIngredient;
+  /** The saved list, so a name is tapped rather than typed again. */
+  suppliers?: Supplier[];
   onClose: () => void;
 }) {
   const [qty, setQty] = useState("");
   const [paid, setPaid] = useState("");
   const [supplier, setSupplier] = useState("");
+  /**
+   * Which saved supplier this delivery came from, when it came from one.
+   *
+   * Both this and the free text go to the server. The text is what gets
+   * written into `purchase_log.supplier` and stays readable whatever later
+   * happens to the list; the id is what lets anything group by supplier at
+   * all — which was impossible while "Aling Nena", "aling nena" and "Nena"
+   * were three different suppliers.
+   */
+  const [supplierId, setSupplierId] = useState("");
+  const [addingSupplier, setAddingSupplier] = useState(false);
   const [expiry, setExpiry] = useState("");
   const [updateCost, setUpdateCost] = useState(true);
   // Cash by default because that is how a market run is actually paid for,
@@ -344,6 +360,14 @@ export function RestockForm({
   const [paidFrom, setPaidFrom] = useState<PaidFrom>("cash");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
+
+  // A name typed that matches nobody on the list. Case-insensitive, because
+  // "aling nena" and "Aling Nena" are the same person and offering to save
+  // the second one is how a list gets two of her.
+  const unsaved =
+    supplier.trim().length > 0 &&
+    !supplierId &&
+    !suppliers.some((sup) => sup.name.toLowerCase() === supplier.trim().toLowerCase());
 
   const q = Number(qty) || 0;
   const amount = Number(paid) || 0;
@@ -360,6 +384,7 @@ export function RestockForm({
         qty: q,
         amountPaid: amount,
         supplier,
+        supplierId: supplierId || null,
         expiryDate: expiry || null,
         updateStandardCost: updateCost,
         paidFrom,
@@ -458,14 +483,88 @@ export function RestockForm({
         </Field>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Supplier" hint="Optional.">
+          {/* Not inside a `Field`: that renders a <label>, and a <button>
+              inside a <label> is invalid nesting — the label takes over the
+              buttons' accessible name, and tapping a chip also focuses the
+              text box underneath it. Found by a test that could not locate
+              the chips by name at all. */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/60">
+              Supplier
+            </span>
+            {suppliers.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {suppliers
+                  .filter((sup) => sup.active)
+                  .slice(0, 8)
+                  .map((sup) => {
+                    const on = supplierId === sup.id;
+                    return (
+                      <button
+                        key={sup.id}
+                        type="button"
+                        onClick={() => {
+                          // Tapping fills the text too, so the row written to
+                          // `purchase_log` reads the same whether the name was
+                          // tapped or typed.
+                          setSupplierId(on ? "" : sup.id);
+                          setSupplier(on ? "" : sup.name);
+                        }}
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                          on
+                            ? "bg-ink-950 text-gold-400"
+                            : "bg-ink-950/5 text-ink-800/65 hover:bg-ink-950/10"
+                        }`}
+                      >
+                        {sup.name}
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
             <input
               value={supplier}
-              onChange={(e) => setSupplier(e.target.value)}
+              onChange={(e) => {
+                setSupplier(e.target.value);
+                // Typed over a tapped chip: the id no longer describes what
+                // the box says, so it goes rather than mislabelling the row.
+                setSupplierId("");
+              }}
               placeholder="e.g. Apalit market"
               className={inputClass}
             />
-          </Field>
+            {/* Typed a name nobody has saved? Offer to save it from here.
+                Sending somebody to another tab while they are holding a sack
+                of chicken is exactly how the free-text habit survives — which
+                is the habit the chips exist to replace. */}
+            {unsaved ? (
+              <button
+                type="button"
+                disabled={addingSupplier}
+                onClick={() =>
+                  startTransition(async () => {
+                    setAddingSupplier(true);
+                    const r = await quickAddSupplier(supplier.trim());
+                    setAddingSupplier(false);
+                    if (r.error) setError(r.error);
+                    else if (r.id) setSupplierId(r.id);
+                  })
+                }
+                className="self-start rounded-full bg-gold-400 px-3 py-1.5 text-xs font-bold text-ink-950 transition-colors hover:bg-gold-500 disabled:opacity-60"
+              >
+                {addingSupplier
+                  ? "Saving…"
+                  : `+ Save \u201C${supplier.trim()}\u201D to your suppliers`}
+              </button>
+            ) : (
+              <span className="text-xs text-ink-800/50">
+                {suppliers.length > 0
+                  ? "Tap one, or type a name that isn't on the list yet."
+                  : "Optional. Add them on the Suppliers tab and they'll be a tap next time."}
+              </span>
+            )}
+          </div>
+
           <Field label="Best before" hint="Optional. Used up first if set.">
             <input
               value={expiry}
@@ -505,9 +604,21 @@ export function RestockForm({
 
 export function CountForm({
   ingredient,
+  onWaste,
   onClose,
 }: {
   ingredient: EditableIngredient;
+  /**
+   * Switch to writing it off instead.
+   *
+   * Counting and writing off produce the same number on the shelf and mean
+   * completely different things to the books: a correction says the count was
+   * wrong, a write-off says the food was real and is gone. Only the second
+   * reaches spoilage, and spoilage is in the break-even sum. Somebody who
+   * counts a short shelf because that is the button in front of them has just
+   * made the shop's costs look better than they are.
+   */
+  onWaste?: () => void;
   onClose: () => void;
 }) {
   const [counted, setCounted] = useState("");
@@ -579,6 +690,28 @@ export function CountForm({
               — {variance < 0 ? "less" : "more"} than expected, worth{" "}
               {peso(Math.abs(impact))}.
             </span>
+
+            {/* The fork in the road, offered at the exact moment it matters:
+                the shelf is short and the person knows why. "It went off" and
+                "we miscounted" land in different places, and only the first
+                one reaches spoilage — which is in break-even. */}
+            {variance < 0 && onWaste && (
+              <div className="mt-3 border-t border-ink-950/10 pt-3">
+                <p className="text-xs leading-relaxed text-ink-800/70">
+                  Do you know where it went? If it spoiled, was thrown away or
+                  the shop ate it, write it off instead — a correction says the
+                  count was wrong, and only a write-off reaches your spoilage
+                  figure.
+                </p>
+                <button
+                  type="button"
+                  onClick={onWaste}
+                  className="mt-2 rounded-xl bg-brand-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-cream-50 transition-colors hover:bg-brand-700"
+                >
+                  Write it off instead →
+                </button>
+              </div>
+            )}
           </div>
         )}
 

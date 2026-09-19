@@ -120,11 +120,15 @@ export async function loadInsight(
   const batchById = new Map(batches.map((b) => [b.id, b]));
   const usesIngredient = new Map<string, Batch[]>();
   for (const bi of batchIngredients) {
+    // Only the shelf lines. A batch drawing on another batch does not consume
+    // an ingredient directly — the sub-batch already did that when it was
+    // made, and counting it here would attribute the same gram twice.
+    if (bi.ref_type !== "inv") continue;
     const b = batchById.get(bi.batch_id);
     if (!b) continue;
-    const list = usesIngredient.get(bi.ingredient_id) ?? [];
+    const list = usesIngredient.get(bi.ref_id) ?? [];
     list.push(b);
-    usesIngredient.set(bi.ingredient_id, list);
+    usesIngredient.set(bi.ref_id, list);
   }
 
   const suggestions: Suggestion[] = [];
@@ -272,7 +276,7 @@ export async function runHealthCheck(): Promise<HealthIssue[]> {
     supabase.from("ingredients").select("id"),
     supabase.from("batches").select("id, name"),
     supabase.from("meals").select("id, name"),
-    supabase.from("batch_ingredients").select("batch_id, ingredient_id"),
+    supabase.from("batch_ingredients").select("batch_id, ref_type, ref_id"),
     supabase.from("meal_ingredients").select("meal_id, ref_type, ref_id"),
     supabase.from("meal_components").select("meal_id, component_meal_id"),
   ]);
@@ -287,11 +291,19 @@ export async function runHealthCheck(): Promise<HealthIssue[]> {
 
   const issues: HealthIssue[] = [];
 
-  for (const r of (batIng.data ?? []) as { batch_id: string; ingredient_id: string }[]) {
-    if (!ingIds.has(r.ingredient_id)) {
+  for (const r of (batIng.data ?? []) as {
+    batch_id: string;
+    ref_type: string;
+    ref_id: string;
+  }[]) {
+    const missing =
+      r.ref_type === "batch" ? !batchName.has(r.ref_id) : !ingIds.has(r.ref_id);
+    if (missing) {
       issues.push({
         kind: "Batch recipe",
-        detail: `"${batchName.get(r.batch_id) ?? r.batch_id}" uses an ingredient that no longer exists.`,
+        detail:
+          `"${batchName.get(r.batch_id) ?? r.batch_id}" uses ` +
+          `${r.ref_type === "batch" ? "a batch" : "an ingredient"} that no longer exists.`,
       });
     }
   }

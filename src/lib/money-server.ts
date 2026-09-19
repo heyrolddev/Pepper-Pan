@@ -1,6 +1,14 @@
 import "server-only";
 import { orderLabel } from "@/lib/tickets";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { newestFirst } from "@/lib/ledger-order";
+import {
+  monthlyRunningRate,
+  tankLife,
+  type RunningCost,
+  type SpendKind,
+  type TankLife,
+} from "@/lib/spending";
 
 /**
  * What the shop actually earns.
@@ -42,7 +50,28 @@ export type LedgerEntry = {
   derived?: boolean;
   /** Who was on the till. Only ever set on a derived line. */
   by?: string | null;
+  /**
+   * When it was written, to the second.
+   *
+   * Only ever a tie-breaker for reading order inside one day — `date` remains
+   * the accounting day and every balance is computed from that. Absent on
+   * rows written before migration 0045, which sort last within their day
+   * rather than wrongly first.
+   */
+  at?: string | null;
 };
+/** A delivery or a purchase taken on utang, and how much of it is still owed. */
+export type Debt = {
+  id: string;
+  supplierName: string | null;
+  description: string;
+  amount: number;
+  paid: number;
+  incurredOn: string;
+  source: string;
+  note: string | null;
+};
+
 export type Receivable = {
   id: string;
   date: string;
@@ -64,6 +93,20 @@ export type MoneyPicture = {
   marginRatio: number | null;
   /** Waste and internal use, as a monthly rate — an ongoing cost to cover. */
   monthlyWasteRate: number;
+  /**
+   * Supplies, gas and repairs, as a monthly rate.
+   *
+   * Break-even was computed from fixed costs and spoilage alone, which left
+   * everything the shop consumes but does not cook out of the sum entirely —
+   * paper towels, alcohol, a gas refill, a wok repair. The figure was
+   * therefore too low, every day, and nothing on screen could have shown it
+   * because the sum it appeared in was self-consistent.
+   */
+  monthlyRunningRate: number;
+  runningCosts: RunningCost[];
+  runningForWindow: number;
+  /** How long each size of gas tank actually lasts this shop. */
+  tanks: TankLife[];
   /** Sales a day needed to cover everything. Null when it can't be worked out. */
   breakEvenDaily: number | null;
   /** What the shop actually averages a day, over the same window. */
@@ -99,6 +142,17 @@ export type MoneyPicture = {
   receivables: Receivable[];
   owed: number;
 
+  /**
+   * What the shop owes its suppliers — the opposite direction to `owed`.
+   *
+   * `totalHeld` does not subtract it, deliberately: the pesos really are in
+   * the drawer, and a balance that quietly nets off a debt can no longer be
+   * checked against a physical count. The screen shows both figures and the
+   * subtraction, so the owner sees what is there and what is actually theirs.
+   */
+  debts: Debt[];
+  owedToSuppliers: number;
+
   assets: Asset[];
   assetTotal: number;
   payback: { from: string | null; earned: number; pct: number; paidOff: boolean } | null;
@@ -106,11 +160,25 @@ export type MoneyPicture = {
 
 const WINDOW_DAYS = 30;
 
+/**
+ * How far back to read gas refills.
+ *
+ * Longer than the break-even window because the two answer different
+ * questions. Break-even wants recent spending; "how long does a tank last"
+ * wants enough refills to have an interval at all, and at roughly three
+ * weeks a tank, thirty days is barely more than one.
+ */
+const GAS_WINDOW_DAYS = 180;
+
 export async function loadMoney(): Promise<MoneyPicture> {
   const supabase = createAdminClient();
   const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000)
     .toISOString()
     .slice(0, 10);
+  const gasSince = new Date(Date.now() - GAS_WINDOW_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
 
   const [
     { data: costs },
@@ -120,10 +188,18 @@ export async function loadMoney(): Promise<MoneyPicture> {
     { data: settingsRow },
     { data: orderRows },
     { data: wasteRows },
+    { data: runningRows },
+    { data: gasRows },
+    { data: debtRows },
   ] = await Promise.all([
     supabase.from("fixed_costs").select("*").order("amount", { ascending: false }),
     supabase.from("assets").select("*").order("created_at", { ascending: false }),
-    supabase.from("cash_ledger").select("*").order("date", { ascending: false }).limit(100),
+    supabase
+      .from("cash_ledger")
+      .select("*")
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(100),
     supabase.from("receivables").select("*").order("date", { ascending: false }).limit(100),
     supabase
       .from("settings")
@@ -137,6 +213,27 @@ export async function loadMoney(): Promise<MoneyPicture> {
       .select("date, revenue, cogs, status, payment_method")
       .gte("date", since),
     supabase.from("waste_log").select("date, total_cost").gte("date", since),
+    // Supplies, gas and repairs over the same window the margin is measured
+    // in, so break-even adds like-for-like figures.
+    supabase
+      .from("running_costs")
+      .select("id, label, kind, amount, size_label, spent_on, note, suppliers(name)")
+      .gte("spent_on", since)
+      .order("spent_on", { ascending: false }),
+    // Gas goes back further than the break-even window on purpose: two
+    // refills is the minimum that says anything about how long a tank lasts,
+    // and at three weeks a tank that is barely two windows old.
+    supabase
+      .from("running_costs")
+      .select("id, label, kind, amount, size_label, spent_on")
+      .eq("kind", "gas")
+      .gte("spent_on", gasSince)
+      .order("spent_on", { ascending: false }),
+    supabase
+      .from("supplier_debts")
+      .select("id, supplier_name, description, amount, paid, incurred_on, source, note")
+      .order("incurred_on", { ascending: false })
+      .limit(100),
   ]);
 
   const fixedCosts: FixedCost[] = ((costs ?? []) as FixedCost[]).map((c) => ({
@@ -177,19 +274,85 @@ export async function loadMoney(): Promise<MoneyPicture> {
   // one-off — the same treatment rent gets.
   const monthlyWasteRate = (wasteForWindow / windowDays) * 30;
 
+  /**
+   * Supplies, gas and repairs — the third thing break-even has to cover.
+   *
+   * Mapped out of the join shape Supabase returns rather than used raw, so
+   * `tankLife` and everything downstream see one flat type whatever the query
+   * happens to look like.
+   */
+  const runningCosts: RunningCost[] = (
+    (runningRows ?? []) as {
+      id: string;
+      label: string;
+      kind: string;
+      amount: number;
+      size_label: string | null;
+      spent_on: string;
+      note: string | null;
+      suppliers: { name: string } | { name: string }[] | null;
+    }[]
+  ).map((r) => ({
+    id: r.id,
+    label: r.label,
+    kind: r.kind as SpendKind,
+    amount: Number(r.amount) || 0,
+    sizeLabel: r.size_label,
+    spentOn: r.spent_on,
+    supplierName: Array.isArray(r.suppliers)
+      ? (r.suppliers[0]?.name ?? null)
+      : (r.suppliers?.name ?? null),
+    note: r.note,
+  }));
+  const runningForWindow = runningCosts.reduce((s, r) => s + r.amount, 0);
+  // Scaled by the calendar window it was measured over, not by trading days —
+  // see `monthlyRunningRate` for why these two differ from spoilage.
+  const monthlyRunning = monthlyRunningRate(runningCosts, WINDOW_DAYS);
+
+  const tanks = tankLife(
+    ((gasRows ?? []) as {
+      id: string;
+      label: string;
+      kind: string;
+      amount: number;
+      size_label: string | null;
+      spent_on: string;
+    }[]).map((r) => ({
+      id: r.id,
+      label: r.label,
+      kind: "gas" as const,
+      amount: Number(r.amount) || 0,
+      sizeLabel: r.size_label,
+      spentOn: r.spent_on,
+      supplierName: null,
+      note: null,
+    })),
+    today
+  );
+
   const marginRatio = revenue > 0 ? grossProfit / revenue : null;
+  // Three things to cover now, not two. Running costs were missing entirely,
+  // which made this figure lower than the truth every single day — and
+  // invisibly so, because the sum was internally consistent.
   const breakEvenDaily =
     marginRatio !== null && marginRatio > 0 && monthlyFixed > 0
-      ? (monthlyFixed + monthlyWasteRate) / marginRatio / openDays
+      ? (monthlyFixed + monthlyWasteRate + monthlyRunning) / marginRatio / openDays
       : null;
 
   const oeForWindow = dailyOE * windowDays;
-  const netProfit = grossProfit - oeForWindow - wasteForWindow;
+  // Running costs come out here as well. They were spent in this window and
+  // nothing was left of them, which is exactly what a cost is.
+  const netProfit = grossProfit - oeForWindow - wasteForWindow - runningForWindow;
 
   // ---- cash ------------------------------------------------------------
-  const typedIn: LedgerEntry[] = ((ledgerRows ?? []) as LedgerEntry[]).map((l) => ({
+  const typedIn: LedgerEntry[] = (
+    (ledgerRows ?? []) as (LedgerEntry & { created_at?: string })[]
+  ).map((l) => ({
     ...l,
     amount: Number(l.amount) || 0,
+    // Migration 0045. Null on every row written before it, which sorts those
+    // last within their day rather than wrongly first.
+    at: l.created_at ?? null,
   }));
   const cashEnabled = Boolean(settingsRow?.cash_balance_enabled);
   const startedOn = settingsRow?.cash_balance_start_date ?? null;
@@ -311,7 +474,9 @@ export async function loadMoney(): Promise<MoneyPicture> {
   if (cashEnabled && startedOn) {
     const { data: cashOrders } = await supabase
       .from("orders")
-      .select("id, ticket, date, revenue, status, contact_name, logged_by, tag, cancelled_by")
+      .select(
+        "id, ticket, date, revenue, status, contact_name, logged_by, tag, cancelled_by, created_at"
+      )
       .gte("date", startedOn)
       .eq("payment_method", "cod")
       .order("date", { ascending: false })
@@ -327,6 +492,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
       logged_by: string | null;
       tag: string | null;
       cancelled_by: string | null;
+      created_at: string;
     }[];
 
     // Who cancelled, by name. `cancelled_by` is stamped at the moment of
@@ -375,6 +541,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
                   : ""),
               derived: true,
               by: o.cancelled_by ? (cancellerName.get(o.cancelled_by) ?? null) : null,
+              at: o.created_at,
             }
           : {
               id: `order-${o.id}`,
@@ -386,17 +553,22 @@ export async function loadMoney(): Promise<MoneyPicture> {
               note: `${what}${who ? ` · took by ${who}` : ""}`,
               derived: true,
               by: who,
+              at: o.created_at,
             }
       );
     }
   }
 
-  // Newest first, the same order the panel already read in. Sorted on the
-  // date string because these are dates, not timestamps — ISO dates sort
-  // correctly as text, which is the one thing that makes this cheap.
-  const ledger: LedgerEntry[] = [...typedIn, ...derivedLines].sort((a, b) =>
-    a.date < b.date ? 1 : a.date > b.date ? -1 : 0
-  );
+  /**
+   * Newest first — and within a day, newest first too.
+   *
+   * `newestFirst` and its reasoning live in `lib/ledger-order.ts` so the
+   * comparator that got this wrong can be tested on its own. The short of it:
+   * sorting on `date` alone tied every line written on the same day, and a
+   * stable sort then read them back in assembly order — every typed row
+   * first, every sale second, whatever time either happened.
+   */
+  const ledger: LedgerEntry[] = [...typedIn, ...derivedLines].sort(newestFirst);
 
   // ---- utang -----------------------------------------------------------
   const receivables: Receivable[] = ((receivableRows ?? []) as {
@@ -421,6 +593,28 @@ export async function loadMoney(): Promise<MoneyPicture> {
   const owed = receivables
     .filter((r) => !r.settled)
     .reduce((s, r) => s + (r.amount - r.collected), 0);
+
+  // ---- what the shop owes ----------------------------------------------
+  const debts: Debt[] = ((debtRows ?? []) as {
+    id: string;
+    supplier_name: string | null;
+    description: string;
+    amount: number;
+    paid: number;
+    incurred_on: string;
+    source: string;
+    note: string | null;
+  }[]).map((d) => ({
+    id: d.id,
+    supplierName: d.supplier_name,
+    description: d.description,
+    amount: Number(d.amount) || 0,
+    paid: Number(d.paid) || 0,
+    incurredOn: d.incurred_on,
+    source: d.source,
+    note: d.note,
+  }));
+  const owedToSuppliers = debts.reduce((s, d) => s + Math.max(0, d.amount - d.paid), 0);
 
   // ---- payback ---------------------------------------------------------
   const assets: Asset[] = ((assetRows ?? []) as {
@@ -504,9 +698,15 @@ export async function loadMoney(): Promise<MoneyPicture> {
       (cashEnabled ? onHand : 0) +
       (gcashEnabled ? gcashOnHand : 0) +
       (bankEnabled ? bankOnHand : 0),
+    monthlyRunningRate: monthlyRunning,
+    runningCosts,
+    runningForWindow,
+    tanks,
     ledger,
     receivables,
     owed,
+    debts,
+    owedToSuppliers,
     assets,
     assetTotal,
     payback,

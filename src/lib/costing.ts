@@ -44,7 +44,10 @@ export type Batch = {
 
 export type BatchIngredient = {
   batch_id: string;
-  ingredient_id: string;
+  /** 'inv' for something off the shelf, 'batch' for another batch. */
+  ref_type: string;
+  /** An ingredients.id or a batches.id, per `ref_type`. */
+  ref_id: string;
   qty: number;
 };
 
@@ -119,10 +122,30 @@ function safeDiv(total: number, by: number): number | null {
 }
 
 /**
- * Price every batch.
+ * Price every batch, including the ones made out of other batches.
  *
- * Batches only ever contain ingredients, never other batches, so there's no
- * recursion to worry about here — a single pass is enough.
+ * Liquid butter is a batch. Marinated ji pai is a batch made WITH the liquid
+ * butter. So the cost per unit of ji pai depends on the cost per unit of
+ * butter, and the butter has to be priced first.
+ *
+ * This used to be a single flat pass, correctly, because `batch_ingredients`
+ * could only point at ingredients. Migration 0046 changed that, and two
+ * things then have to be handled or the screen either shows a wrong number or
+ * hangs:
+ *
+ *   ORDER. A batch must be costed after everything it draws on. Done by
+ *   resolving on demand and memoising rather than by sorting the graph first:
+ *   the recursion visits exactly what it needs, in the only order that works,
+ *   and a batch nothing depends on costs itself.
+ *
+ *   CYCLES. Butter uses ji pai uses butter. However it got entered — two
+ *   people editing, or a rename — it must not hang the page. `visiting` is
+ *   the guard: a batch already on the stack stops the descent, contributes
+ *   nothing, and says so as a problem rather than as a silent zero.
+ *
+ * The database refuses the direct case (a batch listing itself) in 0046. This
+ * catches the transitive one, which is the only place the whole graph is
+ * visible at once.
  */
 export function costBatches(
   batches: Batch[],
@@ -130,6 +153,7 @@ export function costBatches(
   ingredients: Ingredient[]
 ): Map<string, BatchCost> {
   const byId = new Map(ingredients.map((i) => [i.id, i]));
+  const batchById = new Map(batches.map((b) => [b.id, b]));
   const linesFor = new Map<string, BatchIngredient[]>();
   for (const bi of batchIngredients) {
     const list = linesFor.get(bi.batch_id) ?? [];
@@ -138,25 +162,83 @@ export function costBatches(
   }
 
   const out = new Map<string, BatchCost>();
-  for (const batch of batches) {
-    const raw = linesFor.get(batch.id) ?? [];
+  // On the stack right now. Not the same as "already done" — a diamond
+  // (two batches both using the butter) is perfectly fine and must not be
+  // mistaken for a loop.
+  const visiting = new Set<string>();
+
+  function resolve(id: string): BatchCost | null {
+    const done = out.get(id);
+    if (done) return done;
+    const batch = batchById.get(id);
+    if (!batch) return null;
+    if (visiting.has(id)) return null; // a cycle; the caller reports it
+    visiting.add(id);
+
+    const raw = linesFor.get(id) ?? [];
     const problems: string[] = [];
+
     const lines: CostLine[] = raw.map((bi) => {
-      const ing = byId.get(bi.ingredient_id);
+      const qty = Number(bi.qty) || 0;
+
+      if (bi.ref_type === "batch") {
+        const sub = batchById.get(bi.ref_id);
+        if (!sub) {
+          problems.push("A line in this batch points at a deleted batch.");
+          return {
+            label: "Deleted batch",
+            kind: "batch" as const,
+            qty,
+            unit: "",
+            unitCost: 0,
+            cost: 0,
+            problem: "Batch no longer exists",
+          };
+        }
+        const cost = resolve(bi.ref_id);
+        if (cost === null) {
+          // Only reachable through a cycle: `sub` exists, so `resolve` can
+          // only decline because this batch is already on the stack.
+          problems.push(
+            `"${sub.name}" and this batch are made of each other, so neither can be priced.`
+          );
+          return {
+            label: sub.name,
+            kind: "batch" as const,
+            qty,
+            unit: sub.yield_unit,
+            unitCost: 0,
+            cost: 0,
+            problem: "Circular recipe",
+          };
+        }
+        if (cost.unknown) {
+          problems.push(`"${sub.name}" has no price of its own yet.`);
+        }
+        return {
+          label: sub.name,
+          kind: "batch" as const,
+          qty,
+          unit: sub.yield_unit,
+          unitCost: cost.perUnit,
+          cost: qty * cost.perUnit,
+          problem: cost.perUnit > 0 ? null : "No price yet",
+        };
+      }
+
+      const ing = byId.get(bi.ref_id);
       if (!ing) {
-        const problem = "Ingredient no longer exists";
-        problems.push(`A line in this batch points at a deleted ingredient.`);
+        problems.push("A line in this batch points at a deleted ingredient.");
         return {
           label: "Deleted ingredient",
           kind: "ingredient" as const,
-          qty: Number(bi.qty) || 0,
+          qty,
           unit: "",
           unitCost: 0,
           cost: 0,
-          problem,
+          problem: "Ingredient no longer exists",
         };
       }
-      const qty = Number(bi.qty) || 0;
       const unitCost = Number(ing.cost) || 0;
       if (unitCost <= 0) problems.push(`${ing.name} has no purchase price set.`);
       return {
@@ -176,35 +258,41 @@ export function costBatches(
     // design, and its cost is typed in directly. Checked first, or a repack
     // would be reported as an empty batch.
     const manual = batch.manual_cost_per_unit;
+    let result: BatchCost;
     if (manual !== null && manual !== undefined && Number(manual) > 0) {
-      out.set(batch.id, {
+      result = {
         batch,
         total: Number(manual) * (Number(batch.yield_qty) || 0),
         perUnit: Number(manual),
         lines,
         unknown: false,
         problems,
-      });
-      continue;
+      };
+    } else {
+      const perUnit = safeDiv(total, Number(batch.yield_qty) || 0);
+      if (perUnit === null) {
+        problems.push(
+          raw.length === 0
+            ? "No recipe entered for this batch."
+            : "Yield is zero, so a per-gram cost can't be worked out."
+        );
+      }
+      result = {
+        batch,
+        total,
+        perUnit: perUnit ?? 0,
+        lines,
+        unknown: perUnit === null || raw.length === 0,
+        problems,
+      };
     }
 
-    const perUnit = safeDiv(total, Number(batch.yield_qty) || 0);
-    if (perUnit === null) {
-      problems.push(
-        raw.length === 0
-          ? "No recipe entered for this batch."
-          : "Yield is zero, so a per-gram cost can't be worked out."
-      );
-    }
-    out.set(batch.id, {
-      batch,
-      total,
-      perUnit: perUnit ?? 0,
-      lines,
-      unknown: perUnit === null || raw.length === 0,
-      problems,
-    });
+    visiting.delete(id);
+    out.set(id, result);
+    return result;
   }
+
+  for (const batch of batches) resolve(batch.id);
   return out;
 }
 
@@ -615,3 +703,97 @@ export function makeableServings(
 
 /** Runs low before it runs out, so the shop gets a warning rather than a wall. */
 export const LOW_STOCK_SERVINGS = 3;
+
+/**
+ * What is actually holding a dish back.
+ *
+ * `makeableServings` answers "how many" and stops there, which is the wrong
+ * place to stop at a counter. A cashier looking at a NO STOCK badge has a
+ * customer in front of them and one question: *what* are we out of, and can
+ * somebody go and make it. "No stock" answers neither, so the badge gets
+ * ignored and the shop sells something it cannot cook.
+ *
+ * Returns every line of the recipe against what is on hand, tightest first,
+ * so the thing to go and fix is at the top. Combos are flattened into their
+ * parts: the cashier does not care that the shortage is two dishes down, only
+ * that the marinade has run out.
+ *
+ * Deliberately NOT recursive into a batch's own recipe. A batch that has run
+ * out has run out — whether there are ingredients to make more of it is the
+ * kitchen's next question, not the counter's, and answering it here would put
+ * "we could make more sauce" in front of somebody who needs to say yes or no
+ * to a customer right now.
+ */
+export type Shortfall = {
+  label: string;
+  kind: "ingredient" | "batch";
+  unit: string;
+  /** How much one serving of the dish needs. */
+  need: number;
+  /** How much is on the shelf. */
+  have: number;
+  /** Servings this line alone allows. */
+  allows: number;
+};
+
+export function limitingFor(
+  mealId: string,
+  mealIngredients: MealIngredient[],
+  mealComponents: MealComponent[],
+  ingredients: Ingredient[],
+  batches: Batch[],
+  seen: Set<string> = new Set()
+): Shortfall[] {
+  if (seen.has(mealId)) return [];
+  const next = new Set([...seen, mealId]);
+
+  const ingById = new Map(ingredients.map((i) => [i.id, i]));
+  const batchById = new Map(batches.map((b) => [b.id, b]));
+
+  const out: Shortfall[] = [];
+
+  for (const line of mealIngredients.filter((mi) => mi.meal_id === mealId)) {
+    const need = Number(line.qty) || 0;
+    if (need <= 0) continue;
+    const isBatch = line.ref_type === "batch";
+    const thing = isBatch ? batchById.get(line.ref_id) : ingById.get(line.ref_id);
+    // A line pointing at something deleted is a broken recipe, not an empty
+    // shelf — the costing screens name it, and it must not read here as a
+    // shortage of a thing with no name.
+    if (!thing) continue;
+    const have = isBatch
+      ? Number((thing as Batch).batch_stock) || 0
+      : Number((thing as Ingredient).stock) || 0;
+    out.push({
+      label: thing.name,
+      kind: isBatch ? "batch" : "ingredient",
+      unit: isBatch ? (thing as Batch).yield_unit : (thing as Ingredient).unit,
+      need,
+      have,
+      allows: Math.floor(have / need),
+    });
+  }
+
+  for (const part of mealComponents.filter((mc) => mc.meal_id === mealId)) {
+    const qty = Number(part.qty) || 0;
+    if (qty <= 0) continue;
+    // A combo needs `qty` of the child per serving, so each of the child's
+    // own limits is divided down before it is compared with the rest.
+    for (const inner of limitingFor(
+      part.component_meal_id,
+      mealIngredients,
+      mealComponents,
+      ingredients,
+      batches,
+      next
+    )) {
+      out.push({
+        ...inner,
+        need: inner.need * qty,
+        allows: Math.floor(inner.have / (inner.need * qty)),
+      });
+    }
+  }
+
+  return out.sort((a, b) => a.allows - b.allows);
+}

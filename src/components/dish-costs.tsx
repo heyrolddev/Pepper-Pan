@@ -6,6 +6,8 @@ import { peso, FOOD_COST_TARGET, type Margin } from "@/lib/costing";
 import { RecipeEditor, type RecipeOption } from "@/components/recipe-editor";
 import { NewDishDialog } from "@/components/new-dish-dialog";
 import { setMealOnMenu } from "@/app/admin/menu/actions";
+import { duplicateDish } from "@/app/admin/costing/actions";
+import { AdminDialog } from "@/components/admin-dialog";
 import { MENU_CLASS, type MenuClass } from "@/lib/costing";
 import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
 import { hqTitle } from "@/lib/hq-theme";
@@ -197,6 +199,7 @@ export function DishCosts({
   const [editing, setEditing] = useState<DishRow | null>(null);
   // Which editor is open on a dish: its recipe, or what it travels in.
   const [editingWhat, setEditingWhat] = useState<"recipe" | "packaging">("recipe");
+  const [copying, setCopying] = useState<DishRow | null>(null);
   const [editingOrderPackaging, setEditingOrderPackaging] = useState(false);
   const [adding, setAdding] = useState(false);
 
@@ -244,9 +247,19 @@ export function DishCosts({
       return true;
     });
 
-    // Dishes with no recipe have no percentage to sort by, so they sit at the
-    // end of every money ordering rather than pretending to be 0%.
-    const bucket = (d: DishRow) => (d.costed && d.price > 0 ? 0 : 1);
+    /**
+     * Two things push a dish to the bottom, in this order.
+     *
+     * Not on the menu goes furthest down. A hidden dish is not part of the
+     * decision being made on this screen — nobody is repricing something
+     * customers cannot buy — and a handful of them mixed through the list is
+     * a handful of rows the eye has to reject one at a time, every time.
+     *
+     * Then no recipe: there is no percentage to sort by, so it sits at the
+     * end of every money ordering rather than pretending to be 0%.
+     */
+    const bucket = (d: DishRow) =>
+      (d.onMenu ? 0 : 2) + (d.costed && d.price > 0 ? 0 : 1);
     list = [...list].sort((a, b) => {
       const ba = bucket(a) - bucket(b);
       if (ba !== 0) return ba;
@@ -709,6 +722,18 @@ export function DishCosts({
                           ? "Add take-out packaging"
                           : `Packaging (${d.packaging.length})`}
                       </button>
+                      {/* Most new dishes here are a variation on one that
+                          already works — same noodles, different sauce.
+                          Re-entering thirteen lines to change two of them is
+                          thirteen chances to mistype a quantity, and the new
+                          dish's margin is then wrong from the day it exists
+                          with nothing saying what it was copied from. */}
+                      <button
+                        onClick={() => setCopying(d)}
+                        className="rounded-xl bg-ink-950/5 px-4 py-2.5 text-sm font-bold text-ink-800/70 transition-colors hover:bg-ink-950/10"
+                      >
+                        Duplicate
+                      </button>
 
                       {/* The end of the road that starts with "+ Add a dish".
                           Offered plainly once there is a recipe, and held back
@@ -751,6 +776,13 @@ export function DishCosts({
         </ul>
       )}
 
+      {copying && (
+        <DuplicateDishDialog
+          key={copying.id}
+          from={{ id: copying.id, name: copying.name, lines: copying.recipe.length }}
+          onClose={() => setCopying(null)}
+        />
+      )}
       {editing && editingWhat === "recipe" && (
         <RecipeEditor
           key={`r-${editing.id}`}
@@ -808,5 +840,93 @@ export function DishCosts({
         it, there&apos;s room for everything else.
       </p>
     </div>
+  );
+}
+
+/**
+ * A new dish that starts as a copy.
+ *
+ * Asks for one thing — the name — because that is the only field the copy
+ * cannot guess and the only one that must differ. Everything else is taken
+ * from the original and then edited, which is the whole point.
+ *
+ * Says out loud what it will and will not bring across. A copy that silently
+ * carried the original's photo would put a picture of the wrong food on the
+ * menu, and one that silently went live would show customers an exact twin of
+ * an existing dish at the same price for as long as it took to change the
+ * sauce.
+ */
+function DuplicateDishDialog({
+  from,
+  onClose,
+}: {
+  from: { id: string; name: string; lines: number };
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(`${from.name} (copy)`);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const r = await duplicateDish({ mealId: from.id, name });
+      if (r.error !== null) {
+        setError(r.error);
+        return;
+      }
+      onClose();
+    });
+  }
+
+  return (
+    <AdminDialog
+      title={`Copy ${from.name}`}
+      subtitle="Same recipe, same packaging, same price — then change what's different."
+      onClose={onClose}
+      busy={busy}
+    >
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/60">
+            What&apos;s the new one called
+          </span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            className="w-full rounded-xl bg-cream-50 px-3 py-2.5 text-sm font-semibold text-ink-950 ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
+          />
+        </label>
+
+        <ul className="flex flex-col gap-1 rounded-2xl bg-cream-100 px-4 py-3 text-sm text-ink-800/75">
+          <li>
+            ✓ {from.lines} recipe line{from.lines === 1 ? "" : "s"}, the
+            packaging, the price and the categories
+          </li>
+          <li className="text-ink-800/55">
+            ✗ No photo — it&apos;s a picture of the other dish
+          </li>
+          <li className="text-ink-800/55">
+            ✗ Not on the menu until you put it there
+          </li>
+        </ul>
+
+        {error && (
+          <p className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-cream-50">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={busy || !name.trim() || name.trim() === from.name}
+          className="w-full rounded-2xl bg-ink-950 py-3.5 font-display text-lg font-black text-cream-50 transition-colors hover:bg-ink-800 disabled:bg-ink-950/15 disabled:text-ink-800/40"
+        >
+          {busy ? "Copying…" : "Make the copy"}
+        </button>
+      </form>
+    </AdminDialog>
   );
 }

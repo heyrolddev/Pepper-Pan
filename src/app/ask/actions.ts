@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { notifyNeedsHuman } from "@/lib/notify";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { askAssistant, type ChatTurn } from "@/lib/assistant";
@@ -160,6 +162,13 @@ export async function sendChatMessage(input: {
       ...(reply.needsHuman ? { needs_human: true, handled: false } : {}),
     })
     .eq("id", threadId);
+
+  // After the reply is saved and the flag is set, never before: the customer
+  // gets their answer whatever happens to the notification, and `after`
+  // returns the response first so nobody waits on a push round trip.
+  if (reply.needsHuman) {
+    after(() => notifyNeedsHuman({ threadId: threadId!, question: message }));
+  }
 
   revalidatePath("/admin/inbox");
   return { reply: reply.text, needsHuman: reply.needsHuman, error: null };
