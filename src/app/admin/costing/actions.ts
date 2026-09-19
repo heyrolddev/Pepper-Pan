@@ -73,3 +73,110 @@ export async function setDishPrice(input: {
   revalidatePath("/admin/counter");
   return { error: null };
 }
+
+/**
+ * A new dish that starts as a copy of one that already works.
+ *
+ * Most new dishes at this shop are a variation: the same noodles with a
+ * different sauce, the same ji pai with a different flavour. Building one
+ * from scratch means re-entering thirteen lines to change two of them, and
+ * every one of those thirteen is a chance to mistype a quantity — so the new
+ * dish's margin is wrong from the day it is created and nobody can tell,
+ * because nothing says what it was copied from.
+ *
+ * Takes the recipe, the packaging, the price and the categories. Deliberately
+ * leaves out two things.
+ *
+ * It is created HIDDEN, whatever the original was. A duplicate exists to be
+ * edited, and the seconds between "copy" and "change the sauce" are seconds
+ * in which the original's exact twin would be live on the homepage at the
+ * original's exact price.
+ *
+ * And it copies no image. The photo is of the dish that was copied, and a
+ * picture of the wrong food is worse on a menu than no picture at all.
+ */
+export async function duplicateDish(input: {
+  mealId: string;
+  name: string;
+}): Promise<Result & { id?: string }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "costs")) {
+    return { error: "Only the owner can add a dish." };
+  }
+
+  const name = input.name.trim();
+  if (!name) return { error: "What's the new one called?" };
+
+  const supabase = createAdminClient();
+  const { data: from } = await supabase
+    .from("meals")
+    .select("name, price, kind, categories")
+    .eq("id", input.mealId)
+    .maybeSingle();
+  if (!from) return { error: "That dish no longer exists." };
+
+  const { data: clash } = await supabase
+    .from("meals")
+    .select("id, name")
+    .ilike("name", name)
+    .maybeSingle();
+  if (clash) return { error: `You already have a dish called “${clash.name}”.` };
+
+  const { data: made, error: makeError } = await supabase
+    .from("meals")
+    .insert({
+      name,
+      price: from.price,
+      kind: from.kind,
+      categories: from.categories,
+      is_public: false,
+      is_available: true,
+    })
+    .select("id")
+    .single();
+  if (makeError || !made) {
+    return { error: makeError?.message ?? "Could not create it." };
+  }
+  const id = made.id as string;
+
+  // Recipe and packaging, read then rewritten under the new id. Copied after
+  // the dish exists so a failure here leaves a hidden dish with no recipe —
+  // visibly incomplete on the costing screen, which already flags exactly
+  // that — rather than orphan recipe rows pointing at nothing.
+  const [{ data: recipe }, { data: packaging }] = await Promise.all([
+    supabase
+      .from("meal_ingredients")
+      .select("ref_type, ref_id, qty")
+      .eq("meal_id", input.mealId),
+    supabase
+      .from("meal_packaging")
+      .select("ref_type, ref_id, qty")
+      .eq("meal_id", input.mealId),
+  ]);
+
+  const lines = (recipe ?? []) as { ref_type: string; ref_id: string; qty: number }[];
+  if (lines.length > 0) {
+    await supabase
+      .from("meal_ingredients")
+      .insert(lines.map((l) => ({ ...l, meal_id: id })));
+  }
+  const packs = (packaging ?? []) as { ref_type: string; ref_id: string; qty: number }[];
+  if (packs.length > 0) {
+    await supabase
+      .from("meal_packaging")
+      .insert(packs.map((l) => ({ ...l, meal_id: id })));
+  }
+
+  await supabase.from("activity_log").insert({
+    category: "menu",
+    description:
+      `Copied "${from.name}" into "${name}" — ${lines.length} recipe line` +
+      `${lines.length === 1 ? "" : "s"} and ${packs.length} packaging line` +
+      `${packs.length === 1 ? "" : "s"}. Hidden until you put it on the menu.`,
+    actor: viewer?.profile?.id ?? null,
+  });
+
+  revalidatePath("/admin/costing");
+  revalidatePath("/admin/menu");
+  return { error: null, id };
+}

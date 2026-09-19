@@ -138,6 +138,39 @@ export function RecipeEditor({
   return (
     <AdminDialog title={title} subtitle={subtitle} onClose={onClose} busy={busy}>
       <form onSubmit={submit} className="flex flex-col gap-4">
+        {/* The two packaging dialogs are the same shape and mean opposite
+            things, and getting them the wrong way round is silent: the bag
+            filed per dish charges four bags for a four-dish order, which is
+            exactly how the old duplicate dishes got it wrong. So each one
+            says which it is, in the sentence that matters, before any line
+            is edited. */}
+        {(target.kind === "packaging" || target.kind === "order-packaging") && (
+          <p
+            className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+              target.kind === "packaging"
+                ? "bg-chili-500/15 text-ink-800/80"
+                : "bg-gold-400/20 text-ink-800/80"
+            }`}
+          >
+            {target.kind === "packaging" ? (
+              <>
+                <strong className="text-ink-950">Once per serving.</strong> Two
+                of this dish in one order uses two of everything here — the
+                container, the fork, the spoon. The <strong>bag</strong> does
+                not belong here: it is one per order however many dishes go in
+                it, and lives under &ldquo;What every take-out order
+                includes&rdquo;.
+              </>
+            ) : (
+              <>
+                <strong className="text-ink-950">Once per order.</strong>{" "}
+                However many dishes are in it. The bag belongs here. Anything
+                used once per serving — a container, a fork — belongs on the
+                dish instead, or a four-dish order will be charged one fork.
+              </>
+            )}
+          </p>
+        )}
         <ul className="flex flex-col gap-2">
           {lines.map((l, i) => {
             const o = byId.get(`${l.refType}:${l.refId}`);

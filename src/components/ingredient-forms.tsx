@@ -604,9 +604,21 @@ export function RestockForm({
 
 export function CountForm({
   ingredient,
+  onWaste,
   onClose,
 }: {
   ingredient: EditableIngredient;
+  /**
+   * Switch to writing it off instead.
+   *
+   * Counting and writing off produce the same number on the shelf and mean
+   * completely different things to the books: a correction says the count was
+   * wrong, a write-off says the food was real and is gone. Only the second
+   * reaches spoilage, and spoilage is in the break-even sum. Somebody who
+   * counts a short shelf because that is the button in front of them has just
+   * made the shop's costs look better than they are.
+   */
+  onWaste?: () => void;
   onClose: () => void;
 }) {
   const [counted, setCounted] = useState("");
@@ -678,6 +690,28 @@ export function CountForm({
               — {variance < 0 ? "less" : "more"} than expected, worth{" "}
               {peso(Math.abs(impact))}.
             </span>
+
+            {/* The fork in the road, offered at the exact moment it matters:
+                the shelf is short and the person knows why. "It went off" and
+                "we miscounted" land in different places, and only the first
+                one reaches spoilage — which is in break-even. */}
+            {variance < 0 && onWaste && (
+              <div className="mt-3 border-t border-ink-950/10 pt-3">
+                <p className="text-xs leading-relaxed text-ink-800/70">
+                  Do you know where it went? If it spoiled, was thrown away or
+                  the shop ate it, write it off instead — a correction says the
+                  count was wrong, and only a write-off reaches your spoilage
+                  figure.
+                </p>
+                <button
+                  type="button"
+                  onClick={onWaste}
+                  className="mt-2 rounded-xl bg-brand-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-cream-50 transition-colors hover:bg-brand-700"
+                >
+                  Write it off instead →
+                </button>
+              </div>
+            )}
           </div>
         )}
 

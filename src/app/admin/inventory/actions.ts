@@ -981,3 +981,159 @@ export async function batchHistory(
   // "Sauce Base".
   return loadActivity({ mentions: batch.name as string, limit: 60 });
 }
+
+/** What happened to one ingredient — same reader, same reasoning as a batch's. */
+export async function ingredientHistory(
+  ingredientId: string
+): Promise<{ rows: Activity[]; error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "stock.view")) return { rows: [], error: null };
+
+  const supabase = createAdminClient();
+  const { data: ing } = await supabase
+    .from("ingredients")
+    .select("name")
+    .eq("id", ingredientId)
+    .maybeSingle();
+  if (!ing) return { rows: [], error: "That ingredient no longer exists." };
+
+  return loadActivity({ mentions: ing.name as string, limit: 60 });
+}
+
+/**
+ * Change what a batch is, rather than what is in it.
+ *
+ * Its name, what one batch makes, when to nag. Separate from the recipe
+ * editor because they are different decisions taken at different moments —
+ * and because a yield changed by accident silently reprices every dish that
+ * draws on this batch, which is worth a deliberate trip to a different form.
+ */
+export async function saveBatch(input: {
+  id: string;
+  name: string;
+  yieldQty: number;
+  yieldUnit: string;
+  reorderLevel: number;
+  manualCostPerUnit: number | null;
+}): Promise<Result> {
+  const viewer = await requireStock();
+  if (!viewer) return { error: "Only shop staff can change a batch." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
+
+  const name = input.name.trim();
+  if (!name) return { error: "What's it called?" };
+  if (!(input.yieldQty > 0)) return { error: "How much does one batch make?" };
+  const unit = input.yieldUnit.trim();
+  if (!unit) return { error: "What unit — g, ml, pcs?" };
+
+  const supabase = createAdminClient();
+  const { data: clash } = await supabase
+    .from("batches")
+    .select("id, name")
+    .ilike("name", name)
+    .maybeSingle();
+  if (clash && clash.id !== input.id) {
+    return { error: `You already have a batch called “${clash.name}”.` };
+  }
+
+  const { data: was } = await supabase
+    .from("batches")
+    .select("name, yield_qty")
+    .eq("id", input.id)
+    .maybeSingle();
+  if (!was) return { error: "That batch no longer exists." };
+
+  const { error } = await supabase
+    .from("batches")
+    .update({
+      name,
+      yield_qty: input.yieldQty,
+      yield_unit: unit,
+      reorder_level: Math.max(0, input.reorderLevel || 0),
+      manual_cost_per_unit:
+        input.manualCostPerUnit && input.manualCostPerUnit > 0
+          ? input.manualCostPerUnit
+          : null,
+    })
+    .eq("id", input.id);
+  if (error) return { error: error.message };
+
+  await log(
+    "inventory",
+    `Edited the batch "${name}"` +
+      (was.name !== name ? ` — was "${was.name}"` : "") +
+      (Number(was.yield_qty) !== input.yieldQty
+        ? `; now makes ${input.yieldQty.toLocaleString("en-PH")} ${unit} a batch, which reprices every dish that uses it`
+        : ""),
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null };
+}
+
+/**
+ * Remove a batch.
+ *
+ * Refused while anything still points at it — a dish, or another batch. The
+ * refs carry no foreign key (see 0046), so nothing in the database would stop
+ * this: the row would vanish and every recipe using it would quietly cost ₱0
+ * from then on, which reads as a wonderful margin rather than as a hole.
+ */
+export async function deleteBatch(id: string): Promise<Result> {
+  const viewer = await requireStock();
+  if (!viewer) return { error: "Only shop staff can remove a batch." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
+
+  const supabase = createAdminClient();
+  const { data: batch } = await supabase
+    .from("batches")
+    .select("name, batch_stock")
+    .eq("id", id)
+    .maybeSingle();
+  if (!batch) return { error: null };
+
+  const [{ data: inMeals }, { data: inBatches }] = await Promise.all([
+    supabase
+      .from("meal_ingredients")
+      .select("meal_id")
+      .eq("ref_type", "batch")
+      .eq("ref_id", id)
+      .limit(5),
+    supabase
+      .from("batch_ingredients")
+      .select("batch_id")
+      .eq("ref_type", "batch")
+      .eq("ref_id", id)
+      .limit(5),
+  ]);
+
+  const usedByMeals = (inMeals ?? []).length;
+  const usedByBatches = (inBatches ?? []).length;
+  if (usedByMeals > 0 || usedByBatches > 0) {
+    const parts = [
+      usedByMeals > 0 && `${usedByMeals} dish${usedByMeals === 1 ? "" : "es"}`,
+      usedByBatches > 0 &&
+        `${usedByBatches} other batch${usedByBatches === 1 ? "" : "es"}`,
+    ].filter(Boolean);
+    return {
+      error:
+        `"${batch.name}" is still used by ${parts.join(" and ")}. Take it out ` +
+        `of those recipes first — removing it now would cost them at ₱0 and ` +
+        `nothing on screen would say why.`,
+    };
+  }
+
+  const { error } = await supabase.from("batches").delete().eq("id", id);
+  if (error) return { error: error.message };
+
+  await log(
+    "inventory",
+    `Removed the batch "${batch.name}"` +
+      (Number(batch.batch_stock) > 0
+        ? ` — ${Number(batch.batch_stock).toLocaleString("en-PH")} still recorded as made`
+        : ""),
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null };
+}
