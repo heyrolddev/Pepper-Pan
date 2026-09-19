@@ -93,7 +93,8 @@ export default async function AdminInventoryPage() {
     problems: b.problems,
     lineCount: b.lines.length,
     recipe: (recipeByBatch.get(b.batch.id) ?? []).map((r) => ({
-      ingredientId: r.ingredient_id,
+      refType: r.ref_type === "batch" ? ("batch" as const) : ("inv" as const),
+      refId: r.ref_id,
       qty: Number(r.qty) || 0,
     })),
   }));

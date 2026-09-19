@@ -1062,3 +1062,118 @@ begin
   raise notice 'a signed-out visitor cannot read what Pepper Pan owes';
 end $$;
 RESET ROLE;
+
+\echo ''
+\echo '=== 0046 batches inside batches ==='
+
+\echo '--- a batch can be made of another batch, and is priced through it ---'
+do $$
+declare per_unit numeric;
+begin
+  insert into ingredients (id, name, unit, cost, stock)
+    values ('butter', 'Butter', 'g', 1, 100000),
+           ('chicken', 'Chicken', 'g', 0.2, 100000)
+    on conflict (id) do update set cost = excluded.cost, stock = excluded.stock;
+
+  insert into batches (id, name, yield_qty, yield_unit, batch_stock)
+    values ('liquid-butter', 'Liquid butter', 500, 'g', 0),
+           ('ji-pai', 'Marinated ji pai', 1000, 'g', 0)
+    on conflict (id) do update set yield_qty = excluded.yield_qty, batch_stock = 0;
+
+  delete from batch_ingredients where batch_id in ('liquid-butter', 'ji-pai');
+  insert into batch_ingredients (batch_id, ref_type, ref_id, qty) values
+    ('liquid-butter', 'inv', 'butter', 500),
+    ('ji-pai', 'inv', 'chicken', 1000),
+    ('ji-pai', 'batch', 'liquid-butter', 100);
+
+  -- 500g butter at P1 over a 500g yield = P1.00/g.
+  if round(batch_cost_per_unit('liquid-butter'), 4) <> 1 then
+    raise exception 'FAIL: liquid butter prices at %, expected 1', batch_cost_per_unit('liquid-butter');
+  end if;
+  -- 1000g chicken at P0.20 = P200, plus 100g butter at P1 = P100, over 1000g.
+  per_unit := batch_cost_per_unit('ji-pai');
+  if round(per_unit, 4) <> 0.3 then
+    raise exception 'FAIL: ji pai prices at %, expected 0.30 — the sub-batch is not being counted', per_unit;
+  end if;
+  raise notice 'a sub-batch carries its own price up into the parent';
+end $$;
+
+\echo '--- making the parent draws down the sub-batch, and nothing twice ---'
+do $$
+declare butter_before numeric; butter_after numeric;
+declare chicken_before numeric; chicken_after numeric;
+declare jipai_after numeric; cost numeric;
+begin
+  -- Stock the butter first, exactly as the kitchen would.
+  perform produce_batch('liquid-butter', 2);       -- 1000g of butter
+  select batch_stock into butter_before from batches where id = 'liquid-butter';
+  select stock into chicken_before from ingredients where id = 'chicken';
+
+  cost := produce_batch('ji-pai', 1);              -- needs 1000g chicken + 100g butter
+
+  select batch_stock into butter_after from batches where id = 'liquid-butter';
+  select stock into chicken_after from ingredients where id = 'chicken';
+  select batch_stock into jipai_after from batches where id = 'ji-pai';
+
+  if butter_before - butter_after <> 100 then
+    raise exception 'FAIL: butter fell by %, expected 100', butter_before - butter_after;
+  end if;
+  if chicken_before - chicken_after <> 1000 then
+    raise exception 'FAIL: chicken fell by %, expected 1000', chicken_before - chicken_after;
+  end if;
+  -- The load-bearing one. Making ji pai must NOT also consume the butter's
+  -- own ingredients: that butter was already paid for when it was made, and
+  -- taking it again would bill the shop twice for the same 500g.
+  if chicken_before - chicken_after > 1000 then
+    raise exception 'FAIL: the sub-batch ingredients were consumed a second time';
+  end if;
+  if jipai_after <> 1000 then
+    raise exception 'FAIL: ji pai stock is %, expected 1000', jipai_after;
+  end if;
+  raise notice 'the parent takes the sub-batch off the shelf, and the sub-batch''s own ingredients are not taken again';
+end $$;
+
+\echo '--- running out of a sub-batch fails like running out of anything else ---'
+do $$
+declare butter numeric;
+begin
+  update batches set batch_stock = 50 where id = 'liquid-butter';
+  begin
+    perform produce_batch('ji-pai', 1);   -- needs 100g, only 50g there
+    raise exception 'FAIL: a batch was made out of butter that did not exist';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  select batch_stock into butter from batches where id = 'liquid-butter';
+  if butter <> 50 then
+    raise exception 'FAIL: a refused batch still moved the butter — now %', butter;
+  end if;
+  raise notice 'not enough of a sub-batch stops the whole thing, and moves nothing';
+end $$;
+
+\echo '--- a batch cannot be made of itself ---'
+do $$
+begin
+  begin
+    insert into batch_ingredients (batch_id, ref_type, ref_id, qty)
+      values ('ji-pai', 'batch', 'ji-pai', 10);
+    raise exception 'FAIL: a batch listing itself was accepted';
+  exception when check_violation then null;
+  end;
+  raise notice 'a batch listing itself is refused by the database, not just by the form';
+end $$;
+
+\echo '--- a recipe loop prices at zero rather than hanging the till ---'
+do $$
+declare per_unit numeric;
+begin
+  -- Only reachable by a hand edit or an import: the app refuses both ends.
+  insert into batch_ingredients (batch_id, ref_type, ref_id, qty)
+    values ('liquid-butter', 'batch', 'ji-pai', 10);
+  per_unit := batch_cost_per_unit('ji-pai');
+  if per_unit is null then
+    raise exception 'FAIL: a loop returned null instead of a number';
+  end if;
+  raise notice 'a circular recipe returns a number and stops, so a sale can still be rung up';
+  delete from batch_ingredients where batch_id = 'liquid-butter' and ref_type = 'batch';
+end $$;

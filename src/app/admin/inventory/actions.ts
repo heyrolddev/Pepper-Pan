@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
 import { PAID_FROM_LABELS, isPaidFrom, type PaidFrom } from "@/lib/money-accounts";
 import { recordDebt } from "@/app/admin/money/spending-actions";
+import { loadActivity, type Activity } from "@/lib/activity-server";
 
 type Result = { error: string | null };
 
@@ -505,13 +506,13 @@ export async function produceBatch(input: {
  */
 export async function saveBatchRecipe(input: {
   batchId: string;
-  lines: { ingredientId: string; qty: number }[];
+  lines: { refType: "inv" | "batch"; refId: string; qty: number }[];
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change recipes." };
   if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
 
-  const lines = input.lines.filter((l) => l.ingredientId && l.qty > 0);
+  const lines = input.lines.filter((l) => l.refId && l.qty > 0);
   const supabase = createAdminClient();
 
   const { data: batch } = await supabase
@@ -520,6 +521,62 @@ export async function saveBatchRecipe(input: {
     .eq("id", input.batchId)
     .maybeSingle();
   if (!batch) return { error: "That batch no longer exists." };
+
+  /**
+   * A batch may be made of other batches — and must not be made of itself,
+   * however many hops away.
+   *
+   * The database refuses the direct case. This is the transitive one: butter
+   * uses ji pai uses butter. `costBatches` copes with it — it has to, because
+   * bad rows can arrive from an import — but coping means showing the recipe
+   * as unpriceable, and it is far better to refuse the save and say why.
+   *
+   * Walks from each batch this recipe would draw on and looks for the way
+   * back here. Reading the existing edges once is enough: the only new ones
+   * are the lines being saved, and they all start at this batch.
+   */
+  const subs = lines.filter((l) => l.refType === "batch").map((l) => l.refId);
+  if (subs.includes(input.batchId)) {
+    return { error: "A batch can't be made of itself." };
+  }
+  if (subs.length > 0) {
+    const { data: edgeRows } = await supabase
+      .from("batch_ingredients")
+      .select("batch_id, ref_id")
+      .eq("ref_type", "batch");
+
+    const edges = new Map<string, string[]>();
+    for (const e of (edgeRows ?? []) as { batch_id: string; ref_id: string }[]) {
+      // The rows for THIS batch are about to be replaced, so the old ones
+      // must not be part of the check — otherwise removing a loop in the
+      // same save that adds a legitimate line would still be refused.
+      if (e.batch_id === input.batchId) continue;
+      edges.set(e.batch_id, [...(edges.get(e.batch_id) ?? []), e.ref_id]);
+    }
+
+    const seen = new Set<string>();
+    const stack = [...subs];
+    while (stack.length > 0) {
+      const at = stack.pop()!;
+      if (at === input.batchId) {
+        const { data: names } = await supabase
+          .from("batches")
+          .select("name")
+          .in("id", subs);
+        const which = ((names ?? []) as { name: string }[])
+          .map((n) => `"${n.name}"`)
+          .join(" or ");
+        return {
+          error:
+            `That would make this batch part of its own recipe — ${which} ` +
+            `already leads back to "${batch.name}". Take the loop out first.`,
+        };
+      }
+      if (seen.has(at)) continue;
+      seen.add(at);
+      stack.push(...(edges.get(at) ?? []));
+    }
+  }
 
   const { error: clearError } = await supabase
     .from("batch_ingredients")
@@ -531,7 +588,8 @@ export async function saveBatchRecipe(input: {
     const { error } = await supabase.from("batch_ingredients").insert(
       lines.map((l) => ({
         batch_id: input.batchId,
-        ingredient_id: l.ingredientId,
+        ref_type: l.refType,
+        ref_id: l.refId,
         qty: l.qty,
       }))
     );
@@ -540,7 +598,10 @@ export async function saveBatchRecipe(input: {
 
   await log(
     "inventory",
-    `Changed the recipe for "${batch.name}" — ${lines.length} ingredient${lines.length === 1 ? "" : "s"}`,
+    `Changed the recipe for "${batch.name}" — ${lines.length} line${lines.length === 1 ? "" : "s"}` +
+      (subs.length > 0
+        ? `, ${subs.length} of them another batch`
+        : ""),
     viewer.profile?.id ?? null
   );
   revalidate();
@@ -814,4 +875,109 @@ export async function saveOrderPackaging(input: {
   );
   revalidate();
   return { error: null };
+}
+
+/**
+ * A new batch, from the Inventory tab.
+ *
+ * There was no way to make one. Batches could be costed, cooked, edited and
+ * drawn on — and the only way to get a new one into the system at all was the
+ * legacy importer. So the shop could use the twenty-six it started with and
+ * never add the twenty-seventh, which is the sort of gap that is invisible
+ * until somebody invents a new sauce.
+ *
+ * The recipe is not asked for here. Naming the thing and saying what a batch
+ * makes is one decision; what goes in it is another, usually taken standing
+ * at the shelf. So this creates it and the recipe editor fills it in.
+ */
+export async function createBatch(input: {
+  name: string;
+  yieldQty: number;
+  yieldUnit: string;
+  reorderLevel: number;
+  /** Set for a repack — a bought item split into portions, with no recipe. */
+  manualCostPerUnit: number | null;
+}): Promise<Result & { id?: string }> {
+  const viewer = await requireStock();
+  if (!viewer) return { error: "Only shop staff can add a batch." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
+
+  const name = input.name.trim();
+  if (!name) return { error: "What's it called?" };
+  if (!(input.yieldQty > 0)) {
+    return { error: "How much does one batch make? That's what every recipe divides by." };
+  }
+  const unit = input.yieldUnit.trim();
+  if (!unit) return { error: "What unit — g, ml, pcs?" };
+
+  const supabase = createAdminClient();
+
+  // One batch, one row. A second "Black Pepper Sauce" would split the stock
+  // in two and leave every recipe pointing at whichever one was picked that
+  // day — the same failure the supplier list exists to prevent.
+  const { data: clash } = await supabase
+    .from("batches")
+    .select("id, name")
+    .ilike("name", name)
+    .maybeSingle();
+  if (clash) return { error: `You already have a batch called “${clash.name}”.` };
+
+  const { data, error } = await supabase
+    .from("batches")
+    .insert({
+      name,
+      yield_qty: input.yieldQty,
+      yield_unit: unit,
+      batch_stock: 0,
+      reorder_level: Math.max(0, input.reorderLevel || 0),
+      manual_cost_per_unit:
+        input.manualCostPerUnit && input.manualCostPerUnit > 0
+          ? input.manualCostPerUnit
+          : null,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { error: error?.message ?? "Could not add it." };
+
+  await log(
+    "inventory",
+    `Added the batch "${name}" — makes ${input.yieldQty.toLocaleString("en-PH")} ${unit} a batch` +
+      (input.manualCostPerUnit ? ", priced by hand as a repack" : ""),
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null, id: data.id as string };
+}
+
+/**
+ * What happened to a batch.
+ *
+ * Its stock moves for four different reasons — it was made, a dish used it, a
+ * bigger batch drew on it, somebody threw it away — and until now the number
+ * just changed with nothing on screen to say why. "Why is there only 200g of
+ * sauce" had no answer short of guessing.
+ *
+ * Read from what the system already writes rather than from a new table: the
+ * activity log has every one of those events in it, because each of them goes
+ * through an action that logs. A movements table would be a second copy of
+ * the same facts, and the day the two disagree neither is trustworthy.
+ */
+export async function batchHistory(
+  batchId: string
+): Promise<{ rows: Activity[]; error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "stock.view")) return { rows: [], error: null };
+
+  const supabase = createAdminClient();
+  const { data: batch } = await supabase
+    .from("batches")
+    .select("name")
+    .eq("id", batchId)
+    .maybeSingle();
+  if (!batch) return { rows: [], error: "That batch no longer exists." };
+
+  // Matched on the name as the log line spells it. Every line that names a
+  // batch wraps it in curly quotes, which is what stops "Sauce" also matching
+  // "Sauce Base".
+  return loadActivity({ mentions: batch.name as string, limit: 60 });
 }

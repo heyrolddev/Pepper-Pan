@@ -99,6 +99,7 @@ const GROUPS: Group[] = [
     title: "Understand",
     items: [
       { href: "/admin/analytics", label: "Analytics", icon: "◈", needs: "business" },
+      { href: "/admin/history", label: "History", icon: "◵", needs: "business" },
       { href: "/admin/reviews", label: "Reviews", icon: "★", needs: "chat" },
       { href: "/admin/customers", label: "Customers", icon: "◑", needs: "business" },
       { href: "/admin/staff", label: "Staff", icon: "◔", badge: "staff", needs: "staff.manage" },

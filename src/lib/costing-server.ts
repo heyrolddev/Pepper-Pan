@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   costBatches,
   costMeals,
+  limitingFor,
   makeableServings,
   type Batch,
   type BatchCost,
@@ -12,6 +13,7 @@ import {
   type MealComponent,
   type MealCost,
   type MealIngredient,
+  type Shortfall,
 } from "@/lib/costing";
 import { isPacked } from "@/lib/orders";
 
@@ -244,11 +246,17 @@ export async function loadSalesVolume(
  * Returns a map of meal id to servings. Absent means unconstrained (no recipe
  * entered), which is not the same as zero.
  */
-export async function loadAvailability(): Promise<Map<string, number>> {
+export async function loadStockPicture(): Promise<{
+  makeable: Map<string, number>;
+  /** Why, per dish: every recipe line against what is on the shelf. */
+  limits: Map<string, Shortfall[]>;
+}> {
   const supabase = createAdminClient();
   const [ing, bat, meaIng, meaComp] = await Promise.all([
-    supabase.from("ingredients").select("id, stock"),
-    supabase.from("batches").select("id, batch_stock"),
+    // Names and units as well as counts: the counter does not only need to
+    // know that a dish is out, it needs to say what of.
+    supabase.from("ingredients").select("id, name, unit, stock"),
+    supabase.from("batches").select("id, name, yield_unit, batch_stock"),
     supabase.from("meal_ingredients").select("meal_id, ref_type, ref_id, qty"),
     supabase.from("meal_components").select("meal_id, component_meal_id, qty"),
   ]);
@@ -265,14 +273,14 @@ export async function loadAvailability(): Promise<Map<string, number>> {
         meaComp.error?.message
       }`
     );
-    return new Map();
+    return { makeable: new Map(), limits: new Map() };
   }
 
   const ingredients = (ing.data ?? []).map((r) => ({
-    ...(r as { id: string; stock: number }),
+    ...(r as { id: string; name: string; unit: string; stock: number }),
   })) as Ingredient[];
   const batches = (bat.data ?? []).map((r) => ({
-    ...(r as { id: string; batch_stock: number }),
+    ...(r as { id: string; name: string; yield_unit: string; batch_stock: number }),
   })) as Batch[];
   const mealIngredients = (meaIng.data ?? []) as MealIngredient[];
   const mealComponents = (meaComp.data ?? []) as MealComponent[];
@@ -283,6 +291,7 @@ export async function loadAvailability(): Promise<Map<string, number>> {
   ]);
 
   const out = new Map<string, number>();
+  const limits = new Map<string, Shortfall[]>();
   for (const id of mealIds) {
     const n = makeableServings(
       id,
@@ -292,6 +301,28 @@ export async function loadAvailability(): Promise<Map<string, number>> {
       batches
     );
     if (Number.isFinite(n)) out.set(id, n);
+    // Worked out from the same rows in the same pass, on purpose: a count and
+    // an explanation of that count drawn from two queries can disagree, and
+    // then the badge and the reason behind it tell the cashier different
+    // things while both look authoritative.
+    const why = limitingFor(
+      id,
+      mealIngredients,
+      mealComponents,
+      ingredients,
+      batches
+    );
+    if (why.length > 0) limits.set(id, why);
   }
-  return out;
+  return { makeable: out, limits };
+}
+
+/**
+ * Just the counts, for the callers that only ever wanted those.
+ *
+ * A thin wrapper rather than a second query: one pass over the recipe tables,
+ * one answer, and nothing to keep in step.
+ */
+export async function loadAvailability(): Promise<Map<string, number>> {
+  return (await loadStockPicture()).makeable;
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { peso } from "@/lib/costing";
+import { peso, type Shortfall } from "@/lib/costing";
+import { AdminDialog } from "@/components/admin-dialog";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
 import { TILL_CHOICES, TILL_LABEL, type TillMethod } from "@/lib/till";
 import {
@@ -27,6 +28,8 @@ export type CounterMeal = {
   is_available: boolean;
   /** Servings the shelf can still make. Null when there's no recipe to go on. */
   makeable?: number | null;
+  /** Every recipe line against the shelf, tightest first. */
+  limits?: Shortfall[];
 };
 
 /**
@@ -61,6 +64,8 @@ export function CounterTill({
   known?: MenuCategory[];
 }) {
   const [ticket, setTicket] = useState<Ticket>({});
+  /** The dish whose shortage is being read. Null when nobody asked. */
+  const [why, setWhy] = useState<CounterMeal | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
   /**
@@ -403,6 +408,89 @@ export function CounterTill({
           on the wrong tile two customers ago, and nobody notices until the
           paper is in somebody's hand. This is the same receipt that will
           print, shown while it can still be changed. */}
+      {/* Why a dish is out — the question a NO STOCK badge asks and never
+          used to answer. Named things, with numbers, so whoever reads it
+          knows whether to fetch something or go and cook it. */}
+      {why && (
+        <AdminDialog
+          title={`${why.name} — what's missing`}
+          subtitle="Every line of the recipe against what's on the shelf right now."
+          onClose={() => setWhy(null)}
+        >
+          <div className="flex flex-col gap-4">
+            {(why.limits ?? []).length === 0 ? (
+              <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm text-ink-800/70">
+                No recipe entered for this one, so the system can&apos;t say
+                what it needs. Somebody marked it sold out by hand, or its
+                recipe is empty — check <strong>Dish costs</strong>.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {(why.limits ?? []).map((l, i) => {
+                  const short = l.allows <= 0;
+                  return (
+                    <li
+                      key={i}
+                      className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 ring-1 ${
+                        short
+                          ? "bg-brand-600 text-cream-50 ring-brand-700/30"
+                          : "bg-cream-100 text-ink-950 ring-ink-950/10"
+                      }`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold">
+                          {l.label}
+                          {l.kind === "batch" && (
+                            <span className="ml-2 rounded-full bg-ink-950/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide opacity-70">
+                              batch
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-xs opacity-70">
+                          Needs {l.need.toLocaleString("en-PH")} {l.unit} · have{" "}
+                          {l.have.toLocaleString("en-PH")} {l.unit}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block font-display text-lg font-black tabular-nums">
+                          {l.allows}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-wide opacity-70">
+                          servings
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {(why.limits ?? []).some((l) => l.kind === "batch" && l.allows <= 0) && (
+              <p className="rounded-2xl bg-gold-400/20 px-4 py-3 text-sm leading-relaxed text-ink-800/80">
+                The one you&apos;re short of is a <strong>batch</strong> —
+                somebody can go and make more of it on the Inventory tab, if
+                the ingredients are there.
+              </p>
+            )}
+
+            <p className="text-xs leading-relaxed text-ink-800/50">
+              You can still ring this up. The count may simply be behind — the
+              till never blocks a sale over it, and the shelf is what it is.
+            </p>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setWhy(null)}
+                className="rounded-xl bg-ink-950 px-5 py-2.5 text-sm font-bold text-cream-50 hover:bg-ink-800"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </AdminDialog>
+      )}
+
       {review && (
         <div
           role="dialog"
@@ -506,9 +594,16 @@ export function CounterTill({
                 // Never blocked at the till — the person is standing there
                 // and the count may simply be behind. Flagged loudly instead,
                 // and the server refuses if it is genuinely short.
-                const out = m.makeable !== null && m.makeable !== undefined && m.makeable <= 0;
+                const left = m.makeable;
+                const known = left !== null && left !== undefined;
+                const out = known && left <= 0;
+                // "A few left" is the warning worth having. Above this the
+                // number is noise on a tile the size of a thumb; below it the
+                // cashier is about to promise something the kitchen cannot
+                // deliver.
+                const low = known && left > 0 && left <= 5;
                 return (
-                  <li key={m.id}>
+                  <li key={m.id} className="relative">
                     <button
                       onClick={() => bump(m.id, 1)}
                       className={`relative flex h-full w-full flex-col justify-between gap-2 rounded-2xl p-3 text-left transition-colors ${
@@ -526,11 +621,12 @@ export function CounterTill({
                           {qty}
                         </span>
                       )}
-                      {out ? (
-                        <span className="absolute bottom-1.5 right-2 rounded-full bg-brand-600 px-1.5 text-[9px] font-black uppercase tracking-wide text-cream-50">
-                          no stock
+                      {low ? (
+                        <span className="absolute bottom-1.5 right-2 rounded-full bg-gold-400 px-1.5 text-[9px] font-black uppercase tracking-wide text-ink-950">
+                          {left} left
                         </span>
                       ) : (
+                        !out &&
                         !m.is_public && (
                           <span className="absolute bottom-1.5 right-2 text-[9px] font-black uppercase tracking-wide opacity-40">
                             counter only
@@ -538,6 +634,20 @@ export function CounterTill({
                         )
                       )}
                     </button>
+
+                    {/* Its own button, on top of the tile rather than inside
+                        it: a <button> cannot contain a <button>, and tapping
+                        "no stock" has to ask why rather than add one more to
+                        the ticket. */}
+                    {out && (
+                      <button
+                        onClick={() => setWhy(m)}
+                        aria-label={`Why is ${m.name} out of stock?`}
+                        className="absolute bottom-1.5 right-2 rounded-full bg-brand-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-cream-50 ring-1 ring-cream-50/30 transition-colors hover:bg-brand-700"
+                      >
+                        no stock · why?
+                      </button>
+                    )}
                   </li>
                 );
               })}

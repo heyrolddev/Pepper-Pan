@@ -290,7 +290,14 @@ export function convertLegacyBackup(file: LegacyFile): ConvertResult {
       // No `id`: this child table is `bigserial`, and the importer clears a
       // parent's lines before inserting its new ones rather than upserting
       // them by a key the file does not have.
-      batchIngredients.push({ batch_id: batchId, ingredient_id: invId, qty: num(line.qty) });
+      // Always 'inv': the export format this reads predates a batch being
+      // able to contain a batch, so every line in it is an ingredient.
+      batchIngredients.push({
+        batch_id: batchId,
+        ref_type: "inv",
+        ref_id: invId,
+        qty: num(line.qty),
+      });
     }
   }
   out.batches = batches;
