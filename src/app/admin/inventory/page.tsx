@@ -3,6 +3,7 @@ import { loadCostBook } from "@/lib/costing-server";
 import { isLow, stockValue } from "@/lib/costing";
 import { InventoryView, type BatchRow, type StockRow } from "@/components/inventory-view";
 import { loadInsight, loadPriceMoves } from "@/lib/inventory-insight";
+import { listSuppliers } from "@/app/admin/suppliers/actions";
 
 // Stock moves every service. A cached shopping list is the wrong shopping list.
 export const dynamic = "force-dynamic";
@@ -39,9 +40,12 @@ export default async function AdminInventoryPage() {
 
   // What to buy and what is about to go off. Needs the cost book first, since
   // both are worked out against the same ingredient and batch rows.
-  const [insight, priceMoves] = await Promise.all([
+  const [insight, priceMoves, { rows: suppliers }] = await Promise.all([
     loadInsight(ingredients, batches, batchIngredients),
     loadPriceMoves(),
+    // For the restock form's chips — a delivery's supplier is tapped rather
+    // than typed for the fourth time.
+    listSuppliers(),
   ]);
 
   // Grouped once here rather than looked up per card: the produce dialog
@@ -123,6 +127,7 @@ export default async function AdminInventoryPage() {
       thinHistory={insight.thin}
       canSeeCosts={canSeeCosts}
       canManage={canManage}
+      suppliers={suppliers}
       failed={failed}
     />
   );

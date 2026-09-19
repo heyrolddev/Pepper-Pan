@@ -5,7 +5,8 @@ import { can, getViewer } from "@/lib/auth";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
-import { isPaidFrom, type PaidFrom } from "@/lib/money-accounts";
+import { PAID_FROM_LABELS, isPaidFrom, type PaidFrom } from "@/lib/money-accounts";
+import { recordDebt } from "@/app/admin/money/spending-actions";
 
 type Result = { error: string | null };
 
@@ -235,6 +236,8 @@ export async function recordRestock(input: {
    * second one stops happening, and the form already knows the number.
    */
   paidFrom?: PaidFrom;
+  /** Picked from the supplier list, when the delivery came from somebody on it. */
+  supplierId?: string | null;
 }): Promise<Result> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can record a delivery." };
@@ -287,7 +290,10 @@ export async function recordRestock(input: {
     ingredient_id: ing.id,
     lot_id: lot.id,
     date: today,
+    // Both: the text is what was written at the time and stays readable
+    // whatever happens to the list, the id is what lets a report group.
     supplier: input.supplier?.trim() || null,
+    supplier_id: input.supplierId || null,
     qty: input.qty,
     cost: input.amountPaid,
   });
@@ -306,6 +312,35 @@ export async function recordRestock(input: {
    * a missing ledger row does.
    */
   const paidFrom: PaidFrom = isPaidFrom(input.paidFrom) ? input.paidFrom : "cash";
+
+  /**
+   * Taken on utang, and now recorded as such.
+   *
+   * This used to be the end of it: the `unpaid` branch skipped the ledger
+   * block and wrote nothing anywhere else either. The stock arrived, the
+   * purchase log kept the peso figure, and the obligation existed only in
+   * the owner's memory — so the shop's money read high by every delivery it
+   * had ever taken on credit, and there was no list of who was owed.
+   *
+   * Still no ledger line, and that part was always right: the cash really is
+   * still in the drawer until the supplier is paid, and a line here would
+   * make the drawer fail a physical count. `settleDebt` writes it later, on
+   * the day the money actually leaves.
+   */
+  if (paidFrom === "unpaid" && input.amountPaid > 0) {
+    const debt = await recordDebt({
+      supplierId: input.supplierId || null,
+      supplierName: input.supplier?.trim() || null,
+      description: `${input.qty} ${ing.unit} of ${ing.name}`,
+      amount: input.amountPaid,
+      source: "restock",
+      actorId: viewer.profile?.id ?? null,
+    });
+    if (debt.error) {
+      console.error(`[inventory] restock debt: ${debt.error}`);
+    }
+  }
+
   if (paidFrom !== "unpaid" && input.amountPaid > 0) {
     const { error: ledgerError } = await supabase.from("cash_ledger").insert({
       date: today,
@@ -327,8 +362,8 @@ export async function recordRestock(input: {
     "inventory",
     `Restocked ${input.qty} ${ing.unit} of "${ing.name}" for ₱${input.amountPaid.toFixed(2)}` +
       (paidFrom === "unpaid"
-        ? " — not paid yet, so no money moved"
-        : ` — paid from ${paidFrom === "gcash" ? "GCash" : "the drawer"}`) +
+        ? " — on utang, so no money moved and the shop now owes it"
+        : ` — paid from ${PAID_FROM_LABELS[paidFrom]}`) +
       (input.updateStandardCost && priceMoved
         ? `; cost per ${ing.unit} now ₱${lotCost.toFixed(4)}`
         : ""),

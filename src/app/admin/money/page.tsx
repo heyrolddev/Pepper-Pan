@@ -1,6 +1,7 @@
 import { can, getViewer } from "@/lib/auth";
 import { loadMoney } from "@/lib/money-server";
 import { MoneyView } from "@/components/money-view";
+import { listSuppliers } from "@/app/admin/suppliers/actions";
 import { hqTitle } from "@/lib/hq-theme";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,11 @@ export default async function AdminMoneyPage() {
     );
   }
 
-  const money = await loadMoney();
-  return <MoneyView money={money} />;
+  // Read together: the Spend dialog offers the supplier list, and waiting for
+  // one after the other costs a round trip for nothing.
+  const [money, { rows: suppliers }] = await Promise.all([
+    loadMoney(),
+    listSuppliers(),
+  ]);
+  return <MoneyView money={money} suppliers={suppliers} />;
 }

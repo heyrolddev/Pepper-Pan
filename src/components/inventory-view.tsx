@@ -14,6 +14,7 @@ import {
   type RecipeOption,
 } from "@/components/recipe-editor";
 import { WasteForm } from "@/components/waste-form";
+import type { Supplier } from "@/lib/suppliers";
 import { hqTitle } from "@/lib/hq-theme";
 
 export type StockRow = {
@@ -169,6 +170,7 @@ export function InventoryView({
   thinHistory,
   canSeeCosts,
   canManage,
+  suppliers = [],
   failed,
 }: {
   stock: StockRow[];
@@ -179,6 +181,8 @@ export function InventoryView({
   usageDays: number;
   thinHistory: boolean;
   canSeeCosts: boolean;
+  /** The saved list, so a delivery's supplier is tapped rather than retyped. */
+  suppliers?: Supplier[];
   /**
    * May this person move stock, or only look at it?
    *
@@ -824,6 +828,7 @@ export function InventoryView({
         <RestockForm
           key={editing.row.id}
           ingredient={editable(editing.row)}
+          suppliers={suppliers}
           onClose={() => setEditing(null)}
         />
       )}

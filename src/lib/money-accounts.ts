@@ -40,22 +40,24 @@ export const ACCOUNT_SHORT: Record<Account, string> = {
  * as a cash payment would take pesos out of the drawer that are still in it.
  * The stock still arrives; nothing is deducted; the activity log says so.
  */
-export const PAID_FROM = ["cash", "gcash", "unpaid"] as const;
+export const PAID_FROM = ["cash", "gcash", "bank", "unpaid"] as const;
 
 export type PaidFrom = (typeof PAID_FROM)[number];
 
 export function isPaidFrom(value: unknown): value is PaidFrom {
-  return value === "cash" || value === "gcash" || value === "unpaid";
+  return PAID_FROM.includes(value as PaidFrom);
 }
 
 export const PAID_FROM_LABELS: Record<PaidFrom, string> = {
   cash: "Cash",
   gcash: "GCash",
+  bank: "Bank",
   unpaid: "Not yet paid",
 };
 
 export const PAID_FROM_HINTS: Record<PaidFrom, string> = {
   cash: "Comes out of the drawer.",
   gcash: "Comes out of the e-wallet.",
-  unpaid: "Utang muna — stock arrives, no money moves yet.",
+  bank: "Comes out of the bank.",
+  unpaid: "Utang muna — the stock arrives, and the shop now owes it.",
 };

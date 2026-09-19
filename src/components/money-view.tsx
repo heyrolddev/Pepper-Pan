@@ -23,6 +23,9 @@ import {
 import { hqTitle } from "@/lib/hq-theme";
 import { Explain } from "@/components/explain";
 import { ACCOUNT_SHORT, type Account } from "@/lib/money-accounts";
+import { SupplierDebts } from "@/components/supplier-debts";
+import { SpendPanel } from "@/components/spend-panel";
+import type { Supplier } from "@/lib/suppliers";
 
 /**
  * The money the costing screens can't see.
@@ -279,7 +282,14 @@ function useAction() {
   return { busy, error, run, setError };
 }
 
-export function MoneyView({ money }: { money: MoneyPicture }) {
+export function MoneyView({
+  money,
+  suppliers = [],
+}: {
+  money: MoneyPicture;
+  /** For the Spend dialog's "who from" chips. */
+  suppliers?: Supplier[];
+}) {
   const [dialog, setDialog] = useState<
     "cost" | "cash-start" | "gcash-start" | "bank-start" | "cash-entry" | "utang" | "asset" | null
   >(null);
@@ -380,6 +390,40 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
         )}
       </Panel>
 
+      {/* ---- what the shop owes ----
+
+          Directly under Pepper Pan Bank because it is the correction to it.
+          The pots hold what they say — that figure has to stay checkable
+          against a physical count — but some of it is already the supplier's,
+          and nothing on this screen used to say so. */}
+      <Panel
+        title="Utang sa supplier"
+        hint="Deliveries and purchases taken on credit. The cash is still in the drawer until you pay — recording the debt moves nothing, and paying it is what writes the line."
+      >
+        <SupplierDebts
+          debts={money.debts}
+          owedToSuppliers={money.owedToSuppliers}
+          totalHeld={money.totalHeld}
+          openPots={openPots.length > 0 ? openPots : ["cash"]}
+        />
+      </Panel>
+
+      {/* ---- what gets used up ---- */}
+      <Panel
+        title="Gamit at gastos"
+        hint="Supplies, gas and repairs — used up, and nothing left to show for them. Not ingredients, not rent. Until now they were in no sum anywhere, which made break-even lower than the truth."
+      >
+        <SpendPanel
+          runningCosts={money.runningCosts}
+          runningForWindow={money.runningForWindow}
+          monthlyRate={money.monthlyRunningRate}
+          windowDays={money.windowDays}
+          tanks={money.tanks}
+          suppliers={suppliers}
+          openPots={openPots.length > 0 ? openPots : ["cash"]}
+        />
+      </Panel>
+
       {/* ---- cash ---- */}
       <Panel
         title="Cash in the drawer"
@@ -465,8 +509,16 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
                   note: `From ${peso(money.wasteForWindow, 0)} thrown away over ${money.windowDays} day${money.windowDays === 1 ? "" : "s"}.`,
                 },
                 {
+                  label: "Supplies, gas and repairs, scaled to a month",
+                  value: peso(money.monthlyRunningRate, 0),
+                  note: `From ${peso(money.runningForWindow, 0)} over the last ${money.windowDays} day${money.windowDays === 1 ? "" : "s"}. This was missing from the sum entirely until now, which made the figure below lower than the truth.`,
+                },
+                {
                   label: "= To cover every month",
-                  value: peso(money.monthlyFixed + money.monthlyWasteRate, 0),
+                  value: peso(
+                    money.monthlyFixed + money.monthlyWasteRate + money.monthlyRunningRate,
+                    0
+                  ),
                 },
                 {
                   label: "÷ what's left of each peso after ingredients",
@@ -476,7 +528,8 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
                 {
                   label: "= Sales needed each month",
                   value: peso(
-                    (money.monthlyFixed + money.monthlyWasteRate) / (money.marginRatio || 1),
+                    (money.monthlyFixed + money.monthlyWasteRate + money.monthlyRunningRate) /
+                      (money.marginRatio || 1),
                     0
                   ),
                 },
@@ -492,7 +545,7 @@ export function MoneyView({ money }: { money: MoneyPicture }) {
                 },
               ]
         }
-        why="Three things move this. Your bills move it the moment you edit them below. Spoilage moves it as you record waste. And your margin moves it as you sell — but only from new sales: every order keeps the ingredient cost it had on the day, so changing an ingredient price never rewrites what you already sold."
+        why="Four things move this. Your bills move it the moment you edit them below. Spoilage moves it as you record waste. Supplies, gas and repairs move it as you record them — that line is new, and until it existed this figure was quietly lower than the truth every day. And your margin moves it as you sell, but only from new sales: every order keeps the ingredient cost it had on the day, so changing an ingredient price never rewrites what you already sold."
       >
       <section
         className={`overflow-hidden rounded-3xl p-6 sm:p-8 ${

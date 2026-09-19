@@ -92,6 +92,7 @@ const GROUPS: Group[] = [
       // screens behind it. Staff get counts and a waste button; a manager gets
       // the money, the restocking and the recipes.
       { href: "/admin/inventory", label: "Inventory", icon: "▢", needs: "stock.view" },
+      { href: "/admin/suppliers", label: "Suppliers", icon: "◎", needs: "stock.view" },
     ],
   },
   {
