@@ -1137,3 +1137,64 @@ export async function deleteBatch(id: string): Promise<Result> {
   revalidate();
   return { error: null };
 }
+
+/**
+ * Correct what a batch says it has.
+ *
+ * The ingredient side has had this since the beginning — count the shelf,
+ * type what is actually there. A batch never did, so the only ways its stock
+ * could move were making more, selling it, or writing it off. There was no
+ * way to say "the tub says 600g and the system says 800g".
+ *
+ * Deliberately NOT the same thing as a write-off, and the form says so. A
+ * correction means the number was wrong; a write-off means the sauce was real
+ * and went off. Only the second reaches spoilage, and spoilage is in
+ * break-even — so a shop that corrects everything quietly reports lower costs
+ * than it has.
+ *
+ * Written straight to `batch_stock` rather than through the lot machinery:
+ * batches have no lots. `produce_batch` adds, `consume_for_order` and the
+ * waste log subtract, and this sets. One column, and the activity log carries
+ * the why.
+ */
+export async function adjustBatchStock(input: {
+  batchId: string;
+  countedQty: number;
+  note?: string;
+}): Promise<Result> {
+  const viewer = await requireStock();
+  if (!viewer) return { error: "Only shop staff can adjust stock." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
+  if (!Number.isFinite(input.countedQty) || input.countedQty < 0) {
+    return { error: "Enter the counted amount." };
+  }
+
+  const supabase = createAdminClient();
+  const { data: batch } = await supabase
+    .from("batches")
+    .select("id, name, yield_unit, batch_stock")
+    .eq("id", input.batchId)
+    .maybeSingle();
+  if (!batch) return { error: "That batch no longer exists." };
+
+  const was = Number(batch.batch_stock) || 0;
+  const variance = input.countedQty - was;
+  if (Math.abs(variance) < 0.0001) return { error: "That's already the count." };
+
+  const { error } = await supabase
+    .from("batches")
+    .update({ batch_stock: input.countedQty })
+    .eq("id", input.batchId);
+  if (error) return { error: error.message };
+
+  await log(
+    "movement",
+    `Counted "${batch.name}" — ${was.toLocaleString("en-PH")} → ` +
+      `${input.countedQty.toLocaleString("en-PH")} ${batch.yield_unit} ` +
+      `(${variance > 0 ? "+" : ""}${variance.toLocaleString("en-PH")})` +
+      (input.note?.trim() ? ` · ${input.note.trim()}` : ""),
+    viewer.profile?.id ?? null
+  );
+  revalidate();
+  return { error: null };
+}

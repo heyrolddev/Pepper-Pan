@@ -597,6 +597,26 @@ export function CounterTill({
                 const left = m.makeable;
                 const known = left !== null && left !== undefined;
                 const out = known && left <= 0;
+                /**
+                 * Nobody has said what goes in this one.
+                 *
+                 * `makeableServings` returns Infinity for a dish with no
+                 * recipe — correctly, because the system cannot claim a thing
+                 * is out when it does not know what the thing takes — and
+                 * Infinity is dropped from the map, so `makeable` arrives
+                 * null.
+                 *
+                 * Which used to render as no badge at all, exactly like a
+                 * dish with plenty on the shelf. Two opposite facts, one
+                 * appearance: "we have loads" and "the system has no idea".
+                 * The owner asked why some tiles had no badge, which is the
+                 * question a silent difference always ends up producing.
+                 *
+                 * It matters beyond the tile. A dish with no recipe costs ₱0,
+                 * so it books no cost on every sale and reads as 100% margin
+                 * — which quietly inflates "Kept this month".
+                 */
+                const noRecipe = !known;
                 // "A few left" is the warning worth having. Above this the
                 // number is noise on a tile the size of a thumb; below it the
                 // cashier is about to promise something the kitchen cannot
@@ -621,7 +641,13 @@ export function CounterTill({
                           {qty}
                         </span>
                       )}
-                      {low ? (
+                      {noRecipe ? (
+                        // Grey, and quiet: this is a gap in the books, not a
+                        // reason to stop selling. The till never blocks.
+                        <span className="absolute bottom-1.5 right-2 rounded-full bg-ink-950/15 px-1.5 text-[9px] font-black uppercase tracking-wide text-ink-800/60">
+                          no recipe
+                        </span>
+                      ) : low ? (
                         <span className="absolute bottom-1.5 right-2 rounded-full bg-gold-400 px-1.5 text-[9px] font-black uppercase tracking-wide text-ink-950">
                           {left} left
                         </span>

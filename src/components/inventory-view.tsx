@@ -17,6 +17,7 @@ import { WasteForm } from "@/components/waste-form";
 import {
   AddBatchButton,
   BatchHistoryDialog,
+  CountBatchForm,
   EditBatchForm,
   IngredientHistoryDialog,
   NewBatchForm,
@@ -82,7 +83,10 @@ type Editing =
   | { kind: "new" }
   | { kind: "waste" }
   | { kind: "edit" | "restock" | "count"; row: StockRow }
-  | { kind: "produce" | "recipe" | "batch-history" | "batch-edit"; batch: BatchRow }
+  | {
+      kind: "produce" | "recipe" | "batch-history" | "batch-edit" | "batch-count";
+      batch: BatchRow;
+    }
   | { kind: "new-batch" }
   | { kind: "history"; row: StockRow }
   | null;
@@ -855,6 +859,16 @@ export function InventoryView({
                   >
                     Make a batch
                   </button>
+                  {/* The tub says 600g and the system says 800g. An
+                      ingredient has always been countable; a batch never was,
+                      so its number could only move by making, selling or
+                      writing off. */}
+                  <button
+                    onClick={() => setEditing({ kind: "batch-count", batch: b })}
+                    className="rounded-xl bg-ink-950/5 px-3 py-2 text-xs font-bold text-ink-800/70 transition-colors hover:bg-ink-950/10"
+                  >
+                    Count
+                  </button>
                   {/* Recipes define what things cost, so they are the owner's.
                       Making a batch is something that happened, so it is the
                       shift's. */}
@@ -970,6 +984,19 @@ export function InventoryView({
             stock: editing.row.stock,
             unit: editing.row.unit,
           }}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === "batch-count" && (
+        <CountBatchForm
+          key={editing.batch.id}
+          batch={{
+            id: editing.batch.id,
+            name: editing.batch.name,
+            stock: editing.batch.stock,
+            yieldUnit: editing.batch.yieldUnit,
+          }}
+          onWaste={() => setEditing({ kind: "waste" })}
           onClose={() => setEditing(null)}
         />
       )}
