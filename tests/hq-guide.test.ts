@@ -121,3 +121,15 @@ test("nonsense gets no answer rather than the nearest one", () => {
   assert.equal(findTopic("a"), null);
   assert.equal(findTopic(""), null);
 });
+
+test("the add-ons topic answers the question that started it", () => {
+  // Asked in Taglish, which is how it was asked: "may extra rice ba sa mga
+  // rice meals" and "pwede na rin sila mamili ng drinks nila, parang combo".
+  for (const q of [
+    "paano mag add ng extra rice",
+    "pwede bang mamili ng inumin parang combo",
+    "how do i do a combo meal like jollibee",
+  ]) {
+    assert.equal(findTopic(q)?.id, "add-ons", q);
+  }
+});

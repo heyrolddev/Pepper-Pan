@@ -45,7 +45,13 @@ export type AdminOrder = {
   payment_plan: PaymentPlan;
   downpayment_amount: number;
   downpayment_confirmed_at: string | null;
-  lines: { qty: number; price: number; name: string }[];
+  lines: {
+    qty: number;
+    price: number;
+    name: string;
+    /** What was added to it, from the receipt rather than today's menu. */
+    extras: { label: string; price: number }[];
+  }[];
   customer: {
     full_name: string | null;
     phone: string | null;
@@ -196,10 +202,20 @@ function OrderCard({ order: o, canFix }: { order: AdminOrder; canFix: boolean })
       <ul className="mt-4 flex flex-col gap-1 border-t border-ink-950/10 pt-3 text-sm">
         {o.lines.map((l, i) => (
           <li key={i} className="flex justify-between gap-4">
-            <span className="text-ink-800">
+            <span className="min-w-0 text-ink-800">
               {l.qty} × {l.name}
+              {/* Indented under the dish, not run into its name. This list is
+                  what somebody reads while cooking, and "and extra rice" at
+                  the end of a long dish name is the part that gets missed. */}
+              {l.extras.length > 0 && (
+                <span className="block pl-4 text-xs font-bold text-brand-700">
+                  {l.extras.map((e) => `+ ${e.label}`).join("  ")}
+                </span>
+              )}
             </span>
-            <span className="font-semibold text-ink-950">{peso(l.qty * l.price)}</span>
+            <span className="shrink-0 font-semibold text-ink-950">
+              {peso(l.qty * l.price)}
+            </span>
           </li>
         ))}
       </ul>
@@ -380,6 +396,9 @@ export function AdminOrderList({
         String(o.ticket ?? ""),
         o.id.slice(0, 8),
         ...o.lines.map((l) => l.name),
+        // Searchable by what was added, so "extra rice" finds the tickets
+        // that have it — which is how the kitchen asks the question.
+        ...o.lines.flatMap((l) => l.extras.map((e) => e.label)),
       ]
         .filter(Boolean)
         .join(" "),

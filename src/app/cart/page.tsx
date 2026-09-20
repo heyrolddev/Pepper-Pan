@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCart } from "@/lib/cart-context";
+import { lineUnitPrice, useCart } from "@/lib/cart-context";
+import { describeExtras } from "@/lib/modifiers";
 import { PageHeader } from "@/components/page-header";
 import { EmptyPan, EmptyState } from "@/components/spot-art";
 
@@ -65,7 +66,7 @@ function Cart({ missing }: { missing: string | null }) {
               <AnimatePresence mode="popLayout">
                 {items.map((item) => (
                   <motion.li
-                    key={item.mealId}
+                    key={item.key}
                     layout
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -77,15 +78,23 @@ function Cart({ missing }: { missing: string | null }) {
                       <p className="truncate font-display text-lg font-bold text-ink-950">
                         {item.name}
                       </p>
+                      {/* Listed, not summed into the price. "₱135 each" with
+                          no sign of the extra rice is the line a customer
+                          queries at the counter. */}
+                      {item.extras.length > 0 && (
+                        <p className="truncate text-sm font-semibold text-ink-800/70">
+                          + {describeExtras(item.extras)}
+                        </p>
+                      )}
                       <p className="text-sm text-ink-800/60">
-                        ₱{item.price.toFixed(2)} each
+                        ₱{lineUnitPrice(item).toFixed(2)} each
                       </p>
                     </div>
 
                     <div className="flex shrink-0 items-center gap-4">
                       <div className="flex items-center gap-1 rounded-full bg-cream-50 p-1 ring-1 ring-ink-950/10">
                         <button
-                          onClick={() => setQty(item.mealId, item.qty - 1)}
+                          onClick={() => setQty(item.key, item.qty - 1)}
                           aria-label={`Decrease quantity of ${item.name}`}
                           className="grid h-8 w-8 place-items-center rounded-full font-bold text-ink-800 transition-colors hover:bg-brand-600 hover:text-cream-50"
                         >
@@ -95,7 +104,7 @@ function Cart({ missing }: { missing: string | null }) {
                           {item.qty}
                         </span>
                         <button
-                          onClick={() => setQty(item.mealId, item.qty + 1)}
+                          onClick={() => setQty(item.key, item.qty + 1)}
                           aria-label={`Increase quantity of ${item.name}`}
                           className="grid h-8 w-8 place-items-center rounded-full font-bold text-ink-800 transition-colors hover:bg-brand-600 hover:text-cream-50"
                         >
@@ -104,11 +113,11 @@ function Cart({ missing }: { missing: string | null }) {
                       </div>
 
                       <span className="hidden w-24 text-right font-display text-lg font-black text-brand-600 sm:block">
-                        ₱{(item.price * item.qty).toFixed(2)}
+                        ₱{(lineUnitPrice(item) * item.qty).toFixed(2)}
                       </span>
 
                       <button
-                        onClick={() => removeItem(item.mealId)}
+                        onClick={() => removeItem(item.key)}
                         className="text-sm font-semibold text-ink-800/50 transition-colors hover:text-brand-600"
                       >
                         Remove

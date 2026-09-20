@@ -142,3 +142,38 @@ test("a bank transfer prints as a transfer, not as cash", () => {
   assert.equal(/Cash received/.test(text), false);
   assert.equal(/Change/.test(text), false);
 });
+
+test("add-ons print under the dish, priced so the paper adds up", () => {
+  // Folding ₱15 of extra rice into the dish's own price prints
+  // "1 x Pork Solo Rice 135.00" against a menu board that says 120 — and the
+  // person who has to explain that is behind a counter with a queue.
+  const rows = asPlainText(
+    renderReceipt({
+      ref: "A1B2",
+      at: new Date("2026-09-20T10:00:00Z"),
+      lines: [
+        {
+          name: "Pork Solo Rice",
+          qty: 2,
+          price: 120,
+          extras: [
+            { label: "Extra rice", price: 15 },
+            { label: "Coke", price: 0 },
+          ],
+        },
+      ],
+      total: 270,
+      dineIn: false,
+      method: "cash",
+      tendered: 300,
+      change: 30,
+    })
+  );
+
+  const body = rows.join("\n");
+  assert.match(body, /\+ Extra rice\s+30\.00/);
+  // Free is printed as a price, not left blank — a gap in the money column
+  // reads as a line that failed to print.
+  assert.match(body, /\+ Coke\s+0\.00/);
+  assert.match(body, /2 x Pork Solo Rice\s+240\.00/);
+});

@@ -33,7 +33,12 @@ export function ReorderButton({ orderId }: { orderId: string }) {
     clear();
     for (const item of result.items) {
       addItem(
-        { mealId: item.mealId, name: item.name, price: item.price },
+        {
+          mealId: item.mealId,
+          name: item.name,
+          price: item.price,
+          extras: item.extras,
+        },
         item.qty
       );
     }

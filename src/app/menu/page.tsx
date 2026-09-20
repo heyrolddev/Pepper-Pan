@@ -10,6 +10,8 @@ import {
 } from "@/lib/menu-products";
 import { PageHeader } from "@/components/page-header";
 import { loadAvailability } from "@/lib/costing-server";
+import { loadModifiers } from "@/lib/modifiers-server";
+import { groupsFor } from "@/lib/modifiers";
 import type { MenuCategory } from "@/lib/categories";
 import { MenuSchema } from "@/components/menu-schema";
 import { SHOP, siteUrl } from "@/lib/site";
@@ -116,6 +118,17 @@ async function getMenu(): Promise<{
     const rows = (data ?? []) as Row[];
     const groupOf = new Map(rows.map((m) => [m.id, m.product_id]));
 
+    /**
+     * The add-ons. Read after the stock picture rather than beside it,
+     * because an option's "sold out" is its DISH's sold out — "Extra rice"
+     * greys when the rice runs out, and that is the same number the menu is
+     * already holding.
+     *
+     * A failure here doesn't fail the menu either: it comes back empty and
+     * every dish is sold plain, which is what the shop did last week.
+     */
+    const addOns = await loadModifiers(supabase, makeable);
+
     const variants: Variant[] = rows.map((m) => ({
       id: m.id,
       name: m.name,
@@ -129,6 +142,7 @@ async function getMenu(): Promise<{
       avg_rating: byMeal.get(m.id) ? Number(byMeal.get(m.id)!.avg_rating) : null,
       review_count: byMeal.get(m.id)?.review_count ?? 0,
       makeable: makeable.get(m.id) ?? null,
+      groups: groupsFor(m.id, m.product_id, addOns.byMeal, addOns.byProduct),
     }));
 
     const menu = buildProducts(

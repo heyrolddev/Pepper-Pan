@@ -11,8 +11,17 @@ import { orderLabel } from "@/lib/tickets";
 import { cartQuantityProblem } from "@/lib/orders";
 import { loadAvailability } from "@/lib/costing-server";
 import { METHOD_FOR_TILL, type TillMethod } from "@/lib/till";
+import { loadModifiers } from "@/lib/modifiers-server";
+import { groupsFor, resolveChoice, type ChosenExtra } from "@/lib/modifiers";
 
-export type CounterLine = { mealId: string; qty: number };
+/**
+ * One line rung up.
+ *
+ * `optionIds` is what was ticked, and nothing else — no labels, no prices.
+ * The till runs in a browser like any other page, so every peso on the sale
+ * is re-read here from the menu. See `resolveChoice`.
+ */
+export type CounterLine = { mealId: string; qty: number; optionIds?: string[] };
 
 export type CounterResult =
   | { error: string; orderId?: undefined; total?: undefined; ticket?: undefined }
@@ -65,7 +74,7 @@ export async function recordWalkInSale(input: {
   const supabase = createAdminClient();
   const { data: meals, error: mealsError } = await supabase
     .from("meals")
-    .select("id, name, price")
+    .select("id, name, price, product_id")
     .in("id", lines.map((l) => l.mealId));
   if (mealsError) return { error: mealsError.message };
 
@@ -86,17 +95,30 @@ export async function recordWalkInSale(input: {
   // the customer is standing there — so it says what is short and by how
   // much rather than just refusing.
   const makeable = await loadAvailability();
-  const short = lines
-    .map((l) => ({ line: l, can: makeable.get(l.mealId) }))
-    .filter((x) => x.can !== undefined && x.can < x.line.qty);
+
+  // Dishes AND add-ons, summed across the ticket first: an add-on is a dish
+  // and draws the same stock, and three lines each asking for one extra rice
+  // is three portions — checked one at a time, all three would go through.
+  const needed = new Map<string, number>();
+  const labelOf = new Map<string, string>();
+  lines.forEach((l, at) => {
+    needed.set(l.mealId, (needed.get(l.mealId) ?? 0) + l.qty);
+    labelOf.set(l.mealId, nameById.get(l.mealId) ?? "an item");
+    for (const e of extrasPerLine[at]) {
+      if (!e.mealId) continue;
+      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + l.qty);
+      labelOf.set(e.mealId, e.label);
+    }
+  });
+
+  const short = [...needed]
+    .map(([mealId, qty]) => ({ mealId, qty, can: makeable.get(mealId) }))
+    .filter((x) => x.can !== undefined && x.can < x.qty);
   if (short.length > 0) {
-    const nameById = new Map(
-      ((meals ?? []) as { id: string; name: string }[]).map((m) => [m.id, m.name])
-    );
     const detail = short
       .map(
         (x) =>
-          `${nameById.get(x.line.mealId) ?? "an item"} (${x.can} left, ${x.line.qty} rung up)`
+          `${labelOf.get(x.mealId) ?? "an item"} (${x.can} left, ${x.qty} rung up)`
       )
       .join(", ");
     return {
@@ -104,8 +126,49 @@ export async function recordWalkInSale(input: {
     };
   }
 
+  // --- Add-ons ------------------------------------------------------------
+  const nameById = new Map(
+    ((meals ?? []) as { id: string; name: string }[]).map((m) => [m.id, m.name])
+  );
+  const productById = new Map(
+    ((meals ?? []) as { id: string; product_id: string | null }[]).map((m) => [
+      m.id,
+      m.product_id,
+    ])
+  );
+  const wantsAddOns = lines.some((l) => (l.optionIds ?? []).length > 0);
+  const addOns = wantsAddOns
+    ? await loadModifiers(supabase)
+    : { byMeal: new Map(), byProduct: new Map(), all: [], error: null };
+  if (wantsAddOns && addOns.error) {
+    return { error: "Couldn't read the add-ons. Try again in a moment." };
+  }
+
+  const extrasPerLine: ChosenExtra[][] = [];
+  for (const l of lines) {
+    const ids = l.optionIds ?? [];
+    if (ids.length === 0) {
+      extrasPerLine.push([]);
+      continue;
+    }
+    const { extras, problem } = resolveChoice(
+      groupsFor(
+        l.mealId,
+        productById.get(l.mealId) ?? null,
+        addOns.byMeal,
+        addOns.byProduct
+      ),
+      ids,
+      nameById.get(l.mealId) ?? "that dish"
+    );
+    if (problem) return { error: problem };
+    extrasPerLine.push(extras);
+  }
+  const extraTotal = (at: number) =>
+    extrasPerLine[at].reduce((n, e) => n + e.price, 0);
+
   const subtotal = lines.reduce(
-    (sum, l) => sum + priceById.get(l.mealId)! * l.qty,
+    (sum, l, at) => sum + (priceById.get(l.mealId)! + extraTotal(at)) * l.qty,
     0
   );
 
@@ -162,19 +225,53 @@ export async function recordWalkInSale(input: {
   }
   const ticket = Number((order as { ticket: number }).ticket);
 
-  const { error: linesError } = await supabase.from("order_lines").insert(
-    lines.map((l) => ({
-      order_id: order.id,
-      meal_id: l.mealId,
-      qty: l.qty,
-      price_at_sale: priceById.get(l.mealId)!,
-    }))
-  );
+  // The dish's own price on the line, its add-ons on their own rows — so the
+  // best-seller report still knows what a rice meal costs, and the receipt
+  // adds up in front of the customer.
+  const { data: insertedLines, error: linesError } = await supabase
+    .from("order_lines")
+    .insert(
+      lines.map((l) => ({
+        order_id: order.id,
+        meal_id: l.mealId,
+        qty: l.qty,
+        price_at_sale: priceById.get(l.mealId)!,
+      }))
+    )
+    .select("id");
   if (linesError) {
     // The order exists but has nothing in it, which would show up as a ₱X sale
     // of nothing and quietly skew the best-sellers. Removed rather than left.
     await supabase.from("orders").delete().eq("id", order.id);
     return { error: linesError.message };
+  }
+
+  const lineIds = (insertedLines ?? []).map((r) => r.id as number);
+  const extraRows =
+    lineIds.length === lines.length
+      ? lines.flatMap((_, at) =>
+          extrasPerLine[at].map((e) => ({
+            order_line_id: lineIds[at],
+            option_id: e.optionId,
+            meal_id: e.mealId,
+            label: e.label,
+            price_at_sale: e.price,
+            qty: 1,
+          }))
+        )
+      : [];
+  if (extraRows.length > 0) {
+    const { error: extrasError } = await supabase
+      .from("order_line_extras")
+      .insert(extraRows);
+    if (extrasError) {
+      // The customer has already been charged for a drink the kitchen would
+      // never be told to pour. Taken back out rather than half-recorded — and
+      // `revenue` included those add-ons, so leaving it would overstate the
+      // day's takings as well as the order.
+      await supabase.from("orders").delete().eq("id", order.id);
+      return { error: extrasError.message };
+    }
   }
 
   // The estimate first, from current recipe prices, so an order always has a

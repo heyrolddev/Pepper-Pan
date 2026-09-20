@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CounterTill, type CounterMeal } from "@/components/counter-till";
 import { shopToday } from "@/lib/format-date";
 import { loadStockPicture } from "@/lib/costing-server";
+import { loadModifiers } from "@/lib/modifiers-server";
+import { groupsFor } from "@/lib/modifiers";
 import type { MenuCategory } from "@/lib/categories";
 
 // The menu can be 86'd mid-service from the Menu screen; a cached till would
@@ -17,7 +19,7 @@ export default async function AdminCounterPage() {
   const [{ data: meals, error }, { data: today }, { data: catRows }] = await Promise.all([
     supabase
       .from("meals")
-      .select("id, name, price, categories, is_public, is_available")
+      .select("id, name, price, categories, is_public, is_available, product_id")
       .order("name"),
     // What this till has already taken today, so whoever is on the counter can
     // see their own shift adding up rather than having to leave for the
@@ -37,13 +39,21 @@ export default async function AdminCounterPage() {
   const categories = (catRows ?? []) as MenuCategory[];
 
   const { makeable, limits } = await loadStockPicture();
-  const rows: CounterMeal[] = ((meals ?? []) as CounterMeal[])
+  // The same add-ons the website offers, read the same way. A drink the
+  // customer can pick online and not at the stall is the kind of difference
+  // that only ever surfaces as an argument at the counter.
+  const addOns = await loadModifiers(supabase, makeable);
+
+  const rows: CounterMeal[] = ((meals ?? []) as (CounterMeal & {
+    product_id: string | null;
+  })[])
     .map((m) => ({
       ...m,
       makeable: makeable.get(m.id) ?? null,
       // Why, not just how many. A cashier with a customer in front of them
       // needs to know what to go and fetch or cook.
       limits: limits.get(m.id) ?? [],
+      groups: groupsFor(m.id, m.product_id, addOns.byMeal, addOns.byProduct),
     }))
     .filter(
     // Sold out is sold out at the counter too — the whole point of 86ing

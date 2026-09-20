@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getSchedule } from "@/lib/hours-server";
 import { canScheduleFor, parseManilaLocal } from "@/lib/hours";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
@@ -15,11 +16,17 @@ import {
 import { notifyNewOrder } from "@/lib/notify";
 import { cartQuantityProblem } from "@/lib/orders";
 import { recordOrderCost, loadAvailability } from "@/lib/costing-server";
+import { loadModifiers } from "@/lib/modifiers-server";
+import { groupsFor, resolveChoice, type ChosenExtra } from "@/lib/modifiers";
 
 type PlaceOrderInput = {
   // `name` is the browser's copy, used only to name a sold-out dish back to
   // the same customer. Prices and availability always come from the database.
-  items: { mealId: string; qty: number; name?: string }[];
+  //
+  // `optionIds` is the same principle one level down: which add-ons were
+  // ticked, and nothing about what they are called or what they cost. Both of
+  // those are re-read here — see `resolveChoice`.
+  items: { mealId: string; qty: number; name?: string; optionIds?: string[] }[];
   /**
    * Manila wall-clock, as a `datetime-local` value ("2026-09-01T18:30").
    * Null means "as soon as you can".
@@ -107,7 +114,7 @@ export async function placeOrder(
   const mealIds = input.items.map((i) => i.mealId);
   const { data: meals, error: mealsError } = await supabase
     .from("meals")
-    .select("id, name, price")
+    .select("id, name, price, product_id")
     .in("id", mealIds);
   if (mealsError || !meals) {
     return { error: "Could not verify menu prices." };
@@ -133,8 +140,54 @@ export async function placeOrder(
     }
   }
 
+  // --- Add-ons -----------------------------------------------------------
+  // Priced, checked against what that dish actually offers, and refused
+  // rather than repaired. A cart lives in localStorage; the only thing it is
+  // trusted for here is which ids were ticked.
+  const productById = new Map(
+    (meals as { id: string; product_id: string | null }[]).map((m) => [
+      m.id,
+      m.product_id,
+    ])
+  );
+  const wantsAddOns = input.items.some((i) => (i.optionIds ?? []).length > 0);
+  const addOns = wantsAddOns
+    ? await loadModifiers(supabase)
+    : { byMeal: new Map(), byProduct: new Map(), all: [], error: null };
+  if (wantsAddOns && addOns.error) {
+    return {
+      error:
+        "We can't read the add-ons right now, so we'd rather not guess at your order. Please try again in a moment.",
+    };
+  }
+
+  const extrasFor = new Map<string, ChosenExtra[]>();
+  for (const item of input.items) {
+    const ids = item.optionIds ?? [];
+    if (ids.length === 0) continue;
+    const groups = groupsFor(
+      item.mealId,
+      productById.get(item.mealId) ?? null,
+      addOns.byMeal,
+      addOns.byProduct
+    );
+    const { extras, problem } = resolveChoice(
+      groups,
+      ids,
+      nameById.get(item.mealId) ?? "your order"
+    );
+    if (problem) return { error: problem };
+    extrasFor.set(item.mealId + "|" + ids.join("+"), extras);
+  }
+  const extrasOfItem = (i: PlaceOrderInput["items"][number]) =>
+    extrasFor.get(i.mealId + "|" + (i.optionIds ?? []).join("+")) ?? [];
+
   const subtotal = input.items.reduce(
-    (sum, i) => sum + priceById.get(i.mealId)! * i.qty,
+    (sum, i) =>
+      sum +
+      (priceById.get(i.mealId)! +
+        extrasOfItem(i).reduce((n, e) => n + e.price, 0)) *
+        i.qty,
     0
   );
 
@@ -306,14 +359,31 @@ export async function placeOrder(
   // whose ingredients ran out ten minutes ago. Selling food that cannot be
   // cooked costs a refund and a customer.
   const makeable = await loadAvailability();
-  const short = input.items.filter((i) => {
-    const n = makeable.get(i.mealId);
-    return n !== undefined && n < i.qty;
+
+  /**
+   * How many of each dish this order needs — the dishes ordered AND the
+   * dishes added to them, because an add-on IS a dish and draws the same
+   * stock. Summed across lines first: three separate lines each asking for
+   * one extra rice is three portions of rice, and checking them one at a time
+   * would wave all three through while one is left.
+   */
+  const needed = new Map<string, number>();
+  const labelOf = new Map<string, string>();
+  for (const i of input.items) {
+    needed.set(i.mealId, (needed.get(i.mealId) ?? 0) + i.qty);
+    labelOf.set(i.mealId, nameById.get(i.mealId) ?? "an item");
+    for (const e of extrasOfItem(i)) {
+      if (!e.mealId) continue;
+      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + i.qty);
+      labelOf.set(e.mealId, e.label);
+    }
+  }
+  const short = [...needed].filter(([mealId, qty]) => {
+    const n = makeable.get(mealId);
+    return n !== undefined && n < qty;
   });
   if (short.length > 0) {
-    const names = short
-      .map((i) => nameById.get(i.mealId) ?? "an item")
-      .join(", ");
+    const names = short.map(([mealId]) => labelOf.get(mealId) ?? "an item").join(", ");
     return {
       error: `Sorry — we've just run out of ${names}. Take it out of your cart and the rest can go through.`,
     };
@@ -350,16 +420,73 @@ export async function placeOrder(
     return { error: orderError?.message ?? "Could not place order." };
   }
 
-  const { error: linesError } = await supabase.from("order_lines").insert(
-    input.items.map((i) => ({
-      order_id: order.id,
-      meal_id: i.mealId,
-      qty: i.qty,
-      price_at_sale: priceById.get(i.mealId)!,
-    }))
-  );
+  /**
+   * `price_at_sale` stays the DISH's price, with the add-ons on their own
+   * rows underneath. Folding them in would make a line read "Pork Solo Rice
+   * ₱135" where the menu says ₱120 — a receipt that looks like a price rise
+   * and a best-seller report that can no longer tell what a rice meal costs.
+   * The ids come back so the extras know which line they belong to.
+   */
+  const { data: insertedLines, error: linesError } = await supabase
+    .from("order_lines")
+    .insert(
+      input.items.map((i) => ({
+        order_id: order.id,
+        meal_id: i.mealId,
+        qty: i.qty,
+        price_at_sale: priceById.get(i.mealId)!,
+      }))
+    )
+    .select("id");
   if (linesError) {
     return { error: linesError.message };
+  }
+
+  // Positional, and safe to be: PostgREST returns inserted rows in the order
+  // they were sent. Guarded anyway — a line count that doesn't match would
+  // otherwise attach somebody's extra rice to the wrong dish.
+  const lineIds = (insertedLines ?? []).map((l) => l.id as number);
+  if (lineIds.length === input.items.length) {
+    const extraRows = input.items.flatMap((item, at) =>
+      extrasOfItem(item).map((e) => ({
+        order_line_id: lineIds[at],
+        option_id: e.optionId,
+        meal_id: e.mealId,
+        label: e.label,
+        price_at_sale: e.price,
+        qty: 1,
+      }))
+    );
+    if (extraRows.length > 0) {
+      const { error: extrasError } = await supabase
+        .from("order_line_extras")
+        .insert(extraRows);
+      // Not survivable, unlike a slow notification: `revenue` already
+      // includes those add-ons, so leaving the order would charge for a drink
+      // the kitchen was never told to pour. It goes back rather than out
+      // half-written.
+      //
+      // Through the admin client, because the customer's own cannot do it:
+      // `staff_delete_orders` is the only DELETE policy on `orders`, so the
+      // obvious `supabase.from("orders").delete()` here would have returned
+      // success, removed nothing, and left exactly the half-written order
+      // this branch exists to prevent.
+      if (extrasError) {
+        const { error: rollbackError } = await createAdminClient()
+          .from("orders")
+          .delete()
+          .eq("id", order.id);
+        if (rollbackError) {
+          console.error(
+            `[checkout] order ${order.id} kept its lines but lost its add-ons, and could not be rolled back: ${rollbackError.message}`
+          );
+        }
+        return {
+          error:
+            "We couldn't save your add-ons, so nothing was ordered. Please try again.",
+        };
+      }
+    }
   }
 
   // What the order cost to make, priced now. Awaited before the notification

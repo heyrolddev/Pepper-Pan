@@ -95,11 +95,29 @@ export async function updateMyOrder(
 
   const { data: lines, error: linesError } = await supabase
     .from("order_lines")
-    .select("id, meal_id, price_at_sale")
+    // The add-ons ride along because the total has to be rebuilt from what
+    // the line ACTUALLY costs. Summing `price_at_sale` alone would drop the
+    // extra rice out of the order the moment the customer nudged a quantity —
+    // still cooked, no longer charged for.
+    .select("id, meal_id, price_at_sale, order_line_extras(price_at_sale)")
     .eq("order_id", orderId);
   if (linesError || !lines) return { error: "Could not read that order." };
 
-  const byId = new Map(lines.map((l) => [l.id as number, l]));
+  type LineRow = {
+    id: number;
+    price_at_sale: number;
+    order_line_extras: { price_at_sale: number }[] | null;
+  };
+  const byId = new Map(
+    (lines as unknown as LineRow[]).map((l) => [
+      l.id,
+      Number(l.price_at_sale) +
+        (l.order_line_extras ?? []).reduce(
+          (n, e) => n + (Number(e.price_at_sale) || 0),
+          0
+        ),
+    ])
+  );
   if (items.some((i) => !byId.has(i.lineId))) {
     return { error: "That order changed while you were editing it. Reload and try again." };
   }
@@ -120,7 +138,7 @@ export async function updateMyOrder(
   }
 
   const revenue = items.reduce(
-    (sum, i) => sum + i.qty * Number(byId.get(i.lineId)!.price_at_sale),
+    (sum, i) => sum + i.qty * byId.get(i.lineId)!,
     0
   );
 

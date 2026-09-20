@@ -1,14 +1,39 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { cartKey, extrasTotal, type ChosenExtra } from "@/lib/modifiers";
 
-export type CartItem = { mealId: string; name: string; price: number; qty: number };
+/**
+ * A line in the basket.
+ *
+ * `key` rather than `mealId` is what identifies it, and that change is the
+ * whole reason this file moved. The cart merged on the dish, which was right
+ * while a dish was the only thing a customer could choose — and became wrong
+ * the moment they could add extra rice to one of them. Merging on the dish
+ * would have turned "with extra rice" and "without" into quantity 2 of
+ * whichever was tapped first: the wrong money charged and the wrong food
+ * cooked, with nothing on screen to say so.
+ */
+export type CartItem = {
+  /** The dish plus everything added to it — see `cartKey`. */
+  key: string;
+  mealId: string;
+  name: string;
+  /** The dish's own price. The add-ons carry theirs. */
+  price: number;
+  extras: ChosenExtra[];
+  qty: number;
+};
+
+/** What one of this line costs, add-ons included. */
+export const lineUnitPrice = (item: CartItem) =>
+  (Number(item.price) || 0) + extrasTotal(item.extras ?? []);
 
 type CartContextValue = {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, "qty">, qty?: number) => void;
-  removeItem: (mealId: string) => void;
-  setQty: (mealId: string, qty: number) => void;
+  addItem: (item: Omit<CartItem, "qty" | "key">, qty?: number) => void;
+  removeItem: (key: string) => void;
+  setQty: (key: string, qty: number) => void;
   clear: () => void;
   total: number;
   count: number;
@@ -16,6 +41,37 @@ type CartContextValue = {
 
 const CartContext = createContext<CartContextValue | null>(null);
 const STORAGE_KEY = "pepperpan_cart";
+
+/**
+ * A cart saved before add-ons existed has no `key` and no `extras`.
+ *
+ * It is sitting in real browsers right now, and the alternative to reading it
+ * is a customer who comes back to an empty basket the day this ships. Given a
+ * shape rather than discarded: no extras, and a key that is just the dish,
+ * which is exactly what the old merge rule meant.
+ */
+function reviveCart(raw: unknown): CartItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CartItem[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const i = row as Partial<CartItem>;
+    if (typeof i.mealId !== "string" || typeof i.name !== "string") continue;
+    const price = Number(i.price);
+    const qty = Number(i.qty);
+    if (!Number.isFinite(price) || !Number.isFinite(qty) || qty <= 0) continue;
+    const extras = Array.isArray(i.extras) ? (i.extras as ChosenExtra[]) : [];
+    out.push({
+      key: typeof i.key === "string" && i.key ? i.key : cartKey(i.mealId, extras),
+      mealId: i.mealId,
+      name: i.name,
+      price,
+      extras,
+      qty,
+    });
+  }
+  return out;
+}
 
 export function CartProvider({
   children,
@@ -42,7 +98,7 @@ export function CartProvider({
       } else {
         const raw = localStorage.getItem(STORAGE_KEY);
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (raw) setItems(JSON.parse(raw));
+        if (raw) setItems(reviveCart(JSON.parse(raw)));
       }
     } catch {
       // ignore malformed/unavailable storage
@@ -59,33 +115,34 @@ export function CartProvider({
     }
   }, [items, hydrated]);
 
-  function addItem(item: Omit<CartItem, "qty">, qty = 1) {
+  function addItem(item: Omit<CartItem, "qty" | "key">, qty = 1) {
+    const key = cartKey(item.mealId, item.extras ?? []);
     setItems((prev) => {
-      const existing = prev.find((i) => i.mealId === item.mealId);
+      const existing = prev.find((i) => i.key === key);
       if (existing) {
-        return prev.map((i) => (i.mealId === item.mealId ? { ...i, qty: i.qty + qty } : i));
+        return prev.map((i) => (i.key === key ? { ...i, qty: i.qty + qty } : i));
       }
-      return [...prev, { ...item, qty }];
+      return [...prev, { ...item, extras: item.extras ?? [], key, qty }];
     });
   }
 
-  function removeItem(mealId: string) {
-    setItems((prev) => prev.filter((i) => i.mealId !== mealId));
+  function removeItem(key: string) {
+    setItems((prev) => prev.filter((i) => i.key !== key));
   }
 
-  function setQty(mealId: string, qty: number) {
+  function setQty(key: string, qty: number) {
     if (qty <= 0) {
-      removeItem(mealId);
+      removeItem(key);
       return;
     }
-    setItems((prev) => prev.map((i) => (i.mealId === mealId ? { ...i, qty } : i)));
+    setItems((prev) => prev.map((i) => (i.key === key ? { ...i, qty } : i)));
   }
 
   function clear() {
     setItems([]);
   }
 
-  const total = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const total = items.reduce((sum, i) => sum + lineUnitPrice(i) * i.qty, 0);
   const count = items.reduce((sum, i) => sum + i.qty, 0);
 
   return (

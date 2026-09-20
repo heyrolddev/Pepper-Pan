@@ -31,15 +31,25 @@ export const RESTORE_ORDER = [
   // menu that comes back before its own vocabulary shows every dish
   // uncoloured until the next table lands.
   "menu_categories",
+  // Cards before dishes: `meals.product_id` points at one.
+  "menu_products",
   "meals",
   "meal_ingredients",
   "meal_components",
   "meal_packaging",
   "order_packaging",
+  // Groups before options, options before what they're attached to — an
+  // option names a dish, so the dishes have to be in by now too.
+  "modifier_groups",
+  "modifier_options",
+  "meal_modifier_groups",
+  "product_modifier_groups",
   // Shifts before orders: an order carries `shift_id`.
   "staff_shifts",
   "orders",
   "order_lines",
+  // After both its parents: the line it hangs off, and the option it names.
+  "order_line_extras",
   "purchase_log",
   "consumption_log",
   "waste_log",

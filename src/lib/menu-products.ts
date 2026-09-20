@@ -33,6 +33,8 @@
  * held at the same time unless a 22oz-with-cheese is on the menu.
  */
 
+import type { ModifierGroup } from "@/lib/modifiers";
+
 export type VariantOptions = Record<string, string>;
 
 export type Variant = {
@@ -51,6 +53,15 @@ export type Variant = {
   categories: string[];
   avg_rating?: number | null;
   review_count?: number;
+  /**
+   * What can be added to this one — "Extra rice?", "Choose your drink".
+   *
+   * Per variant rather than per card, and resolved on the server, because a
+   * group can be attached to the dish as well as to the card it sits on: the
+   * drinks belong to the whole Solo Ji Pai card, the extra noodles belong to
+   * the one dish that has noodles in it. `groupsFor` merges the two.
+   */
+  groups?: ModifierGroup[];
 };
 
 /** One thing to choose: "Size", with "16oz" and "22oz" to choose between. */
