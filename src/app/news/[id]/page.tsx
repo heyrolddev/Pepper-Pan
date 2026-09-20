@@ -49,6 +49,11 @@ export default async function AnnouncementPage({ params }: PageProps<"/news/[id]
     news: { label: "News", chip: "bg-jade-600 text-cream-50" },
     coming_soon: { label: "Coming soon", chip: "bg-gold-400 text-ink-950" },
     dine_in: { label: "Dine-in special", chip: "bg-ink-950 text-gold-400" },
+    // A story photo has no page of its own — it is a picture in the deck on
+    // the homepage, and nothing ever links here for one. Named anyway, so the
+    // day something does link to it the page says what it is looking at
+    // rather than calling it News.
+    story: { label: "Our story", chip: "bg-brand-700 text-cream-50" },
   };
   const kind = badge[row.kind] ?? badge.news;
 

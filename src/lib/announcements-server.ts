@@ -3,7 +3,14 @@ import { createPublicClient } from "@/lib/supabase/public";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasDetail, homepagePicks, type Announcement } from "@/lib/announcements";
 
-const EMPTY = { promos: [], promoCards: [], news: [], dineIn: null, comingSoon: [] };
+const EMPTY = {
+  promos: [],
+  promoCards: [],
+  news: [],
+  dineIn: null,
+  comingSoon: [],
+  story: [],
+};
 
 /**
  * Every row a visitor is allowed to see, which the policy has already narrowed
@@ -59,6 +66,8 @@ export async function getLiveAnnouncements(): Promise<{
   dineIn: Announcement | null;
   /** And up to two things on the way. */
   comingSoon: Announcement[];
+  /** The photographs in the Our story deck, in the order they are dealt. */
+  story: Announcement[];
 }> {
   try {
     // Ordered by the query only so the strip is stable. WHAT the homepage
@@ -73,6 +82,7 @@ export async function getLiveAnnouncements(): Promise<{
       news: homepagePicks(rows, "news"),
       dineIn: homepagePicks(rows, "dine_in")[0] ?? null,
       comingSoon: homepagePicks(rows, "coming_soon"),
+      story: homepagePicks(rows, "story"),
     };
   } catch (e) {
     console.error(`[announcements] ${e instanceof Error ? e.message : String(e)}`);

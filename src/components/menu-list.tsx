@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { Stars } from "@/components/stars";
 import { LOW_STOCK_SERVINGS } from "@/lib/costing";
+import { ProductDialog } from "@/components/product-dialog";
+import type { Product } from "@/lib/menu-products";
 import {
   categoriesUsed,
   colourOf,
@@ -14,48 +16,61 @@ import {
   type MenuCategory,
 } from "@/lib/categories";
 
-export type Meal = {
-  id: string;
-  name: string;
-  price: number;
-  description: string | null;
-  /** Servings the shelf can still make. Null when there's no recipe to go on. */
-  makeable?: number | null;
-  categories: string[];
-  image_url: string | null;
-  avg_rating?: number | null;
-  review_count?: number;
-};
+/**
+ * The card is a door now.
+ *
+ * It used to be the whole transaction: a photograph, a price and an Add
+ * button, which works right up until the dish comes in two sizes. Then the
+ * menu grows a second card with the same photograph, and a third and a fourth
+ * for spicy and cheese, and a customer scrolling it reads a menu with
+ * duplicates in it rather than a shop with choices.
+ *
+ * So a card is one THING now, and tapping it opens the ways of having it —
+ * see product-dialog.tsx. The grouping is the owner's, in the Menu tab; a
+ * dish nobody has grouped is a group of one, which is what lets every card
+ * open from the day this ships rather than only the handful that were tidied
+ * up first.
+ *
+ * Add stays on the card for a group of one, because for most of this menu
+ * there is nothing to choose and making somebody open a dialog to buy one
+ * bowl of noodles is a tap charged for nothing.
+ */
 
 function initialOf(name: string) {
   return (name.match(/[a-zA-Z0-9]/)?.[0] ?? name.charAt(0)).toUpperCase();
 }
 
-function MealCard({
-  meal,
+function ProductCard({
+  product,
   index,
   staff,
+  onOpen,
 }: {
-  meal: Meal;
+  product: Product;
   index: number;
   staff: boolean;
+  onOpen: () => void;
 }) {
   const { addItem } = useCart();
   const [added, setAdded] = useState(false);
 
-  // Derived on every render from the stock the page was built with, so a
-  // dish that ran out mid-session goes grey on the next load rather than
-  // waiting for someone to flip a switch.
-  const soldOut = meal.makeable !== null && meal.makeable !== undefined && meal.makeable <= 0;
+  const only = product.variants.length === 1 ? product.variants[0] : null;
+  const soldOut = product.soldOut;
+  // Only ever shown for a card with one dish behind it. "Only 2 left" over a
+  // group is a promise about which of four things, and the card cannot say
+  // which — the dialog can, so that is where it is said.
   const low =
-    meal.makeable !== null &&
-    meal.makeable !== undefined &&
-    meal.makeable > 0 &&
-    meal.makeable <= LOW_STOCK_SERVINGS;
+    only != null &&
+    !soldOut &&
+    only.makeable !== null &&
+    only.makeable !== undefined &&
+    only.makeable <= LOW_STOCK_SERVINGS;
 
-  function handleAdd() {
-    if (soldOut) return;
-    addItem({ mealId: meal.id, name: meal.name, price: Number(meal.price) });
+  function handleAdd(e: React.MouseEvent) {
+    // The card itself is the door. Without this, adding also opens it.
+    e.stopPropagation();
+    if (soldOut || !only) return;
+    addItem({ mealId: only.id, name: only.name, price: Number(only.price) });
     setAdded(true);
     setTimeout(() => setAdded(false), 1200);
   }
@@ -74,7 +89,19 @@ function MealCard({
       // cards because framer-motion's transform creates a containing block
       // while the entrance animation runs, and drops it when the animation
       // settles.
-      className="group relative flex flex-col overflow-hidden rounded-3xl bg-white ring-1 ring-ink-950/[0.08] transition-shadow hover:shadow-xl hover:shadow-ink-950/10"
+      onClick={onOpen}
+      // A real button, not a div with a click handler: this is now the main
+      // way into a dish, so it has to be reachable by tab and by Enter.
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      aria-label={`${product.name} — see details`}
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl bg-white text-left ring-1 ring-ink-950/[0.08] transition-shadow hover:shadow-xl hover:shadow-ink-950/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
     >
       {/* Square, to match how the food is actually photographed: a round dish
           shot from above fills a square and gets trimmed by anything else. The
@@ -84,9 +111,19 @@ function MealCard({
           Sold out
         </span>
       )}
-      {!soldOut && low && (
+      {low && (
         <span className="absolute left-3 top-3 z-10 rounded-full bg-gold-400 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-ink-950">
-          Only {meal.makeable} left
+          Only {only!.makeable} left
+        </span>
+      )}
+      {/* The one thing on the card that says there is more behind it. A count
+          rather than a chevron: "2 sizes" tells a customer what the tap is
+          for, where an arrow only says that something happens. */}
+      {product.variants.length > 1 && (
+        <span className="absolute right-3 top-3 z-10 rounded-full bg-ink-950/75 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-cream-50 backdrop-blur">
+          {product.axes.length === 1
+            ? `${product.axes[0].values.length} ${product.axes[0].name.toLowerCase()}s`
+            : `${product.variants.length} ways`}
         </span>
       )}
 
@@ -100,10 +137,10 @@ function MealCard({
           soldOut ? "opacity-45 saturate-50" : ""
         }`}
       >
-        {meal.image_url ? (
+        {product.image_url ? (
           <Image
-            src={meal.image_url}
-            alt={meal.name}
+            src={product.image_url}
+            alt={product.name}
             fill
             // Cards are smaller on a laptop now, so the browser can be asked
             // for less: a stale `sizes` downloads a 360px image for a 220px
@@ -116,7 +153,7 @@ function MealCard({
           // gradient: it's a gap, not a feature, and seventy-three of them
           // was a wall of orange with the actual food nowhere in it.
           <span className="absolute inset-0 grid place-items-center bg-cream-100 font-display text-5xl font-black text-ink-950/15">
-            {initialOf(meal.name)}
+            {initialOf(product.name)}
           </span>
         )}
       </div>
@@ -126,13 +163,13 @@ function MealCard({
           items four at a time. The desktop sizes are unchanged. */}
       <div className="flex flex-1 flex-col gap-1.5 p-3 sm:gap-2 sm:p-4">
         <p className="line-clamp-2 font-display text-sm font-bold leading-tight text-ink-950 sm:text-base">
-          {meal.name}
+          {product.name}
         </p>
-        {meal.avg_rating != null && (meal.review_count ?? 0) > 0 && (
+        {product.avgRating != null && product.reviewCount > 0 && (
           <span className="flex items-center gap-1.5">
-            <Stars rating={meal.avg_rating} />
+            <Stars rating={product.avgRating} />
             <span className="text-[11px] font-semibold text-ink-800/55 sm:text-xs">
-              {meal.avg_rating.toFixed(1)} ({meal.review_count})
+              {product.avgRating.toFixed(1)} ({product.reviewCount})
             </span>
           </span>
         )}
@@ -140,9 +177,9 @@ function MealCard({
             nothing about what "Ji Pai" or "XLB" actually is, which is the one
             thing a menu has to do. Clamped to two lines so a long description
             can't push the price off the bottom of the card. */}
-        {meal.description && (
+        {product.description && (
           <p className="line-clamp-2 text-xs leading-snug text-ink-800/70 sm:text-[13px]">
-            {meal.description}
+            {product.description}
           </p>
         )}
         {/* Wraps rather than squeezing. Two columns on a phone leaves about
@@ -150,13 +187,22 @@ function MealCard({
             they were overlapping, with the button sitting on the price. */}
         <div className="mt-auto flex flex-wrap items-center justify-between gap-1.5 pt-2 sm:gap-2 sm:pt-3">
           <span className="font-display text-base font-black text-brand-600 sm:text-lg">
-            ₱{Number(meal.price).toFixed(2)}
+            {/* "from" only when the ways of having it cost different money.
+                Four ji pai at two prices is a range; two sizes of the same
+                price is not, and printing "from" over a single figure reads
+                as a charge waiting to appear at the till. */}
+            {product.priceFrom !== product.priceTo && (
+              <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-ink-800/50 sm:text-xs">
+                from
+              </span>
+            )}
+            ₱{Number(product.priceFrom).toFixed(2)}
           </span>
           {/* Nothing to add to: staff can't check out, so the button would
               only fill a cart that leads to a refusal. */}
           {!staff && (
             <button
-              onClick={handleAdd}
+              onClick={only ? handleAdd : (e) => { e.stopPropagation(); onOpen(); }}
               disabled={soldOut}
               className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold transition-all sm:px-4 sm:py-2 sm:text-sm ${
                 soldOut
@@ -166,7 +212,7 @@ function MealCard({
                     : "bg-ink-950 text-cream-50 hover:bg-brand-600"
               }`}
             >
-              {soldOut ? "Sold out" : added ? "Added ✓" : "Add +"}
+              {soldOut ? "Sold out" : added ? "Added ✓" : only ? "Add +" : "Choose"}
             </button>
           )}
         </div>
@@ -176,17 +222,18 @@ function MealCard({
 }
 
 export function MenuList({
-  meals,
+  products,
   staff = false,
   known = [],
 }: {
-  meals: Meal[];
+  products: Product[];
   staff?: boolean;
   /** The shop's categories and their colours. Empty is fine — see `colourOf`. */
   known?: MenuCategory[];
 }) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [open, setOpen] = useState<string | null>(null);
 
   const colours = useMemo(
     () => new Map(known.map((c) => [c.name, c.colour])),
@@ -196,7 +243,7 @@ export function MenuList({
   // The dishes decide which pills exist; `known` only decides their order.
   // See `categoriesUsed` — this was written inline here first, which is
   // exactly why the same bug survived in two other screens.
-  const order = useMemo(() => categoriesUsed(meals, known), [meals, known]);
+  const order = useMemo(() => categoriesUsed(products, known), [products, known]);
   const categories = useMemo(() => ["All", ...order], [order]);
 
   // The same array that draws the pills also decides what leads the grid.
@@ -206,17 +253,25 @@ export function MenuList({
   // Sprite and a milktea, because those names start with digits. The food was
   // three rows down. The pills said one thing about what this shop sells and
   // the first screenful said another.
-  const sorted = useMemo(() => orderForMenu(meals, order), [meals, order]);
+  const sorted = useMemo(() => orderForMenu(products, order), [products, order]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sorted.filter((m) => {
+    return sorted.filter((p) => {
       const matchesCategory =
-        activeCategory === "All" || inCategory(m, activeCategory);
+        activeCategory === "All" || inCategory(p, activeCategory);
+      // The dishes behind the card are searchable too. Grouping four ji pai
+      // under one name would otherwise make "spicy" find nothing, because the
+      // only place that word still appears is on a variant.
       const matchesQuery =
         !q ||
-        m.name.toLowerCase().includes(q) ||
-        (m.description ?? "").toLowerCase().includes(q);
+        p.name.toLowerCase().includes(q) ||
+        (p.description ?? "").toLowerCase().includes(q) ||
+        p.variants.some(
+          (v) =>
+            v.name.toLowerCase().includes(q) ||
+            Object.values(v.options).some((o) => o.toLowerCase().includes(q))
+        );
       return matchesCategory && matchesQuery;
     });
   }, [sorted, query, activeCategory]);
@@ -299,12 +354,32 @@ export function MenuList({
       ) : (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5">
           <AnimatePresence mode="popLayout">
-            {filtered.map((meal, i) => (
-              <MealCard key={meal.id} meal={meal} index={i} staff={staff} />
+            {filtered.map((product, i) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                index={i}
+                staff={staff}
+                onOpen={() => setOpen(product.id)}
+              />
             ))}
           </AnimatePresence>
         </ul>
       )}
+
+      {/* Mounted here rather than inside the card: a dialog rendered inside a
+          grid item inherits the grid's stacking context, and a card two rows
+          down puts the overlay behind the sticky filter bar. */}
+      <AnimatePresence>
+        {open && (
+          <ProductDialog
+            key={open}
+            product={products.find((p) => p.id === open)!}
+            staff={staff}
+            onClose={() => setOpen(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

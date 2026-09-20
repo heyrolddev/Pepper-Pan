@@ -5,6 +5,8 @@ import { MenuWorkspace } from "@/components/menu-workspace";
 import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
 import { TakeoutMergePanel } from "@/components/takeout-merge-panel";
+import { ProductGroups, type GroupRow } from "@/components/product-groups";
+import { normalizeOptions } from "@/lib/menu-products";
 import { planTakeoutMerge } from "@/lib/takeout-merge";
 import { countByCategory, type MenuCategory } from "@/lib/categories";
 import { hqTitle } from "@/lib/hq-theme";
@@ -30,16 +32,26 @@ export default async function AdminMenuPage() {
   }
 
   const supabase = await createClient();
-  const [{ data, error }, { data: catRows }] = await Promise.all([
+  const [{ data, error }, { data: catRows }, { data: groupRows }] = await Promise.all([
     supabase
       .from("meals")
-      .select("id, name, price, description, categories, image_url, is_public, is_available")
+      .select(
+        "id, name, price, description, categories, image_url, is_public, is_available, product_id, options, variant_sort"
+      )
       .order("name"),
     // The shop's own vocabulary. Ordered the way the customer's menu orders
     // its filter pills, so the owner sets that order here and sees it there.
     supabase
       .from("menu_categories")
       .select("name, colour, sort_order")
+      .order("sort_order")
+      .order("name"),
+    // Null rather than an error when the migration has not been run yet: the
+    // Menu screen is where prices get fixed, and it must not go dark because
+    // a grouping table is missing.
+    supabase
+      .from("menu_products")
+      .select("id, name, description, image_url, sort_order, is_active")
       .order("sort_order")
       .order("name"),
   ]);
@@ -50,8 +62,27 @@ export default async function AdminMenuPage() {
     ? await planTakeoutMerge()
     : { rows: [], skipped: [], before: 0, after: 0, error: null };
 
-  const meals = (data ?? []) as AdminMeal[];
+  type MealRow = AdminMeal & {
+    product_id: string | null;
+    options: unknown;
+    variant_sort: number | null;
+  };
+  const rows = (data ?? []) as MealRow[];
+  const meals = rows as AdminMeal[];
   const categories = (catRows ?? []) as MenuCategory[];
+
+  // Members are read off the dishes rather than held on the group, for the
+  // same reason the customer's menu reads the options off them: one place
+  // that says which card a dish is on, so there is nothing to disagree.
+  const groups: GroupRow[] = (
+    (groupRows ?? []) as Omit<GroupRow, "members">[]
+  ).map((g) => ({
+    ...g,
+    members: rows
+      .filter((m) => m.product_id === g.id)
+      .sort((a, b) => (a.variant_sort ?? 0) - (b.variant_sort ?? 0))
+      .map((m) => ({ mealId: m.id, options: normalizeOptions(m.options) })),
+  }));
 
   // How many dishes are in each, so deleting one can say what's in the way.
   // Counts every category a dish carries, not just its first. Counting by
@@ -87,6 +118,11 @@ export default async function AdminMenuPage() {
           away once there isn't — a one-time job shouldn't leave a permanent
           button on the screen. */}
       {canEdit && <TakeoutMergePanel plan={merge} />}
+
+      {/* Above the dish list, because it is about the SHAPE of the menu and
+          the list below is about the contents of it. Owner only: grouping
+          decides what every customer sees, the same as a price. */}
+      {canEdit && <ProductGroups groups={groups} meals={meals} />}
 
       {canEdit ? (
         <MenuWorkspace meals={meals} categories={categories} counts={counts} />

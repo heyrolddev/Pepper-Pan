@@ -7,7 +7,13 @@
  * "finished", "off" — rather than just silently not rendering something.
  */
 
-export type AnnouncementKind = "promo" | "news" | "dine_in" | "coming_soon";
+export type AnnouncementKind =
+  | "promo"
+  | "news"
+  | "dine_in"
+  | "coming_soon"
+  /** A photograph in the Our story deck. `title` is its alt text. */
+  | "story";
 
 /**
  * The two that fill a fixed slot on the page rather than a list.
@@ -50,6 +56,7 @@ export const KIND_PLURAL: Record<AnnouncementKind, string> = {
   news: "News",
   dine_in: "Dine-in special",
   coming_soon: "Coming soon",
+  story: "Our story photos",
 };
 
 export const KIND_ADD: Record<AnnouncementKind, string> = {
@@ -57,6 +64,7 @@ export const KIND_ADD: Record<AnnouncementKind, string> = {
   news: "+ Add news",
   dine_in: "+ New dine-in special",
   coming_soon: "+ New coming soon",
+  story: "+ Add a photo",
 };
 
 export const KIND_NEW_TITLE: Record<AnnouncementKind, string> = {
@@ -64,6 +72,7 @@ export const KIND_NEW_TITLE: Record<AnnouncementKind, string> = {
   news: "New news post",
   dine_in: "New dine-in special",
   coming_soon: "New coming soon",
+  story: "New story photo",
 };
 
 export const KIND_BLURB: Record<AnnouncementKind, string> = {
@@ -75,6 +84,8 @@ export const KIND_BLURB: Record<AnnouncementKind, string> = {
     "The big line in the gold band. What somebody eating at the stall gets that a take-out order doesn't. Only the first one that's on is shown.",
   coming_soon:
     "What's arriving but isn't on the menu yet. Shows under the gold band as a card with its picture. Give it an end date and it takes itself down the day it lands. The first two that are on are shown.",
+  story:
+    "The photographs in the Our story section, dealt like a deck of cards — the top one is whole, the rest peek out behind it, and a customer swipes through them. Add your own and they replace the single stall photo that is there now. The caption is what a blind visitor's screen reader reads out, so describe what is in the picture.",
 };
 
 /** Does it carry a picture? Decides whether a card gets a media block. */
@@ -112,6 +123,9 @@ export const HOME_LIMIT: Record<AnnouncementKind, number> = {
   // Two, because what is arriving is usually a pair — wings and pops — and
   // announcing them one at a time makes the second look like an afterthought.
   coming_soon: 2,
+  // Enough that the shop will never hit it, few enough that a deck stays a
+  // deck. Past about six, nobody swipes to the end.
+  story: 6,
 };
 
 /**
@@ -151,8 +165,22 @@ export function homepagePicks(
 ): Announcement[] {
   const live = all
     .filter((r) => r.kind === kind && liveStateOf(r, now) === "live")
-    .filter((r) => r.pinned);
-  const eligible = kind === "promo" ? live.filter(hasDetail) : live;
+    /**
+     * The star exists because the homepage has fewer slots than the shop has
+     * promos, so something has to choose between them. A photo deck has
+     * exactly as many slots as there are photographs — there is nothing to
+     * choose between, and a second switch meaning the same thing as "on" is
+     * one more way to upload a picture and not see it appear.
+     */
+    .filter((r) => kind === "story" || r.pinned);
+  // A story row with no picture is nothing: the deck shows the image and
+  // never the words. Dropped here rather than rendered as a black square.
+  const eligible =
+    kind === "promo"
+      ? live.filter(hasDetail)
+      : kind === "story"
+        ? live.filter((r) => Boolean(r.image_url))
+        : live;
 
   const newest = (a: Announcement, b: Announcement) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime();

@@ -400,7 +400,25 @@ export const TOPICS: GuideTopic[] = [
       "On Dish costs, right beside the cost. That is deliberate: the only sensible moment to decide a price is the moment you can see what the plate costs to make and what it would keep.\n\n" +
       "Type a new price and what you keep and the food cost % move with it, before you save. Aim for 30% food cost or under.\n\n" +
       "The change goes into History with your name on it, and orders already sold keep the price they were sold at. Putting a price up does not rewrite last week's profit.\n\n" +
-      "There is also a Duplicate button on the same screen. It copies the dish with its recipe and packaging, which is the fast way to add a size or a variant without rebuilding the recipe by hand.",
+      "There is also a Duplicate button on the same screen. It copies the dish with its recipe and packaging, which is the fast way to add a size or a variant without rebuilding the recipe by hand — then group the two on the Menu tab so they show as one card.",
+  },
+  {
+    id: "menu-cards",
+    group: "The kitchen",
+    question: "How do I stop the menu looking like it has duplicates?",
+    triggers: [
+      "menu card", "group dishes", "variant", "variants", "sizes on the menu",
+      "duplicate on the menu", "16oz 22oz", "one card", "grouping",
+      "doble sa menu", "pagsamahin ang dish", "with cheese option",
+      "spicy option", "clickable menu", "options on the menu",
+    ],
+    where: { href: "/admin/menu", label: "Menu" },
+    answer:
+      "Menu → Menu cards → Group dishes.\n\n" +
+      "The 16oz and the 22oz latte are two dishes in here and one thing to a customer. Grouped, the menu shows ONE card that opens: the sizes as buttons, the right price and the right photo for whichever is tapped, and a sold-out size greyed out instead of missing.\n\n" +
+      "The dishes themselves do not change. Each keeps its own price, its own recipe, its own cost, its own stock and its own sales history — which is the point, because a 22oz really does use more milk and a bigger cup. Grouping only changes how they are SHOWN. Ungroup and they are separate cards again.\n\n" +
+      "The form fills itself in from the names you already use, so grouping a pair is usually a glance and a tap. Correct anything it got wrong — it is guessing from words, and it will sometimes guess badly.\n\n" +
+      "Two choices at once are fine. Flavour (Original / Spicy) and Cheese (with / without) give four combinations, and only the ones that exist as real dishes can be picked — so a customer cannot order something you do not make.",
   },
   {
     id: "menu-engineering",
@@ -605,7 +623,8 @@ export const TOPICS: GuideTopic[] = [
     triggers: ["sold out", "soldout", "ubos", "unavailable", "hide dish", "out of stock", "wala na"],
     where: { href: "/admin/menu", label: "Menu" },
     answer:
-      "Menu → the dish → the availability switch. It disappears from the website immediately and comes back the same way.\n\n" +
+      "Menu → the dish → the availability switch. On the website it turns grey and says SOLD OUT straight away, and comes back the same way.\n\n" +
+      "It used to disappear from the menu altogether. It stays and says so now, because of grouped cards: a hidden 22oz would tell the customer you only do one size, where what you want to say is that you do two and one has gone today. To take something off the menu entirely rather than mark it sold out, use the other switch — hidden.\n\n" +
       "It also happens by itself: when the ingredients for a dish run out, it is marked sold out automatically. So the usual reason to do it by hand is something the system cannot know — the fryer is down, or you have simply stopped making it today.\n\n" +
       "A manager can do this. It is the one part of the Menu screen they can touch; prices and photos stay with you.",
   },
@@ -613,16 +632,18 @@ export const TOPICS: GuideTopic[] = [
     id: "promo-run",
     group: "Every day",
     question: "How do I run a promo on the website?",
-    triggers: ["promo", "promotion", "announcement", "news", "post", "banner", "advertise", "ipost", "balita"],
+    triggers: ["promo", "promotion", "announcement", "news", "post", "banner", "advertise", "ipost", "balita", "homepage photo", "our story photo", "larawan sa homepage", "change the picture", "add a photo"],
     where: { href: "/admin/promos", label: "Promos & news" },
     answer:
-      "Promos & news. Four things live there:\n" +
+      "Promos & news. Five things live there:\n" +
       "• PROMO — scrolls across the top of the homepage, and shows as a card\n" +
       "• NEWS — dated, opens to its own page. A closure, a new dish\n" +
       "• DINE-IN SPECIAL — the big line in the gold band\n" +
-      "• COMING SOON — the line under it\n\n" +
+      "• COMING SOON — the line under it\n" +
+      "• OUR STORY PHOTOS — the pictures of the stall further down the homepage\n\n" +
       "Any of them can carry a photo or a short video. Give it an end date and it takes itself off the homepage that night — which is the whole point: a promo you have to remember to switch off is a promo that stays up, and a customer arrives on Tuesday with a screenshot of a deal that ended on Sunday.\n\n" +
-      "Above all four is the calculator: what a promo, some ads or a free taste would have to bring in, and afterwards whether it did. Worth running before you print the tarpaulin, not after.",
+      "Above them all is the calculator: what a promo, some ads or a free taste would have to bring in, and afterwards whether it did. Worth running before you print the tarpaulin, not after.\n\n" +
+      "The story photos are the one thing on that screen that is a picture rather than words. Add a few and they become a deck a customer can swipe through; add none and the homepage keeps the single stall photo it has always had. The caption you type is not printed anywhere — it is what a blind customer's phone reads out instead of showing the picture, so describe what is in it.",
   },
   {
     id: "inbox",

@@ -47,6 +47,7 @@ export function AnnouncementEditor({ rows }: { rows: Announcement[] }) {
   const news = rows.filter((r) => r.kind === "news");
   const dineIn = rows.filter((r) => r.kind === "dine_in");
   const comingSoon = rows.filter((r) => r.kind === "coming_soon");
+  const story = rows.filter((r) => r.kind === "story");
   const livePromos = promos.filter((p) => liveStateOf(p) === "live");
 
   return (
@@ -97,6 +98,17 @@ export function AnnouncementEditor({ rows }: { rows: Announcement[] }) {
         onAdd={() => setEditing("new-coming_soon")}
         onEdit={setEditing}
       />
+      {/* Last, because it is the only one here that is not the shop SAYING
+          something. It is the only place in HQ that can change a picture on
+          the homepage, though, which is why it lives on this screen rather
+          than getting a tab of its own for two fields. */}
+      <Section
+        kind="story"
+        rows={story}
+        all={rows}
+        onAdd={() => setEditing("new-story")}
+        onEdit={setEditing}
+      />
 
       {editing && (
         <Editor
@@ -136,17 +148,31 @@ function Section({
           </h3>
           <p className="mt-0.5 max-w-xl text-sm text-ink-800/60">{KIND_BLURB[kind]}</p>
           <p className="mt-1 max-w-xl text-xs text-ink-800/45">
-            {HOME_LIMIT[kind] === 1
-              ? "One shows on the homepage."
-              : `${HOME_LIMIT[kind]} show on the homepage`}
-            {kind === "news"
-              ? ", newest first. Pin one with ★ to hold it at the front."
-              : HOME_LIMIT[kind] === 1
-                ? " Pin one with ★ to choose which."
-                : ", in this order. Pin one with ★ to hold it at the front."}
-            {kind === "news" || kind === "promo"
-              ? " The rest stay on All news & promos."
-              : ""}
+            {/* No star here, deliberately. The star picks WHICH of too many
+                things gets one of the homepage's few slots; the deck has a
+                slot per photograph, so there is nothing to pick. Saying "pin
+                one with ★" anyway would be a step that changes nothing and a
+                reason to think the upload had failed. */}
+            {kind === "story" ? (
+              <>
+                Up to {HOME_LIMIT[kind]} are dealt into the deck, in this order.
+                Switch one off to keep it without showing it.
+              </>
+            ) : (
+              <>
+                {HOME_LIMIT[kind] === 1
+                  ? "One shows on the homepage."
+                  : `${HOME_LIMIT[kind]} show on the homepage`}
+                {kind === "news"
+                  ? ", newest first. Pin one with ★ to hold it at the front."
+                  : HOME_LIMIT[kind] === 1
+                    ? " Pin one with ★ to choose which."
+                    : ", in this order. Pin one with ★ to hold it at the front."}
+                {kind === "news" || kind === "promo"
+                  ? " The rest stay on All news & promos."
+                  : ""}
+              </>
+            )}
           </p>
         </div>
         <button
@@ -348,6 +374,7 @@ const PLACEHOLDER_TITLE: Record<AnnouncementKind, string> = {
   news: "e.g. Closed 5 Sept",
   dine_in: "e.g. Free coffee when you dine in ☕",
   coming_soon: "e.g. Chicken Wings & Chicken Pops 🔥",
+  story: "e.g. Red lanterns over the tables at Pepper Pan",
 };
 
 const PLACEHOLDER_BODY: Record<AnnouncementKind, string> = {
@@ -355,6 +382,7 @@ const PLACEHOLDER_BODY: Record<AnnouncementKind, string> = {
   news: "e.g. We're closed on the 5th for a private event. Back on the 6th.",
   dine_in: "e.g. Any hot coffee, with any rice meal, eaten at the stall.",
   coming_soon: "e.g. Both landing before the end of the month.",
+  story: "",
 };
 
 const field =
@@ -431,7 +459,11 @@ function Editor({
         <div className="mt-5 flex flex-col gap-4">
           <label>
             <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-ink-800/40">
-              {kind === "news" ? "Headline" : "The line customers read"}
+              {kind === "news"
+                ? "Headline"
+                : kind === "story"
+                  ? "What's in the photo"
+                  : "The line customers read"}
             </span>
             <input
               value={title}
@@ -441,45 +473,62 @@ function Editor({
               placeholder={PLACEHOLDER_TITLE[kind]}
               className={field}
             />
-            {kind !== "news" && (
+            {kind === "story" ? (
+              // Not a caption: nobody sees these words. They are what a
+              // screen reader says in place of the picture, which makes them
+              // the only part of a photograph that cannot be worked out by
+              // looking at it — and the only part nobody remembers to write.
               <span className="mt-1 block text-xs text-ink-800/45">
-                {title.length}/60 —{" "}
-                {kind === "promo"
-                  ? "it scrolls past, so shorter reads better."
-                  : "it is set large on the page, so shorter reads better."}
+                {title.length}/60 — nobody reads this on the page. It is what
+                a blind customer&apos;s phone says instead of showing the
+                picture, so describe what is actually in it.
               </span>
+            ) : (
+              kind !== "news" && (
+                <span className="mt-1 block text-xs text-ink-800/45">
+                  {title.length}/60 —{" "}
+                  {kind === "promo"
+                    ? "it scrolls past, so shorter reads better."
+                    : "it is set large on the page, so shorter reads better."}
+                </span>
+              )
             )}
           </label>
 
-          <label>
-            <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-ink-800/40">
-              {kind === "news" ? "What happened" : "The detail (optional)"}
-            </span>
-            {/* No maxLength, and no rows={3}.
+          {/* A story photo has no words on the page — the deck shows the
+              picture and nothing else. An empty box labelled "the detail"
+              is an invitation to write something nobody will ever read. */}
+          {kind !== "story" && (
+            <label>
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-ink-800/40">
+                {kind === "news" ? "What happened" : "The detail (optional)"}
+              </span>
+              {/* No maxLength, and no rows={3}.
                 
-                It had a 500-character cap, which a browser enforces by simply
-                refusing further keystrokes — no message, no counter, nothing
-                to tell the owner why the sentence they are typing has stopped
-                appearing. Nothing else agreed with it either: the database
-                has no limit, the save action never checked one, and the
-                detail page already renders the whole thing. It was one
-                attribute quietly overruling every other decision.
+                  It had a 500-character cap, which a browser enforces by simply
+                  refusing further keystrokes — no message, no counter, nothing
+                  to tell the owner why the sentence they are typing has stopped
+                  appearing. Nothing else agreed with it either: the database
+                  has no limit, the save action never checked one, and the
+                  detail page already renders the whole thing. It was one
+                  attribute quietly overruling every other decision.
                 
-                Eight rows because the field is now for writing in rather
-                than filling in, and `resize-y` so a longer notice can be
-                given the room it needs without leaving the page. */}
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={8}
-              placeholder={PLACEHOLDER_BODY[kind]}
-              className={`${field} resize-y leading-relaxed`}
-            />
-            <span className="mt-1 block text-[10px] font-semibold text-ink-800/40">
-              As long as it needs to be. The homepage shows the first few
-              lines; the full post is on its own page.
-            </span>
-          </label>
+                  Eight rows because the field is now for writing in rather
+                  than filling in, and `resize-y` so a longer notice can be
+                  given the room it needs without leaving the page. */}
+              <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={8}
+                placeholder={PLACEHOLDER_BODY[kind]}
+                className={`${field} resize-y leading-relaxed`}
+              />
+              <span className="mt-1 block text-[10px] font-semibold text-ink-800/40">
+                As long as it needs to be. The homepage shows the first few
+                lines; the full post is on its own page.
+              </span>
+            </label>
+          )}
 
           <MediaField
             imageUrl={media.imageUrl}
