@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { FaqAccordion } from "@/components/faq-accordion";
 import { FaqSchema } from "@/components/faq-schema";
 import { Swiper } from "@/components/swiper";
-import { TiltPhoto } from "@/components/tilt-photo";
+import { PhotoDeck } from "@/components/photo-deck";
+import { storyPhotosFrom } from "@/lib/story-photos";
 import { HeroVideo } from "@/components/hero-video";
 import { Reveal } from "@/components/reveal";
 import { Marquee } from "@/components/marquee";
@@ -73,7 +74,12 @@ const IMG_BASE =
 const HERO_STILL = "/hero-poster.jpg";
 
 /**
- * The Our story photograph: the stall itself, lanterns and all.
+ * The Our story photograph of last resort: the stall itself, lanterns and all.
+ *
+ * The deck is filled from Promos & news now, so this is what shows when the
+ * owner has not added any of their own — or has switched them all off. It is
+ * here rather than in the database so that it cannot be deleted by accident:
+ * the one thing this section must never do is render a hole.
  *
  * At the bucket root rather than under /opt, and the space in the filename
  * stays percent-encoded — it is part of the URL, not a typo to tidy up.
@@ -82,7 +88,10 @@ const HERO_STILL = "/hero-poster.jpg";
  * it per breakpoint, so what a phone downloads is a fraction of that and the
  * big file is fetched once, by the optimiser, not by customers.
  */
-const STORY_PHOTO = `${IMG_BASE}/Our%20Story.jpeg`;
+const STORY_PHOTO = {
+  src: `${IMG_BASE}/Our%20Story.jpeg`,
+  alt: "Inside Pepper Pan: red lanterns over the dining tables, with the counter and kitchen behind",
+};
 // Served from public/ rather than Supabase storage: it is 1.5 MB of static
 // bytes that never change, Vercel puts it on its CDN for free, and it needs no
 // key and no upload step the owner would have to repeat.
@@ -135,6 +144,9 @@ export default async function Home() {
     getLiveAnnouncements(),
     getSiteFaqs(),
   ]);
+  // No extra query: the story photographs are announcements, and they came
+  // back with the promos and the news in the call above.
+  const storyPhotos = storyPhotosFrom(announcements.story, STORY_PHOTO);
   // Real reviews when there are any; the original invitation copy otherwise,
   // so a new shop never shows an empty or invented testimonial.
   const { reviews, average, count: reviewCount } = isConfigured()
@@ -755,14 +767,14 @@ export default async function Home() {
             </div>
           </Reveal>
 
-          {/* Not a Parallax any more. This photograph settles itself as it
-              scrolls — see tilt-photo.tsx — and two things moving the same
-              element on the same scroll fight each other. */}
-          <TiltPhoto
-            src={STORY_PHOTO}
-            alt="Inside Pepper Pan: red lanterns over the dining tables, with the counter and kitchen behind"
-            className="pr-6 sm:pr-8"
-          />
+          {/* Not a Parallax. The deck settles itself as it scrolls — see
+              photo-deck.tsx — and two things moving the same element on the
+              same scroll fight each other.
+
+              The pictures come from Promos & news → Our story photos. With
+              none added, this is the single stall photograph it always
+              was. */}
+          <PhotoDeck photos={storyPhotos} className="pr-6 sm:pr-8" />
         </div>
       </section>
 

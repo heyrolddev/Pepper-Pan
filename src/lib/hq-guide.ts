@@ -613,16 +613,18 @@ export const TOPICS: GuideTopic[] = [
     id: "promo-run",
     group: "Every day",
     question: "How do I run a promo on the website?",
-    triggers: ["promo", "promotion", "announcement", "news", "post", "banner", "advertise", "ipost", "balita"],
+    triggers: ["promo", "promotion", "announcement", "news", "post", "banner", "advertise", "ipost", "balita", "homepage photo", "our story photo", "larawan sa homepage", "change the picture", "add a photo"],
     where: { href: "/admin/promos", label: "Promos & news" },
     answer:
-      "Promos & news. Four things live there:\n" +
+      "Promos & news. Five things live there:\n" +
       "• PROMO — scrolls across the top of the homepage, and shows as a card\n" +
       "• NEWS — dated, opens to its own page. A closure, a new dish\n" +
       "• DINE-IN SPECIAL — the big line in the gold band\n" +
-      "• COMING SOON — the line under it\n\n" +
+      "• COMING SOON — the line under it\n" +
+      "• OUR STORY PHOTOS — the pictures of the stall further down the homepage\n\n" +
       "Any of them can carry a photo or a short video. Give it an end date and it takes itself off the homepage that night — which is the whole point: a promo you have to remember to switch off is a promo that stays up, and a customer arrives on Tuesday with a screenshot of a deal that ended on Sunday.\n\n" +
-      "Above all four is the calculator: what a promo, some ads or a free taste would have to bring in, and afterwards whether it did. Worth running before you print the tarpaulin, not after.",
+      "Above them all is the calculator: what a promo, some ads or a free taste would have to bring in, and afterwards whether it did. Worth running before you print the tarpaulin, not after.\n\n" +
+      "The story photos are the one thing on that screen that is a picture rather than words. Add a few and they become a deck a customer can swipe through; add none and the homepage keeps the single stall photo it has always had. The caption you type is not printed anywhere — it is what a blind customer's phone reads out instead of showing the picture, so describe what is in it.",
   },
   {
     id: "inbox",
