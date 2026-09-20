@@ -35,6 +35,8 @@ export type OptionInput = {
   label: string;
   /** Null means "charge whatever that dish costs". */
   priceOverride: number | null;
+  /** How many of this one a customer may take. 1 is a tick. */
+  maxQty: number;
 };
 
 export async function saveModifierGroup(input: {
@@ -68,6 +70,10 @@ export async function saveModifierGroup(input: {
       ...o,
       label: o.label.trim(),
       mealId: o.mealId.trim(),
+      // Clamped rather than refused: the number box is a convenience, and an
+      // owner who types 40 means "lots", not "fail and lose my typing". The
+      // database holds the same bound, so this only decides the message.
+      maxQty: Math.max(1, Math.min(20, Math.round(Number(o.maxQty) || 1))),
     }))
     .filter((o) => o.mealId);
 
@@ -169,6 +175,7 @@ export async function saveModifierGroup(input: {
       option_meal_id: o.mealId,
       label: o.label,
       price_override: o.priceOverride,
+      max_qty: o.maxQty,
       sort_order: at,
       is_active: true,
     };

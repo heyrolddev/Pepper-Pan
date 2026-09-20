@@ -99,14 +99,14 @@ export async function updateMyOrder(
     // the line ACTUALLY costs. Summing `price_at_sale` alone would drop the
     // extra rice out of the order the moment the customer nudged a quantity —
     // still cooked, no longer charged for.
-    .select("id, meal_id, price_at_sale, order_line_extras(price_at_sale)")
+    .select("id, meal_id, price_at_sale, order_line_extras(price_at_sale, qty)")
     .eq("order_id", orderId);
   if (linesError || !lines) return { error: "Could not read that order." };
 
   type LineRow = {
     id: number;
     price_at_sale: number;
-    order_line_extras: { price_at_sale: number }[] | null;
+    order_line_extras: { price_at_sale: number; qty: number }[] | null;
   };
   const byId = new Map(
     (lines as unknown as LineRow[]).map((l) => [

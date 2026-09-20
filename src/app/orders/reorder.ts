@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { cartKey, optionPrice, type ChosenExtra } from "@/lib/modifiers";
+import { cartKey, clampQty, optionPrice, type ChosenExtra } from "@/lib/modifiers";
 
 /**
  * "Order this again."
@@ -47,6 +47,7 @@ type ExtraRow = {
   option_id: string | null;
   label: string;
   meal_id: string | null;
+  qty: number;
 };
 type Line = {
   meal_id: string | null;
@@ -67,7 +68,7 @@ export async function reorder(orderId: string): Promise<ReorderResult> {
   const { data: order, error } = await supabase
     .from("orders")
     .select(
-      "id, order_lines(meal_id, qty, meals(name), order_line_extras(option_id, label, meal_id))"
+      "id, order_lines(meal_id, qty, meals(name), order_line_extras(option_id, label, meal_id, qty))"
     )
     .eq("id", orderId)
     .eq("customer_id", user.id)
@@ -91,20 +92,25 @@ export async function reorder(orderId: string): Promise<ReorderResult> {
    */
   const wanted = new Map<
     string,
-    { mealId: string; qty: number; optionIds: string[] }
+    { mealId: string; qty: number; picks: { id: string; qty: number }[] }
   >();
   const oldNames = new Map<string, string>();
 
   for (const l of lines) {
     const mealId = l.meal_id!;
-    const optionIds = (l.order_line_extras ?? [])
-      .map((e) => e.option_id)
-      .filter((id): id is string => !!id)
-      .sort();
-    const key = cartKey(mealId, optionIds.map((id) => ({ optionId: id }) as ChosenExtra));
+    const picks = (l.order_line_extras ?? [])
+      .filter((e) => e.option_id)
+      .map((e) => ({ id: e.option_id!, qty: Math.max(1, Number(e.qty) || 1) }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    // Keyed the same way the cart keys itself, quantity included — so a line
+    // with one extra rice and one with three come back as two lines.
+    const key = cartKey(
+      mealId,
+      picks.map((x) => ({ optionId: x.id, qty: x.qty }) as ChosenExtra)
+    );
     const at = wanted.get(key);
     if (at) at.qty += Number(l.qty) || 0;
-    else wanted.set(key, { mealId, qty: Number(l.qty) || 0, optionIds });
+    else wanted.set(key, { mealId, qty: Number(l.qty) || 0, picks });
     if (l.meals?.name) oldNames.set(mealId, l.meals.name);
     for (const e of l.order_line_extras ?? []) {
       if (e.option_id) oldNames.set(e.option_id, e.label);
@@ -112,7 +118,7 @@ export async function reorder(orderId: string): Promise<ReorderResult> {
   }
 
   const mealIds = [...new Set([...wanted.values()].map((w) => w.mealId))];
-  const optionIds = [...new Set([...wanted.values()].flatMap((w) => w.optionIds))];
+  const optionIds = [...new Set([...wanted.values()].flatMap((w) => w.picks.map((x) => x.id)))];
 
   const [{ data: meals, error: mealsError }, { data: options }] = await Promise.all([
     supabase
@@ -123,7 +129,7 @@ export async function reorder(orderId: string): Promise<ReorderResult> {
       ? supabase
           .from("modifier_options")
           .select(
-            "id, group_id, label, price_override, is_active, option_meal_id, modifier_groups(is_active), meals:option_meal_id(price, is_available)"
+            "id, group_id, label, price_override, is_active, max_qty, option_meal_id, modifier_groups(is_active), meals:option_meal_id(price, is_available)"
           )
           .in("id", optionIds)
       : Promise.resolve({ data: [] as unknown[] }),
@@ -149,6 +155,7 @@ export async function reorder(orderId: string): Promise<ReorderResult> {
     label: string;
     price_override: number | null;
     is_active: boolean;
+    max_qty: number;
     option_meal_id: string | null;
     modifier_groups: { is_active: boolean } | null;
     meals: { price: number; is_available: boolean } | null;
@@ -168,7 +175,7 @@ export async function reorder(orderId: string): Promise<ReorderResult> {
   const items: ReorderItem[] = [];
   const skipped: string[] = [];
 
-  for (const { mealId, qty, optionIds: ids } of wanted.values()) {
+  for (const { mealId, qty, picks } of wanted.values()) {
     const meal = live.get(mealId);
     if (!meal) {
       // Named from the old order when the dish is gone entirely — "one item"
@@ -178,10 +185,10 @@ export async function reorder(orderId: string): Promise<ReorderResult> {
     }
 
     const extras: ChosenExtra[] = [];
-    for (const id of ids) {
-      const o = liveOptions.get(id);
+    for (const pick of picks) {
+      const o = liveOptions.get(pick.id);
       if (!o) {
-        skipped.push(oldNames.get(id) ?? "an add-on");
+        skipped.push(oldNames.get(pick.id) ?? "an add-on");
         continue;
       }
       extras.push({
@@ -190,6 +197,10 @@ export async function reorder(orderId: string): Promise<ReorderResult> {
         label: o.label,
         // Re-priced from today's menu, the same as the dish itself.
         price: optionPrice(o.price_override, o.meals?.price ?? null),
+        // And re-capped: the owner may have lowered "up to 3" to "up to 1"
+        // since. Trimmed rather than refused, because a reorder is meant to
+        // get them most of the way there in one tap.
+        qty: clampQty(pick.qty, Math.max(1, Number(o.max_qty) || 1)),
         mealId: o.option_meal_id,
       });
     }

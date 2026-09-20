@@ -29,7 +29,7 @@ import {
 export const BOARD_LIMIT = 200;
 
 const COLUMNS =
-  "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale))";
+  "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale, qty))";
 
 type OrderRow = {
   id: string;
@@ -64,7 +64,7 @@ type OrderRow = {
     qty: number;
     price_at_sale: number;
     meals: { name: string } | null;
-    order_line_extras: { label: string; price_at_sale: number }[] | null;
+    order_line_extras: { label: string; price_at_sale: number; qty: number }[] | null;
   }[];
 };
 
@@ -144,10 +144,15 @@ async function hydrate(rows: OrderRow[]): Promise<AdminOrder[]> {
       downpayment_amount: Number(o.downpayment_amount ?? 0),
       downpayment_confirmed_at: o.downpayment_confirmed_at,
       lines: (o.order_lines ?? []).map((l) => {
-        const extras = (l.order_line_extras ?? []).map((e) => ({
-          label: e.label,
-          price: Number(e.price_at_sale) || 0,
-        }));
+        const extras = (l.order_line_extras ?? []).map((e) => {
+          const qty = Math.max(1, Number(e.qty) || 1);
+          return {
+            // "Extra rice ×2" on the ticket the kitchen reads. The count is
+            // the whole point of it being there.
+            label: qty > 1 ? `${e.label} \u00d7${qty}` : e.label,
+            price: (Number(e.price_at_sale) || 0) * qty,
+          };
+        });
         return {
           qty: Number(l.qty),
           // The dish and its add-ons priced together, because the board is

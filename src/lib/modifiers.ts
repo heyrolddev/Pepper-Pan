@@ -39,6 +39,15 @@ export type ModifierOption = {
   makeable?: number | null;
   /** The owner's own "we've run out of this today" switch, on the dish. */
   available: boolean;
+  /**
+   * How many of this one may be taken. 1 is a tick; more is a stepper.
+   *
+   * Not the same question as the group's `max`, and keeping them apart is the
+   * point: `max` counts DIFFERENT answers ("up to 2 sauces"), this counts
+   * copies of ONE ("up to 3 extra rice"). A pick-one group can still let the
+   * customer take three of what they picked.
+   */
+  maxQty: number;
   sort: number;
 };
 
@@ -59,12 +68,25 @@ export type ChosenExtra = {
   optionId: string;
   groupId: string;
   label: string;
+  /** Per one of it. The line multiplies. */
   price: number;
+  qty: number;
   mealId: string | null;
 };
 
-/** groupId → the option ids chosen in it. */
-export type ModifierChoice = Record<string, string[]>;
+/** One answer, and how many of it. */
+export type Picked = { id: string; qty: number };
+
+/**
+ * groupId → what was picked in it, in the order it was picked.
+ *
+ * A list of `{id, qty}` rather than a list of ids plus a lookup of counts
+ * beside it. Two structures would be two things to keep in step, and the one
+ * that drifts is always the quantity — an id removed from the first list
+ * leaves its count behind in the second, and the next thing ticked inherits
+ * somebody else's "×3".
+ */
+export type ModifierChoice = Record<string, Picked[]>;
 
 /* ------------------------------------------------------------------ */
 /* What can actually be picked                                         */
@@ -85,6 +107,10 @@ export function optionPrice(
   const chosen = override ?? mealPrice ?? 0;
   return Number.isFinite(Number(chosen)) ? Number(chosen) : 0;
 }
+
+/** Whole, at least one, and no more than this option allows. */
+export const clampQty = (qty: number, max: number) =>
+  Math.max(1, Math.min(Math.max(1, Math.floor(max || 1)), Math.floor(qty) || 1));
 
 /** Run out, by either of the two routes it can. */
 export function optionSoldOut(o: ModifierOption): boolean {
@@ -161,13 +187,22 @@ export function openingChoice(groups: ModifierGroup[]): ModifierChoice {
   for (const g of groups) {
     if (g.min < 1) continue;
     const first = g.options.find((o) => !optionSoldOut(o)) ?? g.options[0];
-    if (first) out[g.id] = [first.id];
+    if (first) out[g.id] = [{ id: first.id, qty: 1 }];
   }
   return out;
 }
 
-const chosenIn = (choice: ModifierChoice, groupId: string) =>
+const chosenIn = (choice: ModifierChoice, groupId: string): Picked[] =>
   choice[groupId] ?? [];
+
+/** How many of this option are on the order. 0 when it isn't picked at all. */
+export function qtyOf(
+  choice: ModifierChoice,
+  groupId: string,
+  optionId: string
+): number {
+  return chosenIn(choice, groupId).find((p) => p.id === optionId)?.qty ?? 0;
+}
 
 /**
  * The choice, made to fit the groups actually on offer.
@@ -189,14 +224,18 @@ export function reconcile(
 ): ModifierChoice {
   const out: ModifierChoice = {};
   for (const g of groups) {
-    const offered = new Set(g.options.map((o) => o.id));
-    let picked = chosenIn(choice, g.id).filter((id) => offered.has(id));
+    const offered = new Map(g.options.map((o) => [o.id, o]));
+    let picked = chosenIn(choice, g.id)
+      .filter((p) => offered.has(p.id))
+      // A quantity above what the option now allows is trimmed rather than
+      // dropped: the owner lowered the limit, the customer still wants some.
+      .map((p) => ({ id: p.id, qty: clampQty(p.qty, offered.get(p.id)!.maxQty) }));
     if (picked.length > g.max) picked = picked.slice(0, g.max);
     if (picked.length < g.min) {
       const fill = g.options.find(
-        (o) => !optionSoldOut(o) && !picked.includes(o.id)
+        (o) => !optionSoldOut(o) && !picked.some((p) => p.id === o.id)
       );
-      if (fill) picked = [...picked, fill.id].slice(0, g.max);
+      if (fill) picked = [...picked, { id: fill.id, qty: 1 }].slice(0, g.max);
     }
     out[g.id] = picked;
   }
@@ -220,18 +259,57 @@ export function toggleOption(
   optionId: string
 ): ModifierChoice {
   const current = chosenIn(choice, group.id);
-  const on = current.includes(optionId);
+  const on = current.some((p) => p.id === optionId);
 
   if (group.max === 1) {
     if (on && group.min < 1) return { ...choice, [group.id]: [] };
-    return { ...choice, [group.id]: [optionId] };
+    // Re-tapping the one already chosen keeps whatever quantity it had —
+    // resetting a customer's "×3" for a tap that changed nothing is the kind
+    // of small theft nobody reports and everybody notices.
+    if (on) return choice;
+    return { ...choice, [group.id]: [{ id: optionId, qty: 1 }] };
   }
 
   if (on) {
-    return { ...choice, [group.id]: current.filter((id) => id !== optionId) };
+    return { ...choice, [group.id]: current.filter((p) => p.id !== optionId) };
   }
   if (current.length >= group.max) return choice;
-  return { ...choice, [group.id]: [...current, optionId] };
+  return { ...choice, [group.id]: [...current, { id: optionId, qty: 1 }] };
+}
+
+/**
+ * "Make it two."
+ *
+ * Going below one takes the option off rather than sitting at zero — except
+ * where the group demands an answer and this is the only one, which is the
+ * same rule `toggleOption` follows: a compulsory question must not be left
+ * unanswered by a control the customer thinks is just a minus.
+ */
+export function setOptionQty(
+  group: ModifierGroup,
+  choice: ModifierChoice,
+  optionId: string,
+  qty: number
+): ModifierChoice {
+  const option = group.options.find((o) => o.id === optionId);
+  if (!option) return choice;
+  const current = chosenIn(choice, group.id);
+
+  if (qty < 1) {
+    const last = current.length <= 1 && current.some((p) => p.id === optionId);
+    if (group.min >= 1 && last) return choice;
+    return { ...choice, [group.id]: current.filter((p) => p.id !== optionId) };
+  }
+
+  const wanted = clampQty(qty, option.maxQty);
+  if (!current.some((p) => p.id === optionId)) {
+    if (current.length >= group.max) return choice;
+    return { ...choice, [group.id]: [...current, { id: optionId, qty: wanted }] };
+  }
+  return {
+    ...choice,
+    [group.id]: current.map((p) => (p.id === optionId ? { ...p, qty: wanted } : p)),
+  };
 }
 
 /**
@@ -301,13 +379,15 @@ export function extrasOf(
   for (const g of groups) {
     const picked = chosenIn(choice, g.id);
     for (const o of g.options) {
-      if (!picked.includes(o.id)) continue;
+      const at = picked.find((p) => p.id === o.id);
+      if (!at) continue;
       if (optionSoldOut(o)) continue;
       out.push({
         optionId: o.id,
         groupId: g.id,
         label: o.label,
         price: o.price,
+        qty: clampQty(at.qty, o.maxQty),
         mealId: o.mealId,
       });
     }
@@ -320,7 +400,7 @@ export function extrasOf(
 /* ------------------------------------------------------------------ */
 
 export const extrasTotal = (extras: ChosenExtra[]) =>
-  extras.reduce((sum, e) => sum + (Number(e.price) || 0), 0);
+  extras.reduce((sum, e) => sum + (Number(e.price) || 0) * (Number(e.qty) || 0), 0);
 
 /** What one of this line costs, add-ons included. */
 export const unitPrice = (base: number, extras: ChosenExtra[]) =>
@@ -336,13 +416,19 @@ export const unitPrice = (base: number, extras: ChosenExtra[]) =>
  * two identical-looking ones the customer has to add up themselves.
  */
 export function cartKey(mealId: string, extras: ChosenExtra[]): string {
-  const ids = extras.map((e) => e.optionId).sort();
+  // The quantity is part of the identity, not a property of a shared line.
+  // Without it a rice meal with one extra rice and one with three collapse
+  // into two of whichever was added first — the same silent merge the meal id
+  // alone used to cause, one level down.
+  const ids = extras
+    .map((e) => `${e.optionId}:${Math.max(1, Math.floor(e.qty) || 1)}`)
+    .sort();
   return ids.length > 0 ? `${mealId}|${ids.join("+")}` : mealId;
 }
 
-/** "Extra rice, Coke" — the second line under the dish's name. */
+/** "Extra rice ×2, Coke" — the second line under the dish's name. */
 export const describeExtras = (extras: ChosenExtra[]) =>
-  extras.map((e) => e.label).join(", ");
+  extras.map((e) => (e.qty > 1 ? `${e.label} \u00d7${e.qty}` : e.label)).join(", ");
 
 /* ------------------------------------------------------------------ */
 /* What the server does with what the browser sent                     */
@@ -372,7 +458,7 @@ export type Resolved = {
  */
 export function resolveChoice(
   groups: ModifierGroup[],
-  optionIds: string[],
+  picks: Picked[],
   dish: string
 ): Resolved {
   const offered = new Map<string, { group: ModifierGroup; option: ModifierOption }>();
@@ -380,7 +466,7 @@ export function resolveChoice(
     for (const o of g.options) offered.set(o.id, { group: g, option: o });
   }
 
-  const unknown = optionIds.filter((id) => !offered.has(id));
+  const unknown = picks.filter((p) => !offered.has(p.id));
   if (unknown.length > 0) {
     return {
       extras: [],
@@ -388,8 +474,8 @@ export function resolveChoice(
     };
   }
 
-  const soldOut = optionIds
-    .map((id) => offered.get(id)!.option)
+  const soldOut = picks
+    .map((p) => offered.get(p.id)!.option)
     .filter(optionSoldOut);
   if (soldOut.length > 0) {
     return {
@@ -398,13 +484,35 @@ export function resolveChoice(
     };
   }
 
+  // A quantity above what the option allows is refused, not clamped. Clamping
+  // would serve one extra rice and charge for one while the customer agreed
+  // to three — a total they can check against a screen that said something
+  // else. The same argument as refusing an unknown option rather than
+  // dropping it.
+  const overQty = picks.find((p) => {
+    const { option } = offered.get(p.id)!;
+    const n = Number(p.qty);
+    return !Number.isInteger(n) || n < 1 || n > option.maxQty;
+  });
+  if (overQty) {
+    const { option } = offered.get(overQty.id)!;
+    return {
+      extras: [],
+      problem:
+        option.maxQty > 1
+          ? `You can take up to ${option.maxQty} \u00d7 ${option.label} on ${dish}.`
+          : `${option.label} can only be added once to ${dish}.`,
+    };
+  }
+
   const choice: ModifierChoice = {};
-  for (const id of optionIds) {
-    const gid = offered.get(id)!.group.id;
-    choice[gid] = [...(choice[gid] ?? []), id];
+  for (const p of picks) {
+    const gid = offered.get(p.id)!.group.id;
+    choice[gid] = [...(choice[gid] ?? []), { id: p.id, qty: Math.floor(p.qty) }];
   }
 
   for (const g of groups) {
+    // Distinct answers, not copies of one: three extra rice is one answer.
     const n = chosenIn(choice, g.id).length;
     if (n > g.max) {
       return {
