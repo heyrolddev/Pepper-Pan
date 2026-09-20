@@ -23,6 +23,7 @@ import {
   type AnnouncementKind,
 } from "@/lib/announcements";
 import { MediaField } from "@/components/media-field";
+import { TrashIcon } from "@/components/icons";
 
 /**
  * Promos and news, from the shop's own account.
@@ -220,6 +221,7 @@ function Row({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const tone = STATE_TONE[state];
 
   const run = (fn: () => Promise<{ error: string | null }>) =>
@@ -351,6 +353,50 @@ function Row({
           >
             Edit
           </button>
+
+          {/* Delete, on the row rather than three taps inside the editor.
+              
+              It was only ever reachable by opening the thing you wanted rid
+              of, reading a form you were not going to fill in, and finding a
+              button at the bottom — which is why a list of finished promos
+              grows until it is unreadable, and an unreadable list is what
+              lets the wrong one go live.
+              
+              Still two taps, and it always will be. This is the one control
+              here that cannot be undone: the row goes and the uploaded
+              photograph goes with it, and the rows most worth tidying are
+              beside the ones most worth keeping. The second tap says "for
+              good" rather than "confirm", because what is being confirmed is
+              the part people mean to skip. */}
+          {confirmingDelete ? (
+            <span className="flex items-center gap-1.5">
+              <button
+                onClick={() => run(() => deleteAnnouncement(row.id))}
+                disabled={pending}
+                className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-black uppercase tracking-wide text-cream-50 transition-colors hover:bg-brand-700 disabled:opacity-50"
+              >
+                {pending ? "Deleting…" : "Delete for good"}
+              </button>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                disabled={pending}
+                aria-label={`Keep "${row.title}"`}
+                className="rounded-lg bg-ink-950/5 px-2.5 py-2 text-xs font-bold text-ink-800/60 transition-colors hover:bg-ink-950/10 disabled:opacity-50"
+              >
+                ✕
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              disabled={pending}
+              aria-label={`Delete "${row.title}"`}
+              title="Delete"
+              className="grid h-9 w-9 place-items-center rounded-lg bg-ink-950/5 text-ink-800/45 transition-colors hover:bg-brand-600/10 hover:text-brand-600 disabled:opacity-40"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
     </li>
