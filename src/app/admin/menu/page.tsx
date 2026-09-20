@@ -46,6 +46,8 @@ export default async function AdminMenuPage() {
     { data: modOptionRows },
     { data: mealAttachRows },
     { data: productAttachRows },
+    { data: recipeRows },
+    { data: componentRows },
   ] = await Promise.all([
     supabase
       .from("meals")
@@ -89,6 +91,15 @@ export default async function AdminMenuPage() {
       .order("sort_order"),
     supabase.from("meal_modifier_groups").select("meal_id, group_id"),
     supabase.from("product_modifier_groups").select("product_id, group_id"),
+    /**
+     * Which dishes have a recipe at all.
+     *
+     * Two id-only reads rather than `loadCostBook`, which pulls six tables to
+     * work out what everything costs — this screen only needs the yes/no, and
+     * the Menu page is already doing seven queries.
+     */
+    supabase.from("meal_ingredients").select("meal_id"),
+    supabase.from("meal_components").select("meal_id"),
   ]);
 
   // Read-only, so it is safe on every load. It is what decides whether the
@@ -150,6 +161,15 @@ export default async function AdminMenuPage() {
     product_id: string;
     group_id: string;
   }[];
+
+  // A dish is costable if it names any ingredient, or is built from dishes
+  // that do. Anything else sells for money and books nothing.
+  const withRecipe = new Set(
+    [
+      ...((recipeRows ?? []) as { meal_id: string }[]),
+      ...((componentRows ?? []) as { meal_id: string }[]),
+    ].map((r) => r.meal_id)
+  );
 
   const modifierGroups: ModifierGroupRow[] = ((modGroupRows ?? []) as ModRow[]).map(
     (g) => ({
@@ -216,6 +236,7 @@ export default async function AdminMenuPage() {
             is_public: m.is_public,
           }))}
           cards={groups.map((g) => ({ id: g.id, name: g.name }))}
+          withRecipe={withRecipe}
         />
       )}
 

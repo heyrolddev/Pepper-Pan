@@ -7,6 +7,18 @@ import { Combobox } from "@/components/combobox";
 import { PencilIcon, TrashIcon } from "@/components/icons";
 import { ruleLabel } from "@/lib/modifiers";
 import {
+  BandButton,
+  Panel,
+  PanelBand,
+  PanelBody,
+  PreviewBand,
+  RailRow,
+  Stat,
+  StatDot,
+  Step,
+  Steps,
+} from "@/components/hq-panel";
+import {
   deleteModifierGroup,
   saveModifierGroup,
   setModifierGroupActive,
@@ -197,10 +209,21 @@ export function ModifierGroups({
   groups,
   meals,
   cards,
+  withRecipe,
 }: {
   groups: ModifierGroupRow[];
   meals: PickableMeal[];
   cards: PickableCard[];
+  /**
+   * Dishes that have a recipe — ingredients, or components of their own.
+   *
+   * The one failure this feature can produce silently. An option pointing at
+   * a dish with no recipe sells for real money and books zero cost, so every
+   * combo carrying it reads as pure profit; and `makeable` is null for it, so
+   * it never goes sold out however much rice is left. Both are invisible
+   * until somebody compares the books with the shelf.
+   */
+  withRecipe: Set<string>;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -283,60 +306,46 @@ export function ModifierGroups({
   }
 
   return (
-    <section className="overflow-hidden rounded-3xl bg-cream-100 ring-1 ring-ink-950/10">
-      {/* ── the band ──────────────────────────────────────────────────
-          Dark, and the only dark header on this screen. The panels above it
-          edit things the owner can already see on their own menu; this one
-          builds something out of parts that do not look related until it is
-          finished, so it is worth being told apart from across the page. */}
-      <div className="relative bg-ink-950 px-5 py-5 text-cream-50 sm:px-6">
-        {/* A gold hairline along the top — the accent this whole section of
-            HQ already uses, so the panel belongs to the Menu screen rather
-            than looking like something that wandered in. */}
-        <span
-          aria-hidden
-          className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-gold-400 via-brand-600 to-jade-600"
-        />
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="font-display text-xl font-black text-cream-50 sm:text-2xl">
-              Add-ons <span className="text-gold-400">&amp;</span> combos
-            </h3>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-cream-100/70">
-              &ldquo;Extra rice?&rdquo;, &ldquo;Choose your drink&rdquo; — asked
-              on the dish, the same on the website and at the counter. Every
-              answer points at a real dish, so it costs what that dish costs
-              and takes the same things off the shelf.
-            </p>
-            {groups.length > 0 && (
-              <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-bold text-cream-100/55">
-                <span className="tabular-nums text-gold-400">{live.length}</span>
-                <span>live</span>
-                <span aria-hidden className="text-cream-100/25">•</span>
-                <span className="tabular-nums text-gold-400">
-                  {live.reduce((n, g) => n + g.options.length, 0)}
-                </span>
-                <span>answers</span>
-                <span aria-hidden className="text-cream-100/25">•</span>
-                <span>offered on</span>
-                <span className="tabular-nums text-gold-400">{attached}</span>
-                <span>{attached === 1 ? "place" : "places"}</span>
-              </p>
-            )}
-          </div>
-          <button
+    <Panel>
+      <PanelBand
+        title="Add-ons"
+        accent="&"
+        after="combos"
+        lead={
+          <>
+            &ldquo;Extra rice?&rdquo;, &ldquo;Choose your drink&rdquo; — asked
+            on the dish, the same on the website and at the counter. Every
+            answer points at a real dish, so it costs what that dish costs and
+            takes the same things off the shelf.
+          </>
+        }
+        stats={
+          groups.length > 0 && (
+            <>
+              <Stat n={live.length}>live</Stat>
+              <StatDot />
+              <Stat n={live.reduce((n, g) => n + g.options.length, 0)}>
+                answers
+              </Stat>
+              <StatDot />
+              <span>offered on</span>
+              <Stat n={attached}>{attached === 1 ? "place" : "places"}</Stat>
+            </>
+          )
+        }
+        action={
+          <BandButton
             onClick={() => {
               setError(null);
               setDraft(blankDraft());
             }}
-            className="shrink-0 rounded-full bg-gold-400 px-5 py-2.5 text-sm font-black text-ink-950 shadow-lg shadow-gold-400/20 transition-transform hover:scale-105"
           >
             + New group
-          </button>
-        </div>
-      </div>
+          </BandButton>
+        }
+      />
 
-      <div className="p-5 sm:p-6">
+      <PanelBody>
         {error && (
           <p className="mb-4 rounded-2xl bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700 ring-1 ring-brand-600/20">
             {error}
@@ -354,8 +363,8 @@ export function ModifierGroups({
             {/* Numbered because it IS a sequence — the group cannot be built
                 until the dish exists. Numbers that encode nothing are
                 decoration; these encode an order you cannot reverse. */}
-            <ol className="mt-4 flex flex-col gap-3">
-              {[
+            <Steps
+              items={[
                 <>
                   Make the add-on as a <strong>dish</strong> —
                   &ldquo;Extra rice&rdquo; — with its own recipe and price, and
@@ -366,15 +375,8 @@ export function ModifierGroups({
                   Come back here, point an option at that dish, and attach the
                   group to the <strong>menu cards</strong> that should offer it.
                 </>,
-              ].map((text, i) => (
-                <li key={i} className="flex gap-3 text-sm text-ink-800/80">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gold-400 font-display text-sm font-black text-ink-950">
-                    {i + 1}
-                  </span>
-                  <span className="pt-0.5">{text}</span>
-                </li>
-              ))}
-            </ol>
+              ]}
+            />
           </div>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -388,17 +390,15 @@ export function ModifierGroups({
               const shownWhere = where.slice(0, 4);
 
               return (
-                <li
+                /* The rail. Red is compulsory, green is optional, grey is
+                   switched off — the one fact worth reading first. */
+                <RailRow
                   key={g.id}
-                  className={`flex overflow-hidden rounded-2xl bg-cream-50 ring-1 transition-shadow hover:shadow-md hover:shadow-ink-950/5 ${tone.ring} ${
-                    g.is_active ? "" : "opacity-65"
-                  }`}
+                  rail={tone.rail}
+                  ring={tone.ring}
+                  dimmed={!g.is_active}
                 >
-                  {/* The rail. Red is compulsory, green is optional, grey is
-                      switched off — the one fact worth reading first. */}
-                  <span aria-hidden className={`w-1.5 shrink-0 ${tone.rail}`} />
-
-                  <div className="min-w-0 flex-1 p-4">
+                  <>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="flex flex-wrap items-center gap-2">
@@ -510,13 +510,13 @@ export function ModifierGroups({
                         offered. Edit the group and pick another dish.
                       </p>
                     )}
-                  </div>
-                </li>
+                  </>
+                </RailRow>
               );
             })}
           </ul>
         )}
-      </div>
+      </PanelBody>
 
       {draft && (
         <Editor
@@ -526,6 +526,7 @@ export function ModifierGroups({
           mealOptions={mealOptions}
           meals={meals}
           cards={cards}
+          withRecipe={withRecipe}
           busy={busy}
           error={error}
           onSave={save}
@@ -568,37 +569,7 @@ export function ModifierGroups({
           </div>
         </AdminDialog>
       )}
-    </section>
-  );
-}
-
-/** A numbered section of the form. The order is not arbitrary — see below. */
-function Step({
-  n,
-  title,
-  hint,
-  children,
-}: {
-  n: number;
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl bg-cream-100 p-4 ring-1 ring-ink-950/[0.07]">
-      <div className="flex items-baseline gap-2.5">
-        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink-950 font-display text-xs font-black text-gold-400">
-          {n}
-        </span>
-        <div className="min-w-0">
-          <h4 className="font-display text-base font-black leading-none text-ink-950">
-            {title}
-          </h4>
-          {hint && <p className="mt-1 text-xs text-ink-800/55">{hint}</p>}
-        </div>
-      </div>
-      <div className="mt-3">{children}</div>
-    </section>
+    </Panel>
   );
 }
 
@@ -624,6 +595,7 @@ function Editor({
   mealOptions,
   meals,
   cards,
+  withRecipe,
   busy,
   error,
   onSave,
@@ -635,6 +607,7 @@ function Editor({
   mealOptions: { value: string; label: string }[];
   meals: PickableMeal[];
   cards: PickableCard[];
+  withRecipe: Set<string>;
   busy: boolean;
   error: string | null;
   onSave: () => void;
@@ -649,6 +622,18 @@ function Editor({
     ...o,
     price: o.priceOverride ?? (o.mealId ? (mealById.get(o.mealId)?.price ?? 0) : 0),
   }));
+
+  /**
+   * Options whose dish has no recipe.
+   *
+   * Not refused — a shop mid-setup has half its recipes entered, and blocking
+   * the save would mean building the group twice. Said, and said in terms of
+   * the two things that actually go wrong, because neither is visible
+   * anywhere else until the books stop matching the shelf.
+   */
+  const noRecipe = draft.options.filter(
+    (o) => o.mealId && !withRecipe.has(o.mealId)
+  );
 
   return (
     <AdminDialog
@@ -877,6 +862,24 @@ function Editor({
               + Add an answer
             </button>
 
+            {noRecipe.length > 0 && (
+              <p className="rounded-xl bg-gold-50 px-3 py-2.5 text-xs font-semibold leading-relaxed text-ink-800 ring-1 ring-gold-400/60">
+                ⚠︎{" "}
+                {noRecipe
+                  .map((o) => o.label.trim() || mealById.get(o.mealId)?.name)
+                  .filter(Boolean)
+                  .join(", ")}{" "}
+                {noRecipe.length === 1 ? "has" : "have"} no recipe yet. You can
+                still save — but until the recipe is in, selling{" "}
+                {noRecipe.length === 1 ? "it" : "them"} books{" "}
+                <strong>no cost</strong>, so every combo carrying{" "}
+                {noRecipe.length === 1 ? "it" : "them"} reads as pure profit,
+                and {noRecipe.length === 1 ? "it" : "they"} will{" "}
+                <strong>never go sold out</strong> however much is left. Add it
+                in <strong>Dish costs</strong>.
+              </p>
+            )}
+
             <p className="text-[11px] leading-relaxed text-ink-800/50">
               Leave the price blank to charge whatever that dish costs — one
               price to keep up to date instead of two. Type <strong>0</strong>{" "}
@@ -918,12 +921,8 @@ function Editor({
             answer to the only question the owner actually has, and it used to
             require saving, opening the website, and finding a dish that
             carries the group. */}
-        <section className="overflow-hidden rounded-2xl bg-ink-950 ring-1 ring-ink-950">
-          <p className="flex items-center gap-2 px-4 pt-3 text-[10px] font-black uppercase tracking-widest text-cream-100/45">
-            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-jade-400" />
-            What the customer sees
-          </p>
-          <div className="m-3 mt-2 rounded-xl bg-cream-50 p-3">
+        <PreviewBand>
+          <>
             <p className="flex items-center gap-2">
               <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/45">
                 {draft.name.trim() || "Your question"}
@@ -992,8 +991,8 @@ function Editor({
                 ))}
               </ul>
             )}
-          </div>
-        </section>
+          </>
+        </PreviewBand>
 
         {error && (
           <p className="rounded-2xl bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700 ring-1 ring-brand-600/20">

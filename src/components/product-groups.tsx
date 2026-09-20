@@ -4,13 +4,25 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { AdminDialog } from "@/components/admin-dialog";
-import { TrashIcon } from "@/components/icons";
+import { PencilIcon, TrashIcon } from "@/components/icons";
 import { suggestGrouping } from "@/lib/menu-grouping";
 import {
   deleteProductGroup,
   saveProductGroup,
 } from "@/app/admin/menu/product-actions";
 import type { AdminMeal } from "@/components/meal-editor";
+import {
+  BandButton,
+  Panel,
+  PanelBand,
+  PanelBody,
+  PreviewBand,
+  RailRow,
+  Stat,
+  StatDot,
+  Step,
+  Steps,
+} from "@/components/hq-panel";
 
 /**
  * Turning several dishes into one menu card.
@@ -103,87 +115,153 @@ export function ProductGroups({
     });
   }
 
-  return (
-    <section>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="font-display text-xl font-black text-ink-950">Menu cards</h3>
-          <p className="mt-0.5 max-w-xl text-sm text-ink-800/60">
-            Two sizes of the same drink are two dishes here and one thing to a
-            customer. Group them and the menu shows one card that opens — with
-            the sizes, the prices and a photo of each — instead of two cards
-            with the same picture.
-          </p>
-          <p className="mt-1 max-w-xl text-xs text-ink-800/45">
-            Nothing is deleted or merged. Every dish keeps its own price,
-            recipe, cost, stock and sales. Ungroup and they are back as they
-            were.
-          </p>
-        </div>
-        <button
-          onClick={openNew}
-          className="shrink-0 rounded-xl bg-ink-950 px-4 py-2 text-sm font-bold text-cream-50 transition-colors hover:bg-ink-800"
-        >
-          + Group dishes
-        </button>
-      </div>
+  // Live cards, and how many dishes they stand in front of — the figure the
+  // panel exists to move. A menu of 72 loose cards and one of 72 dishes under
+  // 40 cards are very different menus to scroll.
+  const live = groups.filter((g) => g.is_active);
+  const grouped = live.reduce((n, g) => n + g.members.length, 0);
 
-      {groups.length === 0 ? (
-        <p className="mt-3 rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-5 text-sm text-ink-800/70">
-          Nothing grouped yet — every dish is its own card, which is fine.
-          Worth doing for the ones that come in sizes, or with and without
-          cheese.
-        </p>
-      ) : (
-        <ul className="mt-3 flex flex-col gap-2">
-          {groups.map((g) => (
-            <li
-              key={g.id}
-              className="flex items-center gap-3 rounded-2xl bg-cream-100 p-3 ring-1 ring-ink-950/10"
-            >
-              <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-white ring-1 ring-ink-950/10">
-                {(g.image_url ?? byId.get(g.members[0]?.mealId)?.image_url) && (
-                  <Image
-                    src={(g.image_url ?? byId.get(g.members[0].mealId)!.image_url)!}
-                    alt=""
-                    fill
-                    sizes="48px"
-                    className="object-cover"
-                  />
-                )}
+  return (
+    <Panel>
+      <PanelBand
+        title="Menu"
+        accent="cards"
+        lead={
+          <>
+            Two sizes of the same drink are two dishes here and one thing to a
+            customer. Group them and the menu shows one card that opens — the
+            sizes, the prices and a photo of each — instead of two cards with
+            the same picture.
+          </>
+        }
+        stats={
+          groups.length > 0 && (
+            <>
+              <Stat n={live.length}>{live.length === 1 ? "card" : "cards"}</Stat>
+              <StatDot />
+              <span>standing in for</span>
+              <Stat n={grouped}>dishes</Stat>
+              <StatDot />
+              {/* The reassurance, in the one place the owner looks before
+                  pressing something that looks destructive. */}
+              <span className="font-normal text-cream-100/45">
+                nothing is merged or deleted
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span className="truncate font-bold text-ink-950">{g.name}</span>
-                  {!g.is_active && (
-                    <span className="shrink-0 rounded-full bg-ink-950/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-ink-800/60">
-                      Off
+            </>
+          )
+        }
+        action={<BandButton onClick={openNew}>+ Group dishes</BandButton>}
+      />
+
+      <PanelBody>
+        {groups.length === 0 ? (
+          <div className="rounded-2xl bg-cream-50 p-5 ring-1 ring-ink-950/10">
+            <p className="font-display text-lg font-black text-ink-950">
+              Nothing grouped yet — every dish is its own card.
+            </p>
+            <p className="mt-1 text-sm text-ink-800/65">
+              Which is fine. It is worth doing for the ones that come in sizes,
+              or with and without cheese.
+            </p>
+            <Steps
+              items={[
+                <>
+                  Press <strong>Group dishes</strong> and search for the two or
+                  three that are really one thing — &ldquo;16oz&rdquo; and
+                  &ldquo;22oz&rdquo; of the same drink.
+                </>,
+                <>
+                  Name the card what a customer would call it, and say which
+                  way of having it each dish is. The form fills itself in from
+                  the names you already use.
+                </>,
+              ]}
+            />
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {groups.map((g) => {
+              const photo =
+                g.image_url ?? byId.get(g.members[0]?.mealId)?.image_url;
+              // Green is on the menu, grey is switched off — the same rail
+              // language as the add-ons panel below, meaning the same thing.
+              const tone = g.is_active
+                ? { rail: "bg-jade-600", ring: "ring-jade-600/20" }
+                : { rail: "bg-ink-950/20", ring: "ring-ink-950/10" };
+
+              return (
+                <RailRow
+                  key={g.id}
+                  rail={tone.rail}
+                  ring={tone.ring}
+                  dimmed={!g.is_active}
+                >
+                  <div className="flex items-start gap-3">
+                    {/* The photograph, because the card IS a photograph to a
+                        customer, and the commonest mistake here is grouping
+                        two dishes whose pictures do not match. */}
+                    <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-white ring-1 ring-ink-950/10">
+                      {photo ? (
+                        <Image
+                          src={photo}
+                          alt=""
+                          fill
+                          sizes="56px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <span className="absolute inset-0 grid place-items-center font-display text-lg font-black text-ink-950/15">
+                          {(g.name.match(/[a-zA-Z0-9]/)?.[0] ?? "?").toUpperCase()}
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-                <span className="mt-0.5 flex flex-wrap gap-1">
-                  {g.members.map((m) => (
-                    <span
-                      key={m.mealId}
-                      className="rounded-full bg-ink-950/[0.07] px-2 py-0.5 text-[11px] font-semibold text-ink-800/70"
+
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-2">
+                        <span className="font-display text-lg font-black text-ink-950">
+                          {g.name}
+                        </span>
+                        <span className="rounded-full bg-jade-600/12 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide tabular-nums text-jade-700">
+                          {g.members.length} ways
+                        </span>
+                        {!g.is_active && (
+                          <span className="rounded-full bg-ink-950 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cream-50">
+                            off
+                          </span>
+                        )}
+                      </p>
+
+                      {/* The chips the customer will tap, not a comma list.
+                          Same treatment as an add-on's answers, because they
+                          are the same thing on screen: the ways of having it. */}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {g.members.map((m) => (
+                          <span
+                            key={m.mealId}
+                            className="max-w-[16rem] truncate rounded-full bg-cream-100 px-3 py-1 text-xs font-bold text-ink-950 ring-1 ring-ink-950/10"
+                          >
+                            {Object.values(m.options).join(" · ") ||
+                              byId.get(m.mealId)?.name ||
+                              "?"}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => openExisting(g)}
+                      aria-label={`Edit ${g.name}`}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink-950/5 text-ink-800 transition-colors hover:bg-ink-950 hover:text-cream-50"
                     >
-                      {Object.values(m.options).join(" · ") ||
-                        byId.get(m.mealId)?.name ||
-                        "?"}
-                    </span>
-                  ))}
-                </span>
-              </span>
-              <button
-                onClick={() => openExisting(g)}
-                className="shrink-0 rounded-xl bg-ink-950/5 px-3 py-2 text-sm font-bold text-ink-800 hover:bg-ink-950/10"
-              >
-                Edit
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+                      <PencilIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </RailRow>
+              );
+            })}
+          </ul>
+        )}
+      </PanelBody>
 
       {draft && (
         <GroupDialog
@@ -201,7 +279,7 @@ export function ProductGroups({
           onClose={() => setDraft(null)}
         />
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -416,12 +494,13 @@ function GroupDialog({
 
   return (
     <AdminDialog
+      wide
       title={draft.id ? "Edit this menu card" : "Group dishes into one card"}
       subtitle="The dishes stay exactly as they are. This only changes how they're shown on the menu."
       onClose={onClose}
       busy={busy}
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         {error && (
           <p className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-cream-50">
             {error}
@@ -429,10 +508,11 @@ function GroupDialog({
         )}
 
         {/* ---- which dishes ---- */}
-        <div>
-          <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-ink-800/40">
-            Dishes on this card
-          </p>
+        <Step
+          n={1}
+          title="Dishes on this card"
+          hint="Two or more that are really one thing to a customer."
+        >
           {chosen.length === 0 ? (
             <p className="rounded-xl border-2 border-dashed border-brand-300 bg-cream-100 px-4 py-3 text-sm text-ink-800/60">
               Pick two or more — the sizes of one drink, or a dish with and
@@ -556,13 +636,14 @@ function GroupDialog({
               )}
             </div>
           )}
-        </div>
+        </Step>
 
         {/* ---- what the choice is called ---- */}
-        <div>
-          <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-ink-800/40">
-            What the customer is choosing
-          </p>
+        <Step
+          n={2}
+          title="What the customer is choosing"
+          hint="One row of buttons per choice — Size, Flavour, Cheese."
+        >
           <div className="flex flex-wrap gap-2">
             {draft.axes.map((axis, i) => (
               <span key={i} className="flex items-center gap-1">
@@ -594,13 +675,17 @@ function GroupDialog({
             </button>
           </div>
           <p className="mt-1.5 text-xs text-ink-800/45">
-            One row of buttons per choice. Two choices — Flavour and Cheese —
-            give four combinations, and only the ones that exist as dishes can
-            be picked.
+            Two choices — Flavour and Cheese — give four combinations, and only
+            the ones that exist as dishes can be picked.
           </p>
-        </div>
+        </Step>
 
         {/* ---- the card itself ---- */}
+        <Step
+          n={3}
+          title="The card itself"
+          hint="What a customer reads on the menu, before they open it."
+        >
         <div className="grid gap-3 sm:grid-cols-2">
           <label>
             <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-ink-800/40">
@@ -628,12 +713,106 @@ function GroupDialog({
 
         <button
           onClick={() => setDraft({ ...draft, isActive: !draft.isActive })}
-          className={`self-start rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+          className={`mt-3 rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
             draft.isActive ? "bg-jade-600 text-cream-50" : "bg-ink-950/10 text-ink-800"
           }`}
         >
           {draft.isActive ? "✓ Grouped on the menu" : "Off — shown as separate cards"}
         </button>
+        </Step>
+
+        {/* ── the preview ───────────────────────────────────────────────
+            The same dark strip the add-ons editor ends with, answering the
+            same question: this is the card, and this is the row of buttons
+            behind it. A card is a thing the owner cannot see until it is
+            saved and the website is open beside them. */}
+        <PreviewBand>
+          <>
+            <p className="font-display text-lg font-black leading-tight text-ink-950">
+              {draft.name.trim() || "Your card"}
+            </p>
+            {(draft.description.trim() ||
+              byId.get(chosen[0])?.description) && (
+              <p className="mt-0.5 line-clamp-2 text-xs text-ink-800/60">
+                {draft.description.trim() ||
+                  byId.get(chosen[0])?.description}
+              </p>
+            )}
+
+            {/* Priced the way the card is: "from ₱75" only when the ways of
+                having it cost different money, which is the rule the menu
+                itself follows. */}
+            {chosen.length > 0 && (
+              <p className="mt-1 font-display text-base font-black text-brand-600">
+                {(() => {
+                  const prices = chosen
+                    .map((id) => Number(byId.get(id)?.price ?? 0))
+                    .filter((n) => Number.isFinite(n));
+                  if (prices.length === 0) return null;
+                  const lo = Math.min(...prices);
+                  const hi = Math.max(...prices);
+                  return (
+                    <>
+                      {lo !== hi && (
+                        <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-ink-800/50">
+                          from
+                        </span>
+                      )}
+                      ₱{lo.toFixed(2)}
+                    </>
+                  );
+                })()}
+              </p>
+            )}
+
+            {draft.axes.filter((a) => a.trim()).length === 0 ? (
+              <p className="mt-2 text-xs text-ink-800/40">
+                Nothing to choose from yet.
+              </p>
+            ) : (
+              <div className="mt-2 flex flex-col gap-2">
+                {draft.axes
+                  .filter((a) => a.trim())
+                  .map((axis) => {
+                    const values: string[] = [];
+                    for (const id of chosen) {
+                      const v = (draft.values[id]?.[axis.trim()] ?? "").trim();
+                      if (v && !values.includes(v)) values.push(v);
+                    }
+                    return (
+                      <div key={axis}>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-ink-800/45">
+                          {axis}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {values.length === 0 ? (
+                            <span className="text-xs text-ink-800/40">
+                              No values filled in yet.
+                            </span>
+                          ) : (
+                            values.map((v, i) => (
+                              <span
+                                key={v}
+                                className={`rounded-xl border-2 px-3 py-1.5 text-xs font-bold ${
+                                  // The first is drawn selected, because that
+                                  // is what the dish dialog opens on.
+                                  i === 0
+                                    ? "border-ink-950 bg-ink-950 text-cream-50"
+                                    : "border-ink-950/15 bg-cream-100 text-ink-950"
+                                }`}
+                              >
+                                {v}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </>
+        </PreviewBand>
 
         {/**
           * The one that looks like a broken feature.
