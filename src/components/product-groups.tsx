@@ -246,6 +246,17 @@ function GroupDialog({
     const q = query.trim().toLowerCase();
     const matching = meals
       .filter((m) => !chosen.includes(m.id))
+      /**
+       * A dish that is not on the menu cannot be one of the customer's
+       * choices, so offering it here only ever builds a card that does not
+       * work — which is the very thing the warning below this list exists to
+       * explain. Not offering it is better than explaining it afterwards.
+       *
+       * It also clears out the "(T.O)" twins, which is most of what was
+       * cluttering this search: they were hidden by the take-out merge and
+       * are never coming back to the menu.
+       */
+      .filter((m) => m.is_public)
       .filter((m) => !q || m.name.toLowerCase().includes(q));
     // A dish already in THIS draft stays offerable, so editing a card does
     // not have to start from nothing.
