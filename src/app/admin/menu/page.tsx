@@ -32,7 +32,8 @@ export default async function AdminMenuPage() {
   }
 
   const supabase = await createClient();
-  const [{ data, error }, { data: catRows }, { data: groupRows }] = await Promise.all([
+  const [{ data, error }, { data: catRows }, { data: groupRows, error: groupError }] =
+    await Promise.all([
     supabase
       .from("meals")
       .select(
@@ -74,6 +75,13 @@ export default async function AdminMenuPage() {
   // Members are read off the dishes rather than held on the group, for the
   // same reason the customer's menu reads the options off them: one place
   // that says which card a dish is on, so there is nothing to disagree.
+  //
+  // Reported, not swallowed. An unreadable grouping table shows this screen
+  // an empty "Menu cards" list — which reads as "my cards were deleted" and
+  // is one tap away from the owner rebuilding them all by hand.
+  if (groupError) {
+    console.error(`[admin/menu] menu_products unreadable: ${groupError.message}`);
+  }
   const groups: GroupRow[] = (
     (groupRows ?? []) as Omit<GroupRow, "members">[]
   ).map((g) => ({

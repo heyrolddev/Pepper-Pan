@@ -79,13 +79,27 @@ async function getMenu(): Promise<{
       .order("sort_order")
       .order("name");
 
-    // The groupings. A failure here is not a reason to fail the menu — every
-    // dish simply renders as its own card, which is what the menu was before
-    // anybody grouped anything.
-    const { data: groupRows } = await supabase
+    /**
+     * The groupings. A failure here still does not fail the menu — every dish
+     * renders as its own card, which is what the menu was before anybody
+     * grouped anything — but it is no longer SILENT.
+     *
+     * Silent was the problem. If this read comes back empty for any reason,
+     * every card the owner built quietly falls apart into its variants, so
+     * the menu shows "La/Pork Solo Rice" and "XL/Pork Solo Rice" where it
+     * should show one card called whatever the owner named it. On screen that
+     * is indistinguishable from "renaming the card broke it", which is how it
+     * was reported — and there was nothing in any log to say otherwise.
+     */
+    const { data: groupRows, error: groupError } = await supabase
       .from("menu_products")
       .select("id, name, description, image_url, sort_order, is_active")
       .eq("is_active", true);
+    if (groupError) {
+      console.error(
+        `[menu] menu_products unreadable, so every card falls back to one dish per card: ${groupError.message}`
+      );
+    }
 
     type Row = {
       id: string;

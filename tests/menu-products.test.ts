@@ -254,6 +254,43 @@ test("a grouped pair becomes one card, priced from its cheapest", () => {
   assert.deepEqual(p.axes, [{ name: "Size", values: ["16oz", "22oz"] }]);
 });
 
+test("renaming the card changes the name and nothing else", () => {
+  /**
+   * Reported as "changing the Card Name and it stops appearing on the menu".
+   * The card's name is the only thing the group supplies — its dishes, its
+   * prices, its categories and its options all come from the variants — so a
+   * rename cannot drop it off the menu or change what is behind it. Pinned
+   * here so a future change to `productOf` cannot quietly make it able to.
+   */
+  const ids = inGroup({ l16: "g1", l22: "g1" });
+  const before = buildProducts(LATTE, [group({ name: "Iced Spanish Latte" })], ids)[0];
+  const after = buildProducts(LATTE, [group({ name: "Spanish Latte Bowl" })], ids)[0];
+
+  assert.equal(after.name, "Spanish Latte Bowl");
+  assert.deepEqual(
+    after.variants.map((v) => v.id),
+    before.variants.map((v) => v.id)
+  );
+  assert.deepEqual(after.axes, before.axes);
+  assert.deepEqual(after.categories, before.categories);
+  assert.equal(after.priceFrom, before.priceFrom);
+  assert.equal(after.soldOut, before.soldOut);
+});
+
+test("a renamed card moves where the menu is alphabetical", () => {
+  // Not a fault, but the thing most easily mistaken for one: the menu is
+  // ordered by name, so renaming a card moves it. Written down so the
+  // behaviour is a decision rather than a surprise.
+  const ids = inGroup({ l16: "g1", l22: "g1" });
+  const other = [v({ id: "x", name: "Dumplings", price: 120 })];
+
+  const asP = buildProducts([...LATTE, ...other], [group({ name: "Pork Rice" })], ids);
+  assert.deepEqual(asP.map((p) => p.name), ["Dumplings", "Pork Rice"]);
+
+  const asC = buildProducts([...LATTE, ...other], [group({ name: "Chicken Rice" })], ids);
+  assert.deepEqual(asC.map((p) => p.name), ["Chicken Rice", "Dumplings"]);
+});
+
 test("an ungrouped dish is a card of one, not a special case", () => {
   // What lets every card on the menu be tappable from the day this ships. A
   // menu where some cards open and others do nothing reads as broken.
