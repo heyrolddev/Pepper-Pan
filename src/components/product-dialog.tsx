@@ -18,6 +18,17 @@ import {
   type Product,
   type VariantOptions,
 } from "@/lib/menu-products";
+import {
+  choiceProblem,
+  extrasOf,
+  extrasTotal,
+  isFull,
+  optionSoldOut,
+  reconcile,
+  toggleOption,
+  type ModifierChoice,
+  type ModifierGroup,
+} from "@/lib/modifiers";
 
 /**
  * The dish, opened.
@@ -43,11 +54,22 @@ import {
  * a customer who reads it as the first waits for something that is not
  * coming. They are told apart in `chipState` and they are labelled apart here.
  *
+ * ── Variants above the line, add-ons below it ────────────────────────────
+ *
+ * The chips at the top answer "which dish is this" — one answer, and the
+ * photograph and the price change with it. The panels under the line answer
+ * "and what goes with it" — any number of answers, each adding to the price
+ * without changing the dish. They look different on purpose: a customer who
+ * reads "Extra rice" as a size will tap it expecting the price to replace
+ * itself rather than grow.
+ *
  * ── What it never does ───────────────────────────────────────────────────
  *
  * Hold a selection that has no dish behind it. Every tap resolves to a real
  * dish before it is shown — see `pick` — so the Add button is never pointing
  * at nothing, and there is no error state for a basket that cannot be filled.
+ * The add-ons hold the same line: an option IS a dish, and `reconcile` throws
+ * away any tick the dish on screen does not actually offer.
  */
 
 export function ProductDialog({
@@ -70,6 +92,7 @@ export function ProductDialog({
   const [selection, setSelection] = useState<VariantOptions>(() =>
     openingSelection(product.variants)
   );
+  const [ticked, setTicked] = useState<ModifierChoice>({});
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
 
@@ -78,6 +101,16 @@ export function ProductDialog({
     [product.variants, selection]
   );
   const gone = isSoldOut(chosen);
+
+  const groups = useMemo(() => chosen.groups ?? [], [chosen]);
+  // Derived on every render rather than corrected in an effect. Changing the
+  // size swaps the dish and can swap its add-ons with it; an effect would let
+  // one frame go out — and one Add tap land — with the old dish's drink still
+  // ticked and charged for.
+  const choice = useMemo(() => reconcile(groups, ticked), [groups, ticked]);
+  const extras = useMemo(() => extrasOf(groups, choice), [groups, choice]);
+  const unanswered = choiceProblem(groups, choice);
+  const unit = Number(chosen.price) + extrasTotal(extras);
   const low =
     !gone &&
     chosen.makeable !== null &&
@@ -85,8 +118,16 @@ export function ProductDialog({
     chosen.makeable <= LOW_STOCK_SERVINGS;
 
   function add() {
-    if (gone || staff) return;
-    addItem({ mealId: chosen.id, name: chosen.name, price: Number(chosen.price) }, qty);
+    if (gone || staff || unanswered) return;
+    addItem(
+      {
+        mealId: chosen.id,
+        name: chosen.name,
+        price: Number(chosen.price),
+        extras,
+      },
+      qty
+    );
     setAdded(true);
     // Long enough to read, short enough that it is clearly about this tap.
     setTimeout(() => onClose(), 700);
@@ -243,14 +284,35 @@ export function ProductDialog({
               <p className="text-xs font-semibold text-ink-800/45">{chosen.name}</p>
             )}
 
+            {groups.map((group) => (
+              <AddOnGroup
+                key={group.id}
+                group={group}
+                chosen={choice[group.id] ?? []}
+                full={isFull(group, choice)}
+                onToggle={(optionId) =>
+                  setTicked((t) => toggleOption(group, reconcile(groups, t), optionId))
+                }
+              />
+            ))}
+
             <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-ink-950/10 pt-4">
               <div>
                 <p className="font-display text-3xl font-black text-brand-600">
-                  ₱{Number(chosen.price).toFixed(2)}
+                  ₱{unit.toFixed(2)}
                 </p>
+                {/* Shown as a sum, not as a single grown number. A customer
+                    who sees ₱135 where the card said ₱120 checks the menu;
+                    one who sees "₱120 + ₱15 add-ons" checks their own taps. */}
+                {extras.length > 0 && (
+                  <p className="text-xs font-semibold text-ink-800/50">
+                    ₱{Number(chosen.price).toFixed(2)} + ₱
+                    {extrasTotal(extras).toFixed(2)} add-ons
+                  </p>
+                )}
                 {qty > 1 && (
                   <p className="text-xs font-semibold text-ink-800/50">
-                    ₱{(Number(chosen.price) * qty).toFixed(2)} for {qty}
+                    ₱{(unit * qty).toFixed(2)} for {qty}
                   </p>
                 )}
               </div>
@@ -294,9 +356,9 @@ export function ProductDialog({
             ) : (
               <button
                 onClick={add}
-                disabled={gone}
+                disabled={gone || !!unanswered}
                 className={`w-full rounded-full px-6 py-3.5 font-bold transition-colors ${
-                  gone
+                  gone || unanswered
                     ? "cursor-not-allowed bg-ink-950/10 text-ink-800/40"
                     : added
                       ? "bg-jade-600 text-cream-50"
@@ -305,15 +367,131 @@ export function ProductDialog({
               >
                 {gone
                   ? "Sold out"
-                  : added
-                    ? "Added ✓"
-                    : `Add ${qty > 1 ? `${qty} ` : ""}to cart`}
+                  : /* The button says what is missing rather than sitting
+                       grey and silent — with three panels above it, "choose
+                       your drink" is the only version of this a customer can
+                       act on without hunting. */
+                    (unanswered ??
+                      (added
+                        ? "Added ✓"
+                        : `Add ${qty > 1 ? `${qty} ` : ""}to cart`))}
               </button>
             )}
           </div>
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+/**
+ * One question, and the ways of answering it.
+ *
+ * Deliberately not the same shape as the variant chips above. Those are a
+ * row of pills that replace one another; these are rows in a bordered panel
+ * with a price on the right, because that is how every counter menu in the
+ * country writes an add-on and because the money is the part being agreed to.
+ *
+ * "Required" and "up to 2" are said in words next to the heading. A checkbox
+ * that silently refuses the third tick is a broken checkbox to the person
+ * tapping it.
+ */
+function AddOnGroup({
+  group,
+  chosen,
+  full,
+  onToggle,
+}: {
+  group: ModifierGroup;
+  chosen: string[];
+  full: boolean;
+  onToggle: (optionId: string) => void;
+}) {
+  const single = group.max === 1;
+  const rule =
+    group.min >= 1
+      ? single
+        ? "Required"
+        : `Pick ${group.min}`
+      : single
+        ? "Optional"
+        : `Up to ${group.max}`;
+
+  return (
+    <fieldset className="min-w-0 rounded-2xl bg-cream-100 p-4 ring-1 ring-ink-950/10">
+      <legend className="flex items-center gap-2 px-1">
+        <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/60">
+          {group.name}
+        </span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
+            group.min >= 1
+              ? "bg-brand-600 text-cream-50"
+              : "bg-ink-950/10 text-ink-800/60"
+          }`}
+        >
+          {rule}
+        </span>
+      </legend>
+
+      {group.helper && (
+        <p className="mb-2 mt-1 text-xs text-ink-800/60">{group.helper}</p>
+      )}
+
+      <div className="mt-1 flex flex-col">
+        {group.options.map((option) => {
+          const on = chosen.includes(option.id);
+          const out = optionSoldOut(option);
+          // Full only blocks the ones not already ticked — otherwise the
+          // customer cannot undo their own second choice.
+          const blocked = out || (full && !on);
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              role={single ? "radio" : "checkbox"}
+              aria-checked={on}
+              disabled={blocked}
+              onClick={() => onToggle(option.id)}
+              className={`flex items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors ${
+                blocked
+                  ? "cursor-not-allowed text-ink-800/35"
+                  : "hover:bg-cream-50"
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`grid h-5 w-5 shrink-0 place-items-center border-2 text-[11px] font-black ${
+                  single ? "rounded-full" : "rounded-md"
+                } ${
+                  on
+                    ? "border-ink-950 bg-ink-950 text-cream-50"
+                    : "border-ink-950/25 bg-cream-50"
+                }`}
+              >
+                {on ? "✓" : ""}
+              </span>
+
+              <span className="min-w-0 flex-1 text-sm font-bold leading-snug">
+                {option.label}
+                {out && (
+                  <span className="ml-1.5 text-[10px] font-black uppercase tracking-wide">
+                    · sold out
+                  </span>
+                )}
+              </span>
+
+              {/* Free is written as free. A blank space next to a ₱15 row
+                  reads as a price that failed to load. */}
+              <span className="shrink-0 text-sm font-bold tabular-nums text-ink-800/70">
+                {option.price > 0 ? `+₱${option.price.toFixed(2)}` : "Free"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 

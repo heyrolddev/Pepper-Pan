@@ -24,7 +24,13 @@ export type TrackedLine = {
   qty: number;
   price_at_sale: number;
   name: string;
+  /** What was added to it, as it was recorded — never re-read from the menu. */
+  extras: { label: string; price: number }[];
 };
+
+/** The dish plus its add-ons: what one of this line was actually charged at. */
+const linePrice = (l: TrackedLine) =>
+  Number(l.price_at_sale) + l.extras.reduce((n, e) => n + e.price, 0);
 
 export type TrackedOrder = {
   id: string;
@@ -186,8 +192,10 @@ function OrderCard({ order }: { order: TrackedOrder }) {
     0,
     order.revenue + Number(order.delivery_fee) - order.downpayment_amount
   );
+  // Add-ons included, or dropping one rice meal from a three-meal order would
+  // take ₱120 off a total that had ₱135 of it in.
   const draftTotal = order.lines.reduce(
-    (s, l) => s + (qtys[l.id] ?? l.qty) * Number(l.price_at_sale),
+    (s, l) => s + (qtys[l.id] ?? l.qty) * linePrice(l),
     0
   );
 
@@ -284,8 +292,13 @@ function OrderCard({ order }: { order: TrackedOrder }) {
           const qty = qtys[l.id] ?? l.qty;
           return (
             <li key={l.id} className="flex items-center justify-between gap-4">
-              <span className={`text-ink-800 ${editing && qty === 0 ? "line-through opacity-50" : ""}`}>
+              <span className={`min-w-0 text-ink-800 ${editing && qty === 0 ? "line-through opacity-50" : ""}`}>
                 {l.name}
+                {l.extras.length > 0 && (
+                  <span className="block text-xs font-semibold text-ink-800/60">
+                    + {l.extras.map((e) => e.label).join(", ")}
+                  </span>
+                )}
               </span>
 
               {editing ? (
@@ -310,7 +323,7 @@ function OrderCard({ order }: { order: TrackedOrder }) {
                 </span>
               ) : (
                 <span className="shrink-0 font-semibold text-ink-950">
-                  {l.qty} × {peso(l.price_at_sale)}
+                  {l.qty} × {peso(linePrice(l))}
                 </span>
               )}
             </li>

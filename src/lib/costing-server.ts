@@ -158,7 +158,14 @@ export async function recordOrderCost(orderId: string): Promise<void> {
         .select("revenue, fulfillment")
         .eq("id", orderId)
         .maybeSingle(),
-      supabase.from("order_lines").select("meal_id, qty").eq("order_id", orderId),
+      supabase
+        .from("order_lines")
+        // The add-ons come down with the line they belong to. An extra rice
+        // is a dish with a recipe like any other, and leaving it out of the
+        // estimate makes the margin on every combo look better than it is —
+        // which is the one number this whole function exists to keep honest.
+        .select("meal_id, qty, order_line_extras(meal_id, qty)")
+        .eq("order_id", orderId),
     ]);
 
   if (orderError || linesError || !order) {
@@ -180,18 +187,36 @@ export async function recordOrderCost(orderId: string): Promise<void> {
   // and the movement that later overwrites it are answering the same question.
   const packed = isPacked((order as { fulfillment?: string }).fulfillment ?? "pickup");
 
+  type LineRow = {
+    meal_id: string;
+    qty: number;
+    order_line_extras: { meal_id: string | null; qty: number }[] | null;
+  };
+
   let cogs = 0;
   let anyLine = false;
-  for (const line of (lines ?? []) as { meal_id: string; qty: number }[]) {
-    anyLine = true;
-    const qty = Number(line.qty) || 0;
-    if (packed) cogs += (packagingCost.get(line.meal_id) ?? 0) * qty;
-    const mc = mealCosts.get(line.meal_id);
+  const chargeDish = (mealId: string, qty: number) => {
+    if (packed) cogs += (packagingCost.get(mealId) ?? 0) * qty;
+    const mc = mealCosts.get(mealId);
     // A dish with no recipe adds nothing rather than guessing. It makes the
     // cost a floor and the profit a ceiling, which is why the screens that
     // show profit also say how many dishes still have no recipe.
-    if (!mc?.costed) continue;
+    if (!mc?.costed) return;
     cogs += mc.cost * qty;
+  };
+
+  for (const line of (lines ?? []) as unknown as LineRow[]) {
+    anyLine = true;
+    const qty = Number(line.qty) || 0;
+    chargeDish(line.meal_id, qty);
+    for (const extra of line.order_line_extras ?? []) {
+      // Nulled when the dish it named was deleted — on the receipt at the
+      // price that was paid, and no longer costable. Skipped rather than
+      // guessed, the same as a dish with no recipe.
+      if (!extra.meal_id) continue;
+      // Per unit of the line: one extra rice on a line of three is three.
+      chargeDish(extra.meal_id, qty * (Number(extra.qty) || 0));
+    }
   }
   // The bag: once for the order, however many dishes are in it.
   if (packed && anyLine) cogs += orderPackagingCost;

@@ -421,6 +421,27 @@ export const TOPICS: GuideTopic[] = [
       "Two choices at once are fine. Flavour (Original / Spicy) and Cheese (with / without) give four combinations, and only the ones that exist as real dishes can be picked — so a customer cannot order something you do not make.",
   },
   {
+    id: "add-ons",
+    group: "The kitchen",
+    question: "How do I offer extra rice, or let them pick a drink?",
+    triggers: [
+      "add on", "add ons", "addon", "extra rice", "dagdag kanin", "sobrang kanin",
+      "choose your drink", "pick a drink", "drink option", "combo", "combo meal",
+      "make it a meal", "upgrade", "sides", "extras", "mamili ng inumin",
+      "parang jollibee", "parang mcdo", "value meal",
+    ],
+    where: { href: "/admin/menu", label: "Menu" },
+    answer:
+      "Menu → Add-ons & combos → New group.\n\n" +
+      "A group is one question you ask on a dish: \"Extra rice?\" or \"Choose your drink\". Each answer points at a REAL dish — that is the part that matters, and the part to do first.\n\n" +
+      "So: make \"Extra rice\" as a dish, give it its recipe and its price, and untick Show on menu so it does not get a card of its own. Then make the group, pick that dish as an option, and attach the group to the menu cards that should offer it.\n\n" +
+      "Because the option is a dish, everything downstream already works. It costs what that dish costs, it takes the rice off the shelf when it sells, it goes sold out when the rice runs out, and the profit on the order counts it. An add-on that was just a name and a price would be money coming in with no cost against it, and every combo would look more profitable than it is.\n\n" +
+      "Leave the option's price blank to charge whatever the dish costs — then you only change rice in one place. Type 0 for a drink that comes free with the combo.\n\n" +
+      "Tick \"They must answer\" for a combo where a drink has to be chosen; leave it off for an optional extra. \"How many can they pick\" turns one group into a checklist.\n\n" +
+      "Attach to a MENU CARD, not to each dish, when all the variants take the same thing — four Solo Ji Pai and one \"Choose your drink\". Adding a seventh drink is then one edit instead of four.\n\n" +
+      "It shows the same way on the website and on the Counter, and it prints on the receipt under the dish with its own price, so the paper adds up.",
+  },
+  {
     id: "menu-engineering",
     group: "The kitchen",
     question: "What do star, plowhorse, puzzle and dog mean?",

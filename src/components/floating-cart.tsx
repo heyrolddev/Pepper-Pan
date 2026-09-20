@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { AdminDialog } from "@/components/admin-dialog";
-import { useCart } from "@/lib/cart-context";
+import { lineUnitPrice, useCart } from "@/lib/cart-context";
+import { describeExtras } from "@/lib/modifiers";
 
 const peso = (n: number) => "₱" + n.toFixed(2);
 
@@ -110,7 +111,7 @@ export function FloatingCart({ staff = false }: { staff?: boolean }) {
             <ul className="flex flex-col gap-2">
               {items.map((item) => (
                 <li
-                  key={item.mealId}
+                  key={item.key}
                   className="flex flex-col gap-2.5 rounded-2xl bg-cream-100 p-3"
                 >
                   {/* Two rows, not one. Written as a single row first, and a
@@ -120,11 +121,22 @@ export function FloatingCart({ staff = false }: { staff?: boolean }) {
                       the name, which is the one part that has to be readable
                       for a review to be a review. */}
                   <div className="flex items-baseline justify-between gap-3">
-                    <p className="min-w-0 flex-1 font-bold leading-snug text-ink-950">
-                      {item.name}
-                    </p>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold leading-snug text-ink-950">
+                        {item.name}
+                      </p>
+                      {/* Under the name, not folded into it. "Pork Solo Rice
+                          + Extra rice, Coke" on one line is the first thing a
+                          390px screen truncates, and the add-ons are exactly
+                          the part the customer is checking. */}
+                      {item.extras.length > 0 && (
+                        <p className="text-xs font-semibold leading-snug text-ink-800/55">
+                          + {describeExtras(item.extras)}
+                        </p>
+                      )}
+                    </div>
                     <p className="shrink-0 font-display text-lg font-black tabular-nums text-ink-950">
-                      {peso(item.price * item.qty)}
+                      {peso(lineUnitPrice(item) * item.qty)}
                     </p>
                   </div>
 
@@ -133,7 +145,7 @@ export function FloatingCart({ staff = false }: { staff?: boolean }) {
                         change exists for and it is used on a phone. */}
                     <div className="flex shrink-0 items-center gap-1 rounded-full bg-cream-50 p-1 ring-1 ring-ink-950/10">
                       <button
-                        onClick={() => setQty(item.mealId, item.qty - 1)}
+                        onClick={() => setQty(item.key, item.qty - 1)}
                         aria-label={`One less ${item.name}`}
                         className="grid h-9 w-9 place-items-center rounded-full text-lg font-black text-ink-800 transition-colors hover:bg-ink-950 hover:text-cream-50"
                       >
@@ -146,7 +158,7 @@ export function FloatingCart({ staff = false }: { staff?: boolean }) {
                         {item.qty}
                       </span>
                       <button
-                        onClick={() => setQty(item.mealId, item.qty + 1)}
+                        onClick={() => setQty(item.key, item.qty + 1)}
                         aria-label={`One more ${item.name}`}
                         className="grid h-9 w-9 place-items-center rounded-full text-lg font-black text-ink-800 transition-colors hover:bg-brand-600 hover:text-cream-50"
                       >
@@ -155,11 +167,11 @@ export function FloatingCart({ staff = false }: { staff?: boolean }) {
                     </div>
 
                     <span className="text-xs text-ink-800/55">
-                      {peso(item.price)} each
+                      {peso(lineUnitPrice(item))} each
                     </span>
 
                     <button
-                      onClick={() => removeItem(item.mealId)}
+                      onClick={() => removeItem(item.key)}
                       aria-label={`Remove ${item.name}`}
                       className="ml-auto shrink-0 rounded-full px-2 py-1 text-xs font-bold text-ink-800/45 transition-colors hover:text-brand-600"
                     >

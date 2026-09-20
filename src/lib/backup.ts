@@ -42,9 +42,19 @@ const TABLES = [
   "ingredient_lots",
   "batches",
   "batch_ingredients",
+  // The menu cards the dishes are grouped under, and the add-ons offered
+  // with them. Both were missing: `menu_products` since the day it shipped,
+  // which is exactly the drift the note above warns about — a backup that
+  // restores every dish and none of the grouping brings the menu back as
+  // seventy-odd loose cards, and the owner rebuilds it all by hand.
+  "menu_products",
   "meals",
   "meal_ingredients",
   "meal_components",
+  "modifier_groups",
+  "modifier_options",
+  "meal_modifier_groups",
+  "product_modifier_groups",
   // What a dish needs to travel, and what an order needs once. Same standing
   // as a recipe: entered by hand, and the reason a take-out costs more than
   // the same dish eaten at the stall.
@@ -55,6 +65,9 @@ const TABLES = [
   // Trading history
   "orders",
   "order_lines",
+  // What was added to each line, at the price it was added for. Without it a
+  // restored order is missing the extra rice it was charged for.
+  "order_line_extras",
   "purchase_log",
   "consumption_log",
   "waste_log",

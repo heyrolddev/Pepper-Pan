@@ -29,7 +29,7 @@ import {
 export const BOARD_LIMIT = 200;
 
 const COLUMNS =
-  "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name))";
+  "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale))";
 
 type OrderRow = {
   id: string;
@@ -60,7 +60,12 @@ type OrderRow = {
   payment_plan: string;
   downpayment_amount: number | null;
   downpayment_confirmed_at: string | null;
-  order_lines: { qty: number; price_at_sale: number; meals: { name: string } | null }[];
+  order_lines: {
+    qty: number;
+    price_at_sale: number;
+    meals: { name: string } | null;
+    order_line_extras: { label: string; price_at_sale: number }[] | null;
+  }[];
 };
 
 type CustomerInfo = {
@@ -138,11 +143,23 @@ async function hydrate(rows: OrderRow[]): Promise<AdminOrder[]> {
       payment_plan: (o.payment_plan === "downpayment" ? "downpayment" : "full") as PaymentPlan,
       downpayment_amount: Number(o.downpayment_amount ?? 0),
       downpayment_confirmed_at: o.downpayment_confirmed_at,
-      lines: (o.order_lines ?? []).map((l) => ({
-        qty: Number(l.qty),
-        price: Number(l.price_at_sale),
-        name: l.meals?.name ?? "Item",
-      })),
+      lines: (o.order_lines ?? []).map((l) => {
+        const extras = (l.order_line_extras ?? []).map((e) => ({
+          label: e.label,
+          price: Number(e.price_at_sale) || 0,
+        }));
+        return {
+          qty: Number(l.qty),
+          // The dish and its add-ons priced together, because the board is
+          // what the kitchen and the till read: a line that says ₱120 next to
+          // a ₱135 total has staff counting the difference by hand at the
+          // busiest moment of the day. The two are still told apart below it.
+          price:
+            Number(l.price_at_sale) + extras.reduce((n, e) => n + e.price, 0),
+          name: l.meals?.name ?? "Item",
+          extras,
+        };
+      }),
       customer: p
         ? {
             full_name: p.full_name,

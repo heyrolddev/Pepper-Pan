@@ -18,6 +18,20 @@ import { ticketOf } from "@/lib/tickets";
 import { ReceiptPrinter } from "@/components/receipt-printer";
 import { printSale } from "@/lib/printer-store";
 import { asPlainText, renderReceipt, type Receipt } from "@/lib/receipt";
+import {
+  cartKey,
+  choiceProblem,
+  describeExtras,
+  extrasOf,
+  extrasTotal,
+  isFull,
+  optionSoldOut,
+  reconcile,
+  toggleOption,
+  type ChosenExtra,
+  type ModifierChoice,
+  type ModifierGroup,
+} from "@/lib/modifiers";
 
 export type CounterMeal = {
   id: string;
@@ -30,6 +44,8 @@ export type CounterMeal = {
   makeable?: number | null;
   /** Every recipe line against the shelf, tightest first. */
   limits?: Shortfall[];
+  /** "Extra rice?", "Choose your drink" — the same ones the website offers. */
+  groups?: ModifierGroup[];
 };
 
 /**
@@ -45,7 +61,17 @@ export type CounterMeal = {
  * without deleting the line, and one obvious button that ends the sale.
  */
 
-type Ticket = Record<string, number>;
+/**
+ * One line on the ticket.
+ *
+ * Keyed by dish-plus-add-ons rather than by dish, for the reason the website's
+ * cart is: a rice meal with extra rice and one without are two things to cook
+ * and two prices to charge, and a ticket that merges them hands somebody the
+ * wrong plate. `cartKey` is the same function the customer's basket uses, so
+ * the two can never disagree about what counts as the same line.
+ */
+type TicketLine = { mealId: string; qty: number; extras: ChosenExtra[] };
+type Ticket = Record<string, TicketLine>;
 
 export function CounterTill({
   meals,
@@ -64,6 +90,8 @@ export function CounterTill({
   known?: MenuCategory[];
 }) {
   const [ticket, setTicket] = useState<Ticket>({});
+  /** The dish whose add-ons are being picked. Null when nothing is open. */
+  const [choosing, setChoosing] = useState<CounterMeal | null>(null);
   /** The dish whose shortage is being read. Null when nobody asked. */
   const [why, setWhy] = useState<CounterMeal | null>(null);
   const [query, setQuery] = useState("");
@@ -130,25 +158,56 @@ export function CounterTill({
   const lines = useMemo(
     () =>
       Object.entries(ticket)
-        .filter(([, qty]) => qty > 0)
-        .map(([id, qty]) => ({ meal: byId.get(id)!, qty }))
+        .filter(([, l]) => l.qty > 0)
+        .map(([key, l]) => ({ key, meal: byId.get(l.mealId)!, qty: l.qty, extras: l.extras }))
         .filter((l) => l.meal),
     [ticket, byId]
   );
-  const total = lines.reduce((s, l) => s + l.meal.price * l.qty, 0);
+  const unitOf = (l: { meal: CounterMeal; extras: ChosenExtra[] }) =>
+    l.meal.price + extrasTotal(l.extras);
+  const total = lines.reduce((s, l) => s + unitOf(l) * l.qty, 0);
   const count = lines.reduce((s, l) => s + l.qty, 0);
 
-  const bump = (id: string, by: number) =>
+  /** How many of this dish are on the ticket, across every way of having it. */
+  const onTicket = (mealId: string) =>
+    Object.values(ticket).reduce((n, l) => n + (l.mealId === mealId ? l.qty : 0), 0);
+
+  const bump = (key: string, by: number) =>
     setTicket((t) => {
-      const next = Math.max(0, (t[id] ?? 0) + by);
+      const at = t[key];
+      if (!at) return t;
+      const next = Math.max(0, at.qty + by);
       const copy = { ...t };
-      if (next === 0) delete copy[id];
-      else copy[id] = next;
+      if (next === 0) delete copy[key];
+      else copy[key] = { ...at, qty: next };
       return copy;
     });
 
+  /** Put one on the ticket, merging with the identical line if there is one. */
+  const put = (mealId: string, extras: ChosenExtra[]) =>
+    setTicket((t) => {
+      const key = cartKey(mealId, extras);
+      const at = t[key];
+      return { ...t, [key]: { mealId, extras, qty: (at?.qty ?? 0) + 1 } };
+    });
+
+  /**
+   * Tapping a tile.
+   *
+   * A dish with nothing to choose goes straight on the ticket — that is
+   * almost every tile, and a confirmation step between a tap and a total is
+   * exactly what a till must not have. A dish that carries add-ons opens them
+   * first, because the alternative is a cashier adding the rice meal and then
+   * having no way at all to add the drink the customer just asked for.
+   */
+  const tap = (m: CounterMeal) => {
+    if ((m.groups ?? []).length > 0) setChoosing(m);
+    else put(m.id, []);
+  };
+
   const clear = () => {
     setTicket({});
+    setChoosing(null);
     setNote("");
     setCustomer("");
     setNoName(false);
@@ -226,7 +285,12 @@ export function CounterTill({
       // gap that is obviously a gap.
       ref: "----",
       at: new Date(),
-      lines: lines.map((l) => ({ name: l.meal.name, qty: l.qty, price: l.meal.price })),
+      lines: lines.map((l) => ({
+        name: l.meal.name,
+        qty: l.qty,
+        price: l.meal.price,
+        extras: l.extras.map((e) => ({ label: e.label, price: e.price })),
+      })),
       total,
       dineIn,
       method,
@@ -262,9 +326,17 @@ export function CounterTill({
         name: l.meal.name,
         qty: l.qty,
         price: l.meal.price,
+        extras: l.extras.map((e) => ({ label: e.label, price: e.price })),
       }));
       const result = await recordWalkInSale({
-        lines: lines.map((l) => ({ mealId: l.meal.id, qty: l.qty })),
+        // Ids only, the same as the website sends. Every peso on the sale is
+        // re-read on the server — a till running in a browser is still a
+        // browser.
+        lines: lines.map((l) => ({
+          mealId: l.meal.id,
+          qty: l.qty,
+          optionIds: l.extras.map((e) => e.optionId),
+        })),
         method,
         reference,
         toKitchen,
@@ -411,6 +483,17 @@ export function CounterTill({
       {/* Why a dish is out — the question a NO STOCK badge asks and never
           used to answer. Named things, with numbers, so whoever reads it
           knows whether to fetch something or go and cook it. */}
+      {choosing && (
+        <AddOnSheet
+          meal={choosing}
+          onClose={() => setChoosing(null)}
+          onAdd={(extras) => {
+            put(choosing.id, extras);
+            setChoosing(null);
+          }}
+        />
+      )}
+
       {why && (
         <AdminDialog
           title={`${why.name} — what's missing`}
@@ -590,7 +673,8 @@ export function CounterTill({
           ) : (
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
               {shown.map((m) => {
-                const qty = ticket[m.id] ?? 0;
+                const qty = onTicket(m.id);
+                const hasAddOns = (m.groups ?? []).length > 0;
                 // Never blocked at the till — the person is standing there
                 // and the count may simply be behind. Flagged loudly instead,
                 // and the server refuses if it is genuinely short.
@@ -625,14 +709,25 @@ export function CounterTill({
                 return (
                   <li key={m.id} className="relative">
                     <button
-                      onClick={() => bump(m.id, 1)}
+                      onClick={() => tap(m)}
                       className={`relative flex h-full w-full flex-col justify-between gap-2 rounded-2xl p-3 text-left transition-colors ${
                         qty > 0
                           ? "bg-ink-950 text-cream-50"
                           : "bg-cream-100 text-ink-950 ring-1 ring-ink-950/10 hover:bg-cream-200"
                       }`}
                     >
-                      <span className="text-sm font-bold leading-tight">{m.name}</span>
+                      <span className="text-sm font-bold leading-tight">
+                        {m.name}
+                        {/* Said on the tile, so the cashier knows a sheet is
+                            coming before they tap — a till that sometimes
+                            opens a dialog and sometimes doesn't, with nothing
+                            to tell them apart, is a till you hesitate at. */}
+                        {hasAddOns && (
+                          <span className="ml-1 opacity-60" aria-label="has add-ons">
+                            +
+                          </span>
+                        )}
+                      </span>
                       <span className="font-display text-base font-black tabular-nums">
                         {peso(m.price, 0)}
                       </span>
@@ -705,7 +800,7 @@ export function CounterTill({
             ) : (
               <ul className="divide-y divide-ink-950/5">
                 {lines.map((l) => (
-                  <li key={l.meal.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <li key={l.key} className="flex items-center gap-3 px-4 py-2.5">
                     {/* Wrapped, never truncated. Half this menu is
                         "… (Original)" against "… (SPICY)", and a name cut off
                         at "Burger Jipai w/ch…" is two different dishes that
@@ -715,8 +810,13 @@ export function CounterTill({
                       <p className="text-sm font-bold leading-tight text-ink-950">
                         {l.meal.name}
                       </p>
+                      {l.extras.length > 0 && (
+                        <p className="text-xs font-bold leading-tight text-brand-700">
+                          + {describeExtras(l.extras)}
+                        </p>
+                      )}
                       <p className="text-xs tabular-nums text-ink-800/50">
-                        {peso(l.meal.price, 0)} each
+                        {peso(unitOf(l), 0)} each
                       </p>
                     </div>
                     {/* Minus and plus rather than a text field: a number pad on
@@ -724,7 +824,7 @@ export function CounterTill({
                         fat finger away from 11 bowls. */}
                     <div className="flex shrink-0 items-center gap-1">
                       <button
-                        onClick={() => bump(l.meal.id, -1)}
+                        onClick={() => bump(l.key, -1)}
                         aria-label={`One less ${l.meal.name}`}
                         className="grid h-9 w-9 place-items-center rounded-lg bg-ink-950/5 font-black text-ink-950 hover:bg-ink-950/10"
                       >
@@ -734,7 +834,7 @@ export function CounterTill({
                         {l.qty}
                       </span>
                       <button
-                        onClick={() => bump(l.meal.id, 1)}
+                        onClick={() => bump(l.key, 1)}
                         aria-label={`One more ${l.meal.name}`}
                         className="grid h-9 w-9 place-items-center rounded-lg bg-ink-950/5 font-black text-ink-950 hover:bg-ink-950/10"
                       >
@@ -742,7 +842,7 @@ export function CounterTill({
                       </button>
                     </div>
                     <span className="w-16 shrink-0 text-right font-display text-sm font-black tabular-nums text-ink-950">
-                      {peso(l.meal.price * l.qty, 0)}
+                      {peso(unitOf(l) * l.qty, 0)}
                     </span>
                   </li>
                 ))}
@@ -1042,5 +1142,133 @@ function Change({ total, tendered }: { total: number; tendered: string }) {
         {money(state.change)}
       </span>
     </p>
+  );
+}
+
+/**
+ * Picking the add-ons, at the counter.
+ *
+ * Deliberately not the customer's dialog re-used. The person tapping this is
+ * standing up with a queue in front of them, so everything is one size bigger,
+ * the running total is always on screen, and the one button at the bottom says
+ * what it will do and what it will cost. The rules underneath are the same
+ * ones — `reconcile`, `toggleOption`, `choiceProblem` — so the till and the
+ * website can never offer different things or arrive at different money.
+ *
+ * Sold-out options are shown and disabled rather than hidden. At a counter the
+ * question "wala na bang Coke?" gets asked out loud, and a cashier looking at
+ * a list with no Coke on it has nothing to answer with.
+ */
+function AddOnSheet({
+  meal,
+  onAdd,
+  onClose,
+}: {
+  meal: CounterMeal;
+  onAdd: (extras: ChosenExtra[]) => void;
+  onClose: () => void;
+}) {
+  const groups = useMemo(() => meal.groups ?? [], [meal]);
+  const [ticked, setTicked] = useState<ModifierChoice>({});
+  const choice = useMemo(() => reconcile(groups, ticked), [groups, ticked]);
+  const extras = useMemo(() => extrasOf(groups, choice), [groups, choice]);
+  const unanswered = choiceProblem(groups, choice);
+  const unit = meal.price + extrasTotal(extras);
+
+  return (
+    <AdminDialog
+      title={meal.name}
+      subtitle="What goes with it?"
+      onClose={onClose}
+    >
+      <div className="flex flex-col gap-4">
+        {groups.map((group) => {
+          const picked = choice[group.id] ?? [];
+          const full = isFull(group, choice);
+          return (
+            <fieldset
+              key={group.id}
+              className="rounded-2xl bg-cream-100 p-3 ring-1 ring-ink-950/10"
+            >
+              <legend className="flex items-center gap-2 px-1">
+                <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/60">
+                  {group.name}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
+                    group.min >= 1
+                      ? "bg-brand-600 text-cream-50"
+                      : "bg-ink-950/10 text-ink-800/60"
+                  }`}
+                >
+                  {group.min >= 1
+                    ? group.max === 1
+                      ? "Required"
+                      : `Pick ${group.min}`
+                    : group.max === 1
+                      ? "Optional"
+                      : `Up to ${group.max}`}
+                </span>
+              </legend>
+
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                {group.options.map((option) => {
+                  const on = picked.includes(option.id);
+                  const out = optionSoldOut(option);
+                  const blocked = out || (full && !on);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      disabled={blocked}
+                      aria-pressed={on}
+                      onClick={() =>
+                        setTicked((t) =>
+                          toggleOption(group, reconcile(groups, t), option.id)
+                        )
+                      }
+                      className={`flex min-h-14 flex-col justify-center rounded-xl px-3 py-2 text-left transition-colors ${
+                        on
+                          ? "bg-ink-950 text-cream-50"
+                          : blocked
+                            ? "cursor-not-allowed bg-ink-950/[0.04] text-ink-800/35"
+                            : "bg-cream-50 text-ink-950 ring-1 ring-ink-950/10 hover:bg-cream-200"
+                      }`}
+                    >
+                      <span className="text-sm font-bold leading-tight">
+                        {option.label}
+                      </span>
+                      <span className="text-xs font-bold tabular-nums opacity-70">
+                        {out
+                          ? "sold out"
+                          : option.price > 0
+                            ? `+${peso(option.price, 0)}`
+                            : "free"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          );
+        })}
+
+        <button
+          type="button"
+          disabled={!!unanswered}
+          onClick={() => onAdd(extras)}
+          className={`rounded-2xl px-5 py-4 font-display text-lg font-black transition-colors ${
+            unanswered
+              ? "cursor-not-allowed bg-ink-950/10 text-ink-800/40"
+              : "bg-ink-950 text-gold-400 hover:bg-brand-600 hover:text-cream-50"
+          }`}
+        >
+          {/* The price is on the button because that is where the cashier's
+              eye already is, and because it is the number they are about to
+              say out loud. */}
+          {unanswered ?? `Add to ticket — ${peso(unit, 0)}`}
+        </button>
+      </div>
+    </AdminDialog>
   );
 }

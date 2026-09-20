@@ -3,7 +3,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useCart } from "@/lib/cart-context";
+import { lineUnitPrice, useCart } from "@/lib/cart-context";
+import { describeExtras } from "@/lib/modifiers";
 import { placeOrder } from "@/app/checkout/actions";
 import { MapPicker, type Pin } from "@/components/map-picker";
 import { PaymentPicker } from "@/components/payment-picker";
@@ -241,7 +242,14 @@ export function CheckoutForm({
 
     try {
       const result = await placeOrder({
-        items: items.map((i) => ({ mealId: i.mealId, qty: i.qty, name: i.name })),
+        items: items.map((i) => ({
+          mealId: i.mealId,
+          qty: i.qty,
+          name: i.name,
+          // Ids only. The server re-reads every label and every price from
+          // the menu — the browser says what was chosen, never what it costs.
+          optionIds: i.extras.map((e) => e.optionId),
+        })),
         contactName,
         contactPhone,
         fulfillment,
@@ -279,12 +287,17 @@ export function CheckoutForm({
         </p>
         <ul className="mt-3 flex flex-col gap-2 text-sm">
           {items.map((item) => (
-            <li key={item.mealId} className="flex justify-between gap-4">
-              <span className="text-ink-800">
+            <li key={item.key} className="flex justify-between gap-4">
+              <span className="min-w-0 text-ink-800">
                 {item.qty} × {item.name}
+                {item.extras.length > 0 && (
+                  <span className="block text-xs font-semibold text-ink-800/60">
+                    + {describeExtras(item.extras)}
+                  </span>
+                )}
               </span>
               <span className="shrink-0 font-semibold text-ink-950">
-                {peso(item.price * item.qty)}
+                {peso(lineUnitPrice(item) * item.qty)}
               </span>
             </li>
           ))}
@@ -535,14 +548,24 @@ export function CheckoutForm({
           <ul className="flex flex-col gap-1.5">
             {items.map((i) => (
               <li
-                key={i.mealId}
+                key={i.key}
                 className="flex items-center justify-between gap-3 rounded-xl bg-cream-50 px-4 py-2.5 text-sm"
               >
-                <span className="min-w-0 truncate font-semibold text-ink-950">
-                  {i.qty}× {i.name}
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-ink-950">
+                    {i.qty}× {i.name}
+                  </span>
+                  {/* The last look before money moves has to show the add-ons
+                      too — they are the part of the order most easily
+                      mis-tapped, and the part nobody can change afterwards. */}
+                  {i.extras.length > 0 && (
+                    <span className="block truncate text-xs font-semibold text-ink-800/60">
+                      + {describeExtras(i.extras)}
+                    </span>
+                  )}
                 </span>
                 <span className="shrink-0 font-mono text-ink-800/70">
-                  {peso(i.price * i.qty)}
+                  {peso(lineUnitPrice(i) * i.qty)}
                 </span>
               </li>
             ))}

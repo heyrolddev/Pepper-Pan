@@ -13,7 +13,20 @@
  * right on either roll without a second layout.
  */
 
-export type ReceiptLine = { name: string; qty: number; price: number };
+export type ReceiptLine = {
+  name: string;
+  qty: number;
+  price: number;
+  /**
+   * What was added to it, each on its own priced row underneath.
+   *
+   * Their own rows rather than folded into `price`, so the paper adds up: a
+   * customer who reads "1 x Pork Solo Rice 135.00" against a ₱120 menu board
+   * has a question, and the person who has to answer it is standing at a
+   * stall with a queue behind them.
+   */
+  extras?: { label: string; price: number }[];
+};
 
 /**
  * One line of the receipt, with its alignment stated rather than implied.
@@ -172,6 +185,9 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
       out.push(left(row(wrapped[wrapped.length - 1], money, cols)));
     }
     if (line.qty > 1) out.push(left(`    @ ${amount(line.price)} each`));
+    for (const extra of line.extras ?? []) {
+      out.push(left(row(`  + ${extra.label}`, amount(extra.price * line.qty), cols)));
+    }
   }
 
   out.push(left(rule(cols, "=")));
