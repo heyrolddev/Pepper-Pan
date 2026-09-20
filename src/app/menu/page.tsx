@@ -1,6 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getViewer, isStaff } from "@/lib/auth";
-import { MenuList, type Meal } from "@/components/menu-list";
+import { MenuList } from "@/components/menu-list";
+import {
+  buildProducts,
+  normalizeOptions,
+  type Product,
+  type ProductGroup,
+  type Variant,
+} from "@/lib/menu-products";
 import { PageHeader } from "@/components/page-header";
 import { loadAvailability } from "@/lib/costing-server";
 import type { MenuCategory } from "@/lib/categories";
@@ -9,7 +16,7 @@ import { SHOP, siteUrl } from "@/lib/site";
 import type { Metadata } from "next";
 
 async function getMenu(): Promise<{
-  menu: Meal[] | null;
+  menu: Product[] | null;
   categories: MenuCategory[];
   configured: boolean;
 }> {
@@ -21,9 +28,25 @@ async function getMenu(): Promise<{
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("meals")
-      .select("id, name, price, description, categories, image_url")
+      .select(
+        "id, name, price, description, categories, image_url, is_available, product_id, options, variant_sort"
+      )
       .eq("is_public", true)
-      .eq("is_available", true)
+      /**
+       * Sold-out dishes are READ now, where they used to be filtered out.
+       *
+       * `.eq("is_available", true)` used to be on this query, so marking a
+       * dish sold out removed it from the menu entirely. That was survivable
+       * while every dish was its own card. It is not survivable now: a
+       * sold-out 22oz would simply not be in the group, and the card would
+       * tell the customer the shop does one size — where what it should say
+       * is that it does two and one has gone today.
+       *
+       * The two switches finally mean what the owner is told they mean.
+       * `is_public` is "not on the menu"; `is_available` is the wording on
+       * the button itself — "customers can't order it" — which is a greyed
+       * chip, not an absence.
+       */
       .order("name");
 
     if (error) throw error;
@@ -56,12 +79,49 @@ async function getMenu(): Promise<{
       .order("sort_order")
       .order("name");
 
-    const menu = (data as Meal[]).map((m) => ({
-      ...m,
+    // The groupings. A failure here is not a reason to fail the menu — every
+    // dish simply renders as its own card, which is what the menu was before
+    // anybody grouped anything.
+    const { data: groupRows } = await supabase
+      .from("menu_products")
+      .select("id, name, description, image_url, sort_order, is_active")
+      .eq("is_active", true);
+
+    type Row = {
+      id: string;
+      name: string;
+      price: number;
+      description: string | null;
+      categories: string[];
+      image_url: string | null;
+      product_id: string | null;
+      options: unknown;
+      variant_sort: number | null;
+      is_available: boolean;
+    };
+    const rows = (data ?? []) as Row[];
+    const groupOf = new Map(rows.map((m) => [m.id, m.product_id]));
+
+    const variants: Variant[] = rows.map((m) => ({
+      id: m.id,
+      name: m.name,
+      price: Number(m.price),
+      description: m.description,
+      image_url: m.image_url,
+      categories: m.categories ?? [],
+      options: normalizeOptions(m.options),
+      sort: m.variant_sort ?? 0,
+      available: m.is_available !== false,
       avg_rating: byMeal.get(m.id) ? Number(byMeal.get(m.id)!.avg_rating) : null,
       review_count: byMeal.get(m.id)?.review_count ?? 0,
       makeable: makeable.get(m.id) ?? null,
     }));
+
+    const menu = buildProducts(
+      variants,
+      (groupRows ?? []) as ProductGroup[],
+      (v) => groupOf.get(v.id) ?? null
+    );
 
     return { menu, categories: (catRows ?? []) as MenuCategory[], configured: true };
   } catch (err) {
@@ -130,8 +190,8 @@ export default async function MenuPage() {
         )}
         {configured && menu && menu.length > 0 && (
           <>
-            <MenuSchema meals={menu} categories={categories} />
-            <MenuList meals={menu} staff={staff} known={categories} />
+            <MenuSchema products={menu} categories={categories} />
+            <MenuList products={menu} staff={staff} known={categories} />
           </>
         )}
       </section>

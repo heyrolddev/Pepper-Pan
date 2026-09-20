@@ -1,6 +1,6 @@
 import { SHOP, siteUrl } from "@/lib/site";
 import { jsonLd } from "@/lib/json-ld";
-import type { Meal } from "@/components/menu-list";
+import { isSoldOut, type Product } from "@/lib/menu-products";
 
 /**
  * The menu, in the form a search engine can actually read.
@@ -19,13 +19,13 @@ import type { Meal } from "@/components/menu-list";
  * whole block, and the rich result disappears with no message to say why.
  */
 export function MenuSchema({
-  meals,
+  products,
   categories,
 }: {
-  meals: Meal[];
+  products: Product[];
   categories: { name: string }[];
 }) {
-  if (!meals.length) return null;
+  if (!products.length) return null;
 
   const url = siteUrl();
 
@@ -36,12 +36,12 @@ export function MenuSchema({
   const named = categories
     .map((c) => ({
       name: c.name,
-      items: meals.filter((m) => m.categories?.[0] === c.name),
+      items: products.filter((m) => m.categories?.[0] === c.name),
     }))
     .filter((s) => s.items.length > 0);
 
   const placed = new Set(named.flatMap((s) => s.items.map((m) => m.id)));
-  const rest = meals.filter((m) => !placed.has(m.id));
+  const rest = products.filter((m) => !placed.has(m.id));
   const sections = rest.length ? [...named, { name: "More", items: rest }] : named;
 
   const schema = {
@@ -57,26 +57,41 @@ export function MenuSchema({
     hasMenuSection: sections.map((section) => ({
       "@type": "MenuSection",
       name: section.name,
-      hasMenuItem: section.items.map((meal) => ({
+      hasMenuItem: section.items.map((product) => ({
         "@type": "MenuItem",
-        name: meal.name,
-        ...(meal.description ? { description: meal.description } : {}),
-        ...(meal.image_url ? { image: meal.image_url } : {}),
-        offers: {
+        name: product.name,
+        ...(product.description ? { description: product.description } : {}),
+        ...(product.image_url ? { image: product.image_url } : {}),
+        /**
+         * One offer per way of having it, named.
+         *
+         * A card that holds four ji pai at two prices cannot honestly be one
+         * offer: quoting the cheapest makes a ₱169 dish advertise at ₱155,
+         * and Google treats a price on the page that disagrees with the price
+         * in the markup as a reason to distrust the whole block — not just
+         * this dish, the whole site's rich results.
+         *
+         * `availability` is per offer too, so a sold-out spicy takes itself
+         * out of the search result while the original stays in.
+         */
+        offers: product.variants.map((v) => ({
           "@type": "Offer",
-          price: meal.price.toFixed(2),
+          ...(product.variants.length > 1 ? { name: v.name } : {}),
+          price: v.price.toFixed(2),
           priceCurrency: "PHP",
-          availability: "https://schema.org/InStock",
-        },
+          availability: isSoldOut(v)
+            ? "https://schema.org/SoldOut"
+            : "https://schema.org/InStock",
+        })),
         // Only claimed where real ratings exist. An invented rating is the
         // fastest way to have every rich result for this site suppressed,
         // and the suppression is site-wide, not just for the dish that lied.
-        ...(meal.review_count && meal.avg_rating
+        ...(product.reviewCount && product.avgRating
           ? {
               aggregateRating: {
                 "@type": "AggregateRating",
-                ratingValue: meal.avg_rating.toFixed(1),
-                reviewCount: meal.review_count,
+                ratingValue: product.avgRating.toFixed(1),
+                reviewCount: product.reviewCount,
                 bestRating: 5,
                 worstRating: 1,
               },
