@@ -643,7 +643,8 @@ export const TOPICS: GuideTopic[] = [
       "• OUR STORY PHOTOS — the pictures of the stall further down the homepage\n\n" +
       "Any of them can carry a photo or a short video. Give it an end date and it takes itself off the homepage that night — which is the whole point: a promo you have to remember to switch off is a promo that stays up, and a customer arrives on Tuesday with a screenshot of a deal that ended on Sunday.\n\n" +
       "Above them all is the calculator: what a promo, some ads or a free taste would have to bring in, and afterwards whether it did. Worth running before you print the tarpaulin, not after.\n\n" +
-      "The story photos are the one thing on that screen that is a picture rather than words. Add a few and they become a deck a customer can swipe through; add none and the homepage keeps the single stall photo it has always had. The caption you type is not printed anywhere — it is what a blind customer's phone reads out instead of showing the picture, so describe what is in it.",
+      "The story photos are the one thing on that screen that is a picture rather than words. Add a few and they become a deck a customer can swipe through; add none and the homepage keeps the single stall photo it has always had. The caption you type is not printed anywhere — it is what a blind customer's phone reads out instead of showing the picture, so describe what is in it.\n\n" +
+      "The order on that list is the order they are dealt, so whichever sits at the top is the one a customer sees first. Move them with the ↑ and ↓ on each row. There is no ★ on a story photo — a deck has a place for every picture, so there is nothing to choose between.",
   },
   {
     id: "inbox",

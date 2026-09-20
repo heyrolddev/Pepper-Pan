@@ -85,7 +85,7 @@ export const KIND_BLURB: Record<AnnouncementKind, string> = {
   coming_soon:
     "What's arriving but isn't on the menu yet. Shows under the gold band as a card with its picture. Give it an end date and it takes itself down the day it lands. The first two that are on are shown.",
   story:
-    "The photographs in the Our story section, dealt like a deck of cards — the top one is whole, the rest peek out behind it, and a customer swipes through them. Add your own and they replace the single stall photo that is there now. The caption is what a blind visitor's screen reader reads out, so describe what is in the picture.",
+    "The photographs in the Our story section, dealt like a deck of cards — the top one is whole, the rest peek out behind it, and a customer swipes through them. The order here is the order they are dealt, so the top one on this list is the one a customer sees first; move them with ↑ and ↓. Add your own and they replace the single stall photo that is there now. The caption is what a blind visitor's screen reader reads out, so describe what is in the picture.",
 };
 
 /** Does it carry a picture? Decides whether a card gets a media block. */

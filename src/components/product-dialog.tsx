@@ -1,12 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { Stars } from "@/components/stars";
 import { LOW_STOCK_SERVINGS } from "@/lib/costing";
 import { usePrefersReducedMotion } from "@/lib/reduced-motion";
+import { useDialog } from "@/lib/dialog";
 import {
   chipState,
   isSoldOut,
@@ -60,7 +61,10 @@ export function ProductDialog({
 }) {
   const { addItem } = useCart();
   const still = usePrefersReducedMotion();
-  const panel = useRef<HTMLDivElement>(null);
+  // Escape, the scroll lock behind it and the focus trap, all from the one
+  // place — see `useDialog`. Written by hand here first, which is exactly how
+  // the sign-out dialog ended up being the only one without them.
+  const { panel } = useDialog<HTMLDivElement>({ onClose });
 
   const [selection, setSelection] = useState<VariantOptions>(() =>
     openingSelection(product.variants)
@@ -78,26 +82,6 @@ export function ProductDialog({
     chosen.makeable !== null &&
     chosen.makeable !== undefined &&
     chosen.makeable <= LOW_STOCK_SERVINGS;
-
-  // Escape closes, and the page behind does not scroll while this is over it
-  // — on a phone the sheet covers the screen and scrolling the menu underneath
-  // it is how somebody loses their place without meaning to.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    // The heading, not the first chip: a screen reader landing on "22oz"
-    // before it has said what dish this is has announced an answer to a
-    // question nobody heard.
-    panel.current?.focus();
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
 
   function add() {
     if (gone || staff) return;

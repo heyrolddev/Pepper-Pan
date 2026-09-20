@@ -8,17 +8,25 @@ import type { Announcement } from "@/lib/announcements";
  * what the deck component wants, and it is pure so the one rule worth getting
  * right can be tested without a database.
  *
- * ── The rule ─────────────────────────────────────────────────────────────
+ * ── The rule, and why it went round the houses ───────────────────────────
  *
- * The section must never be empty. A homepage that says "Our story" beside a
- * hole is worse than one showing the same photograph it showed last year, and
- * the ways to end up with a hole are all ordinary: nothing uploaded yet, every
- * photo switched off for a reshoot, a storage outage, a migration not yet run.
+ * `fallback` — the stall photograph the section has shown since the beginning
+ * — appears when, and only when, there is nothing in HQ. Once the owner has
+ * added photos, the deck is entirely theirs, in the order they arranged it.
  *
- * So `fallback` — the stall photo that has been there since the beginning — is
- * used when, and only when, there is nothing else. Once the owner adds their
- * own, theirs are the deck and the old one steps aside, because otherwise
- * there would be a picture on the homepage that no screen in HQ can remove.
+ * It briefly always led the deck, because the owner asked for that picture to
+ * come first. The right answer to that turned out to be different: they had
+ * ALREADY uploaded that same photograph in HQ, so a built-in copy pinned to
+ * the front showed the stall twice in a three-card deck. What they actually
+ * wanted was to choose the order — which is now the ↑↓ on each row, and which
+ * puts their own copy first without a second mechanism that can disagree
+ * with it.
+ *
+ * What the fallback is still for is the empty case, and it is not a rare one:
+ * nothing uploaded yet, everything switched off for a reshoot, a storage
+ * outage, a migration not yet run. A homepage that says "Our story" beside a
+ * hole reads as a page that failed to load, not as a shop with no
+ * photographs.
  */
 
 export type StoryPhoto = { src: string; alt: string };

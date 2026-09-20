@@ -33,7 +33,7 @@ const row = (over: Partial<Announcement> = {}): Announcement => ({
 
 const FALLBACK = { src: "/original.jpg", alt: "The stall" };
 
-test("the owner's photos become the deck, caption and all", () => {
+test("the owner's photos are the deck, in the order this list gives them", () => {
   const out = storyPhotosFrom(
     [row({ id: 1 }), row({ id: 2, title: "Ate Len at the counter", image_url: "b.jpg" })],
     FALLBACK
@@ -44,9 +44,14 @@ test("the owner's photos become the deck, caption and all", () => {
   ]);
 });
 
-test("their photos replace the original rather than queueing behind it", () => {
-  // Otherwise there is a picture on the homepage that no screen in HQ can
-  // remove, which is the complaint that started this.
+test("the stall photo steps aside once there is anything to show", () => {
+  /**
+   * It led the deck for one commit, because the owner asked for that picture
+   * to be first. They had already uploaded the same photograph in HQ, so a
+   * built-in copy pinned to the front showed the stall twice in a three-card
+   * deck. Ordering the rows is what they actually wanted, and it puts their
+   * own copy first without a second mechanism that can disagree with it.
+   */
   const out = storyPhotosFrom([row()], FALLBACK);
   assert.equal(out.length, 1);
   assert.notEqual(out[0].src, FALLBACK.src);
@@ -54,8 +59,8 @@ test("their photos replace the original rather than queueing behind it", () => {
 
 test("nothing uploaded, or everything switched off, still shows a photograph", () => {
   assert.deepEqual(storyPhotosFrom([], FALLBACK), [FALLBACK]);
-  // A row with no picture is not a card. If it were the only row, dropping it
-  // has to fall back rather than leave an empty deck.
+  // A row with no picture is not a card. Dropping it must not leave a hole
+  // where the section's photograph should be.
   assert.deepEqual(storyPhotosFrom([row({ image_url: null })], FALLBACK), [FALLBACK]);
 });
 

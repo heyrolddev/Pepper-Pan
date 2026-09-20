@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { useDialog } from "@/lib/dialog";
 
 /**
  * Signing out, with a question first.
@@ -15,6 +17,24 @@ import { useEffect, useState } from "react";
  * The dialog is deliberately the same on both surfaces. The button that opens
  * it looks different in a dark nav, a cream account page and the HQ rail, but
  * once you're being asked a question, the question should look like itself.
+ *
+ * ── Three faults it kept while everything copied from it was fixed ───────
+ *
+ * This was the first dialog in the app, and `AdminDialog` was modelled on it.
+ * The copy then learned to portal out, lock the page and trap focus; the
+ * original learned none of it, and it is the one the owner meets most often
+ * because it guards the way out of HQ.
+ *
+ * The worst of the three was invisible until two things were open at once.
+ * The trigger lives in HQ's sidebar, the sidebar is `position: sticky`, and
+ * sticky makes a stacking context unconditionally — so this dialog's `z-60`
+ * was ranked INSIDE the sidebar, and any ordinary panel on the page, all of
+ * which are `z-50`, drew straight over it. Measured with one open: the point
+ * where "Yes, sign out" is painted belonged to the other panel. Not merely
+ * hidden — unclickable.
+ *
+ * All three now come from `useDialog`, which is also what `AdminDialog` uses,
+ * so there is one of them rather than two that drift.
  */
 export function SignOutButton({
   solid = true,
@@ -27,17 +47,6 @@ export function SignOutButton({
   const router = useRouter();
   const [asking, setAsking] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-
-  // A dialog you can't back out of with Escape is a trap, and this one is
-  // opened by accident more often than on purpose.
-  useEffect(() => {
-    if (!asking) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !signingOut) setAsking(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [asking, signingOut]);
 
   /**
    * The Supabase client is fetched here rather than imported at the top, and
@@ -81,47 +90,81 @@ export function SignOutButton({
       </button>
 
       {asking && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="signout-title"
-          className="fixed inset-0 z-[60] grid place-items-center p-4"
-        >
-          <button
-            aria-label="Cancel"
-            onClick={() => !signingOut && setAsking(false)}
-            className="absolute inset-0 bg-ink-950/70"
-          />
-          <div className="relative w-full max-w-sm rounded-3xl bg-cream-50 p-6 shadow-2xl ring-1 ring-ink-950/10">
-            <p
-              id="signout-title"
-              className="font-display text-2xl font-black text-ink-950"
-            >
-              Sign out?
-            </p>
-            <p className="mt-2 text-sm text-ink-800/70">
-              You&apos;ll need your email and password to get back in.
-            </p>
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <button
-                onClick={() => setAsking(false)}
-                disabled={signingOut}
-                className="rounded-full px-5 py-3 text-sm font-bold text-ink-800/70 transition-colors hover:text-ink-950 disabled:opacity-50"
-              >
-                Stay signed in
-              </button>
-              <button
-                onClick={confirm}
-                disabled={signingOut}
-                autoFocus
-                className="rounded-full bg-brand-600 px-6 py-3 text-sm font-black text-cream-50 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
-              >
-                {signingOut ? "Signing out…" : "Yes, sign out"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <Ask
+          signingOut={signingOut}
+          onStay={() => setAsking(false)}
+          onConfirm={confirm}
+        />
       )}
     </>
+  );
+}
+
+function Ask({
+  signingOut,
+  onStay,
+  onConfirm,
+}: {
+  signingOut: boolean;
+  onStay: () => void;
+  onConfirm: () => void;
+}) {
+  const { mounted, panel } = useDialog<HTMLDivElement>({
+    onClose: onStay,
+    closable: !signingOut,
+  });
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="signout-title"
+      className="fixed inset-0 z-[70] grid place-items-center p-4"
+    >
+      <button
+        aria-label="Cancel"
+        onClick={() => !signingOut && onStay()}
+        className="absolute inset-0 bg-ink-950/70"
+      />
+      <div
+        ref={panel}
+        tabIndex={-1}
+        className="relative w-full max-w-sm rounded-3xl bg-cream-50 p-6 shadow-2xl outline-none ring-1 ring-ink-950/10"
+      >
+        <p
+          id="signout-title"
+          className="font-display text-2xl font-black text-ink-950"
+        >
+          Sign out?
+        </p>
+        <p className="mt-2 text-sm text-ink-800/70">
+          You&apos;ll need your email and password to get back in.
+        </p>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          {/* No `autoFocus` on the red one any more. By its own reasoning this
+              dialog is opened by accident more often than on purpose, and
+              parking the cursor on the destructive answer means the stray
+              Enter that follows the stray click completes the accident. The
+              panel takes focus instead, so Enter does nothing until somebody
+              chooses. */}
+          <button
+            onClick={onStay}
+            disabled={signingOut}
+            className="rounded-full px-5 py-3 text-sm font-bold text-ink-800/70 transition-colors hover:text-ink-950 disabled:opacity-50"
+          >
+            Stay signed in
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={signingOut}
+            className="rounded-full bg-brand-600 px-6 py-3 text-sm font-black text-cream-50 transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
+          >
+            {signingOut ? "Signing out…" : "Yes, sign out"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
