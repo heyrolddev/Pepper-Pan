@@ -353,6 +353,7 @@ export function ModifierGroups({
 
       {draft && (
         <AdminDialog
+          wide
           title={draft.id ? "Edit add-on group" : "New add-on group"}
           subtitle="One question, the ways of answering it, and where it is asked."
           busy={busy}
@@ -443,80 +444,102 @@ export function ModifierGroups({
                   {draft.options.map((o, at) => {
                     const meal = o.mealId ? mealById.get(o.mealId) : null;
                     return (
+                      /**
+                       * Two lines, not four fields fighting over one.
+                       *
+                       * They were on one row with the two text boxes at fixed
+                       * widths and the dish picker taking what was left —
+                       * which, inside a 464px dialog, was 36px. A blank box
+                       * too small to hold a character, in front of the one
+                       * field that decides what the add-on costs and what it
+                       * takes off the shelf.
+                       *
+                       * The picker gets the whole first line now, which it
+                       * wanted anyway: it is a search over every dish on the
+                       * menu, and reading "Black Pepper Chicken Noodles ·
+                       * ₱145.00" needs more than a third of a row. The two
+                       * short answers share the second line.
+                       */
                       <li
                         key={o.key}
-                        className="flex flex-col gap-2 rounded-xl bg-cream-50 p-3 ring-1 ring-ink-950/10 sm:flex-row sm:items-center"
+                        className="rounded-xl bg-cream-50 p-3 ring-1 ring-ink-950/10"
                       >
-                        <div className="min-w-0 flex-1">
-                          <Combobox
-                            ariaLabel="Which dish is this option?"
-                            placeholder="Which dish?"
-                            value={o.mealId}
-                            options={mealOptions}
-                            onChange={(value) => {
-                              const picked = mealById.get(value);
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <Combobox
+                              ariaLabel="Which dish is this option?"
+                              placeholder="Which dish? Start typing a name…"
+                              value={o.mealId}
+                              options={mealOptions}
+                              onChange={(value) => {
+                                const picked = mealById.get(value);
+                                const next = [...draft.options];
+                                next[at] = {
+                                  ...o,
+                                  mealId: value,
+                                  // The label follows the dish the first time,
+                                  // because it is right nine times out of ten
+                                  // and the tenth is one edit. Never
+                                  // overwritten afterwards: the dish is "Extra
+                                  // Rice (cup)" and the chip should say
+                                  // "Extra rice".
+                                  label: o.label || picked?.name || "",
+                                };
+                                setDraft({ ...draft, options: next });
+                              }}
+                            />
+                          </div>
+
+                          <button
+                            onClick={() =>
+                              setDraft({
+                                ...draft,
+                                options: draft.options.filter((x) => x.key !== o.key),
+                              })
+                            }
+                            aria-label={`Remove ${o.label || "this option"}`}
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-800/45 transition-colors hover:bg-brand-50 hover:text-brand-600"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                          <input
+                            value={o.label}
+                            onChange={(e) => {
+                              const next = [...draft.options];
+                              next[at] = { ...o, label: e.target.value };
+                              setDraft({ ...draft, options: next });
+                            }}
+                            placeholder="What the chip says"
+                            aria-label="What the chip says"
+                            className={`${field} min-w-0 sm:flex-1`}
+                          />
+
+                          <input
+                            inputMode="decimal"
+                            value={o.priceOverride ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value.trim();
                               const next = [...draft.options];
                               next[at] = {
                                 ...o,
-                                mealId: value,
-                                // The label follows the dish the first time,
-                                // because it is right nine times out of ten
-                                // and the tenth is one edit. Never overwritten
-                                // afterwards: the dish is "Extra Rice (cup)"
-                                // and the chip should say "Extra rice".
-                                label: o.label || picked?.name || "",
+                                // Blank is not zero. Blank means "charge what
+                                // that dish costs", which stays right when the
+                                // price of rice goes up; zero means free,
+                                // which is what a drink in a combo is.
+                                priceOverride: raw === "" ? null : Number(raw),
                               };
                               setDraft({ ...draft, options: next });
                             }}
+                            placeholder={
+                              meal ? `${meal.price.toFixed(2)} (dish price)` : "Price"
+                            }
+                            aria-label="Price, or blank to use the dish's own"
+                            className={`${field} min-w-0 sm:w-40 sm:shrink-0`}
                           />
                         </div>
-
-                        <input
-                          value={o.label}
-                          onChange={(e) => {
-                            const next = [...draft.options];
-                            next[at] = { ...o, label: e.target.value };
-                            setDraft({ ...draft, options: next });
-                          }}
-                          placeholder="What the chip says"
-                          className={`${field} sm:w-44`}
-                        />
-
-                        <input
-                          inputMode="decimal"
-                          value={o.priceOverride ?? ""}
-                          onChange={(e) => {
-                            const raw = e.target.value.trim();
-                            const next = [...draft.options];
-                            next[at] = {
-                              ...o,
-                              // Blank is not zero. Blank means "charge what
-                              // that dish costs", which stays right when the
-                              // price of rice goes up; zero means free, which
-                              // is what a drink in a combo is.
-                              priceOverride: raw === "" ? null : Number(raw),
-                            };
-                            setDraft({ ...draft, options: next });
-                          }}
-                          placeholder={
-                            meal ? `${meal.price.toFixed(2)} (dish price)` : "Price"
-                          }
-                          aria-label="Price, or blank to use the dish's own"
-                          className={`${field} sm:w-36`}
-                        />
-
-                        <button
-                          onClick={() =>
-                            setDraft({
-                              ...draft,
-                              options: draft.options.filter((x) => x.key !== o.key),
-                            })
-                          }
-                          aria-label={`Remove ${o.label || "this option"}`}
-                          className="grid h-9 w-9 shrink-0 place-items-center self-end rounded-full text-ink-800/45 transition-colors hover:bg-brand-50 hover:text-brand-600 sm:self-auto"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
                       </li>
                     );
                   })}

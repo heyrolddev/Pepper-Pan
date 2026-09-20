@@ -37,6 +37,7 @@ export function AdminDialog({
   subtitle,
   onClose,
   busy = false,
+  wide = false,
   children,
 }: {
   title: string;
@@ -44,6 +45,16 @@ export function AdminDialog({
   onClose: () => void;
   /** While true, the dialog refuses to close — a half-written row is worse. */
   busy?: boolean;
+  /**
+   * A form, rather than a question.
+   *
+   * `max-w-lg` leaves 464px of content once the padding is off, which is
+   * right for "are you sure?" and too narrow for a row of fields — at that
+   * width a searchable picker sharing a line with two text boxes came out
+   * 36px wide. Opt-in, so every existing dialog keeps the size it was built
+   * at; still a bottom sheet on a phone either way.
+   */
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   // The portal target only exists in the browser, so the first render has to
@@ -78,7 +89,9 @@ export function AdminDialog({
       <div
         ref={panel}
         tabIndex={-1}
-        className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-cream-50 p-6 shadow-2xl outline-none ring-1 ring-ink-950/10 sm:max-w-lg sm:rounded-3xl"
+        className={`relative max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-cream-50 p-6 shadow-2xl outline-none ring-1 ring-ink-950/10 sm:rounded-3xl ${
+          wide ? "sm:max-w-2xl" : "sm:max-w-lg"
+        }`}
       >
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
