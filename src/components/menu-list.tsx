@@ -249,6 +249,102 @@ function ProductCard({
   );
 }
 
+/**
+ * One category, wherever it is being offered.
+ *
+ * Two shapes, one component, because they are the same control and the day
+ * they drift is the day the phone and the laptop disagree about what colour
+ * Drinks is. `stacked` is the sidebar: full width, the count pushed to the
+ * far edge where a column of numbers lines up and can be read down.
+ *
+ * The count is new, and it is the reason the sidebar is worth having. It is
+ * measured against what the SEARCH left, so it answers the only question
+ * worth asking of a filter — how much is behind this — rather than how much
+ * the shop sells in total. A category the current search has emptied fades
+ * instead of vanishing: a list that reshuffles itself as you type is a list
+ * you cannot aim at.
+ */
+function CategoryPill({
+  name,
+  count,
+  active,
+  colours,
+  onPick,
+  stacked = false,
+}: {
+  name: string;
+  count: number;
+  active: boolean;
+  colours: Map<string, string>;
+  onPick: () => void;
+  stacked?: boolean;
+}) {
+  // "All" keeps the brand red it always had — it isn't a category and
+  // shouldn't borrow one's colour. Everything else is painted in its own,
+  // which is the whole point: the eye learns where Drinks is and stops
+  // reading the words.
+  const isAll = name === "All";
+  const tone = colourOf(name, colours);
+  const empty = count === 0 && !active;
+
+  return (
+    <button
+      onClick={onPick}
+      aria-pressed={active}
+      title={active ? `Showing ${name}` : `Show only ${name}`}
+      className={`relative whitespace-nowrap rounded-full text-sm font-bold transition-colors ${
+        stacked ? "flex w-full items-center gap-2 px-3.5 py-2" : "px-3.5 py-1.5"
+      } ${
+        active
+          ? isAll
+            ? "text-cream-50"
+            : tone.chip
+          : empty
+            ? "text-ink-800/30"
+            : "text-ink-800 hover:bg-ink-950/5 hover:text-brand-600"
+      }`}
+    >
+      {active && isAll && (
+        <motion.span
+          // Shared between the two layouts on purpose: at the one width where
+          // both could exist the id would be claimed twice and the pill would
+          // fly across the screen. Only one is ever rendered — the other side
+          // is `hidden` / `lg:hidden` — so there is nothing to fight over.
+          layoutId={stacked ? "menu-filter-rail" : "menu-filter-pill"}
+          className="absolute inset-0 rounded-full bg-brand-600"
+          transition={{ type: "spring", stiffness: 400, damping: 32 }}
+        />
+      )}
+      <span
+        className={`relative z-10 flex items-center gap-1.5 ${
+          stacked ? "w-full" : ""
+        }`}
+      >
+        {!active && !isAll && (
+          <span
+            aria-hidden
+            className={`h-2 w-2 shrink-0 rounded-full ${tone.dot} ${
+              empty ? "opacity-40" : ""
+            }`}
+          />
+        )}
+        {/* Reserving the dot's space in the sidebar keeps every name on the
+            same left edge whether it is selected or not — without it the
+            whole column shifted 14px sideways on every tap. */}
+        {stacked && (active || isAll) && (
+          <span aria-hidden className="h-2 w-2 shrink-0" />
+        )}
+        <span className={stacked ? "truncate" : ""}>{name}</span>
+        {stacked && (
+          <span className="ml-auto shrink-0 pl-2 text-xs font-black tabular-nums opacity-55">
+            {count}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
 export function MenuList({
   products,
   staff = false,
@@ -274,6 +370,10 @@ export function MenuList({
   const order = useMemo(() => categoriesUsed(products, known), [products, known]);
   const categories = useMemo(() => ["All", ...order], [order]);
 
+  // One category plus "All" is not a filter, it is a label — and a sidebar
+  // holding a single choice is a column of whitespace charged to the food.
+  const hasFilters = categories.length > 2;
+
   // The same array that draws the pills also decides what leads the grid.
   //
   // Before this, "All" was whatever order the database handed back — `order
@@ -283,33 +383,58 @@ export function MenuList({
   // the first screenful said another.
   const sorted = useMemo(() => orderForMenu(products, order), [products, order]);
 
-  const filtered = useMemo(() => {
+  /**
+   * The search, applied on its own — before the category is.
+   *
+   * Two steps rather than one because the category list wants to carry a
+   * count, and the only useful count is "how many you would see if you tapped
+   * this". That has to be measured against everything the search left, not
+   * against everything on the menu: searching "spicy" and then reading
+   * "Drinks 6" sends the customer to an empty grid.
+   */
+  const found = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sorted.filter((p) => {
-      const matchesCategory =
-        activeCategory === "All" || inCategory(p, activeCategory);
-      // The dishes behind the card are searchable too. Grouping four ji pai
-      // under one name would otherwise make "spicy" find nothing, because the
-      // only place that word still appears is on a variant.
-      const matchesQuery =
-        !q ||
+    if (!q) return sorted;
+    return sorted.filter(
+      (p) =>
         p.name.toLowerCase().includes(q) ||
         (p.description ?? "").toLowerCase().includes(q) ||
+        // The dishes behind the card are searchable too. Grouping four ji pai
+        // under one name would otherwise make "spicy" find nothing, because
+        // the only place that word still appears is on a variant.
         p.variants.some(
           (v) =>
             v.name.toLowerCase().includes(q) ||
             Object.values(v.options).some((o) => o.toLowerCase().includes(q))
-        );
-      return matchesCategory && matchesQuery;
-    });
-  }, [sorted, query, activeCategory]);
+        )
+    );
+  }, [sorted, query]);
+
+  const counts = useMemo(() => {
+    const out: Record<string, number> = { All: found.length };
+    for (const name of order) {
+      out[name] = found.filter((p) => inCategory(p, name)).length;
+    }
+    return out;
+  }, [found, order]);
+
+  const filtered = useMemo(
+    () =>
+      activeCategory === "All"
+        ? found
+        : found.filter((p) => inCategory(p, activeCategory)),
+    [found, activeCategory]
+  );
 
   return (
     <div className="flex flex-col gap-6">
       {/* The search box and the filters sit on one line from small screens up,
           rather than stacking. This bar is pinned under the header for the
           whole page, so every row it takes is a row of food nobody can see —
-          and it stays that way the entire time they scroll. */}
+          and it stays that way the entire time they scroll.
+
+          From `lg` up the categories leave it for the sidebar below, and only
+          the search and the count stay. */}
       <div className="sticky top-[var(--nav-h)] z-30 -mx-6 border-b border-ink-950/10 bg-cream-50 px-6 py-2.5">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none">
@@ -325,75 +450,104 @@ export function MenuList({
             </span>
           </div>
 
-          {categories.length > 2 && (
-            <div className="flex flex-wrap gap-1">
-              {categories.map((category) => {
-                const active = activeCategory === category;
-                // "All" keeps the brand red it always had — it isn't a
-                // category and shouldn't borrow one's colour. Everything else
-                // is painted in its own, which is the whole point: the eye
-                // learns where Drinks is and stops reading the words.
-                const tone = colourOf(category, colours);
-                const dot = category === "All" ? "bg-brand-600" : tone.dot;
-                return (
-                  <button
+          {/* Scrolls sideways rather than wrapping to a second row. Wrapped,
+              a shop with eight categories pushed the first row of food off a
+              phone screen — which is the problem the sidebar solves on a
+              laptop and this solves here. */}
+          {hasFilters && (
+            <div className="-mx-6 w-[calc(100%+3rem)] overflow-x-auto px-6 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex w-max gap-1">
+                {categories.map((category) => (
+                  <CategoryPill
                     key={category}
-                    onClick={() => setActiveCategory(category)}
-                    className={`relative rounded-full px-3.5 py-1.5 text-sm font-bold transition-colors ${
-                      active
-                        ? category === "All"
-                          ? "text-cream-50"
-                          : tone.chip
-                        : "text-ink-800 hover:text-brand-600"
-                    }`}
-                  >
-                    {active && category === "All" && (
-                      <motion.span
-                        layoutId="menu-filter-pill"
-                        className="absolute inset-0 rounded-full bg-brand-600"
-                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                      />
-                    )}
-                    <span className="relative z-10 flex items-center gap-1.5">
-                      {!active && category !== "All" && (
-                        <span aria-hidden className={`h-2 w-2 rounded-full ${dot}`} />
-                      )}
-                      {category}
-                    </span>
-                  </button>
-                );
-              })}
+                    name={category}
+                    count={counts[category] ?? 0}
+                    active={activeCategory === category}
+                    colours={colours}
+                    onPick={() => setActiveCategory(category)}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Two on a phone, three on a tablet, four from a laptop up — and four
-          is the ceiling now. Five fitted, in the sense that the boxes did not
-          overlap: in a 1152px container it left each card about 210px, which
-          is not enough for "16oz Brown Sugar Milktea" and not enough for the
-          photograph above it, so a menu of pictures became a menu of wrapped
-          captions. Four gives roughly 270px. The gap opens with the cards
-          rather than staying tight, or the extra width reads as drift. */}
-      {filtered.length === 0 ? (
-        <p className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80">
-          No items match &ldquo;{query}&rdquo;.
-        </p>
-      ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5">
-          <AnimatePresence mode="popLayout">
-            {filtered.map((product, i) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                index={i}
-                staff={staff}
-                onOpen={() => setOpen(product.id)}
-              />
-            ))}
-          </AnimatePresence>
-        </ul>
-      )}
+      {/* ── the sidebar, and the food ──────────────────────────────────
+          The categories move to the side from `lg` up, and stay a row of
+          pills below it. Not one control at two widths for the sake of it:
+          they are genuinely different problems. A phone has no width to give
+          away, so the filters have to sit in the one line already reserved
+          for them. A laptop has width nobody is using — the grid stops at
+          1152px and the rest is margin — and a vertical list is where a
+          column of names is easiest to read, which is what the owner said:
+          mas madali i-navigate pag side.
+
+          Both are drawn by the same `CategoryPill`, so there is one place
+          that decides what a category looks like, one that decides the
+          colour, and no way for the two to start disagreeing. */}
+      <div className={hasFilters ? "lg:grid lg:grid-cols-[13rem_1fr] lg:gap-7" : ""}>
+        {hasFilters && (
+          <nav
+            aria-label="Menu categories"
+            // Sticks below the search bar, which is itself sticky under the
+            // header — so the nav offset is both of them, and the max-height
+            // is what is left, or a shop with twenty categories gets a list
+            // that scrolls off the bottom with no way back to it.
+            className="hidden self-start lg:sticky lg:top-[calc(var(--nav-h)+4rem)] lg:block lg:max-h-[calc(100vh-var(--nav-h)-6rem)] lg:overflow-y-auto"
+          >
+            <ul className="flex flex-col gap-0.5 pb-2">
+              {categories.map((category) => (
+                <li key={category}>
+                  <CategoryPill
+                    name={category}
+                    count={counts[category] ?? 0}
+                    active={activeCategory === category}
+                    colours={colours}
+                    onPick={() => setActiveCategory(category)}
+                    stacked
+                  />
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )}
+
+        {/* Two on a phone, three on a tablet, and three beside the sidebar.
+            Four was the laptop ceiling before, at roughly 270px a card; with
+            13rem gone to the sidebar, four would leave about 215px — below
+            the width where "16oz Brown Sugar Milktea" stops wrapping into a
+            caption, which is the exact failure five columns had. Three gives
+            about 290px, so the cards come out slightly LARGER than they were
+            rather than the sidebar costing the food anything. */}
+        {filtered.length === 0 ? (
+          <p className="rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80">
+            {query.trim()
+              ? `No items match “${query}”${
+                  activeCategory === "All" ? "" : ` in ${activeCategory}`
+                }.`
+              : `Nothing in ${activeCategory} right now.`}
+          </p>
+        ) : (
+          <ul
+            className={`grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:gap-5 ${
+              hasFilters ? "" : "lg:grid-cols-4"
+            }`}
+          >
+            <AnimatePresence mode="popLayout">
+              {filtered.map((product, i) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  index={i}
+                  staff={staff}
+                  onOpen={() => setOpen(product.id)}
+                />
+              ))}
+            </AnimatePresence>
+          </ul>
+        )}
+      </div>
 
       {/* Mounted here rather than inside the card: a dialog rendered inside a
           grid item inherits the grid's stacking context, and a card two rows

@@ -50,8 +50,16 @@ export const CATEGORY_TONES: Record<string, CategoryTone> = {
   gold: {
     // Gold is the one that cannot take cream text — it's a light colour, and
     // the chip needs ink on it or the label vanishes.
+    //
+    // Which the comment said and the value did not: `chip` was
+    // `bg-brand-600 text-cream-50`, a straight copy of `brand`. So a category
+    // the owner deliberately coloured yellow turned RED the moment it was
+    // selected, indistinguishable from a red one — the dot beside it stayed
+    // gold, so the same category was two colours at once depending on whether
+    // you had tapped it. Ink on gold reads at 13:1, which is what the comment
+    // was asking for.
     label: "Yellow",
-    chip: "bg-brand-600 text-cream-50",
+    chip: "bg-gold-400 text-ink-950",
     soft: "bg-gold-400/25 text-ink-900",
     dot: "bg-gold-400",
   },
