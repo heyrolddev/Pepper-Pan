@@ -641,6 +641,7 @@ export const TOPICS: GuideTopic[] = [
       "• DINE-IN SPECIAL — the big line in the gold band\n" +
       "• COMING SOON — the line under it\n" +
       "• OUR STORY PHOTOS — the pictures of the stall further down the homepage\n\n" +
+      "Every row has a bin beside Edit. Two taps, because it cannot be undone and the uploaded photo goes with it — if you might run it again next Christmas, turn it off instead and it stays on the list.\n\n" +
       "Any of them can carry a photo or a short video. Give it an end date and it takes itself off the homepage that night — which is the whole point: a promo you have to remember to switch off is a promo that stays up, and a customer arrives on Tuesday with a screenshot of a deal that ended on Sunday.\n\n" +
       "Above them all is the calculator: what a promo, some ads or a free taste would have to bring in, and afterwards whether it did. Worth running before you print the tarpaulin, not after.\n\n" +
       "The story photos are the one thing on that screen that is a picture rather than words. Add a few and they become a deck a customer can swipe through; add none and the homepage keeps the single stall photo it has always had. The caption you type is not printed anywhere — it is what a blind customer's phone reads out instead of showing the picture, so describe what is in it.\n\n" +
