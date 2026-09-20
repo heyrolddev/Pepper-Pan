@@ -229,12 +229,30 @@ export function ProductDialog({
               )}
             </div>
 
+            {/* ── which dish is this ──────────────────────────────────
+                The same panel the add-ons below sit in, so the dialog reads
+                as one thing rather than two. They are not made identical,
+                though, and the difference is real: a variant REPLACES the
+                dish — the photograph and the price change with it — so it
+                stays a row of chips, which is what a set of mutually
+                exclusive answers looks like everywhere. The add-ons are a
+                list you tick, and they look like a list you tick. Shared
+                container, shared heading, shared badge; different control,
+                because they do different things. */}
             {product.axes.map((axis) => (
-              <fieldset key={axis.name} className="min-w-0">
-                <legend className="mb-2 text-[11px] font-black uppercase tracking-widest text-ink-800/45">
-                  {axis.name}
+              <fieldset
+                key={axis.name}
+                className="min-w-0 rounded-2xl bg-cream-100 p-4 ring-1 ring-ink-950/10"
+              >
+                <legend className="flex items-center gap-2 px-1">
+                  <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/60">
+                    {axis.name}
+                  </span>
+                  <span className="rounded-full bg-ink-950 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cream-50">
+                    Choose one
+                  </span>
                 </legend>
-                <div className="flex flex-wrap gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   {axis.values.map((value) => {
                     const state = chipState(
                       product.variants,
@@ -260,7 +278,7 @@ export function ProductDialog({
                             ? "border-ink-950 bg-ink-950 text-cream-50"
                             : dead
                               ? "border-ink-950/10 bg-ink-950/[0.03] text-ink-800/35"
-                              : "border-ink-950/15 bg-cream-100 text-ink-950 hover:border-brand-600"
+                              : "border-ink-950/15 bg-cream-50 text-ink-950 hover:border-brand-600"
                         }`}
                       >
                         {value}
@@ -311,8 +329,13 @@ export function ProductDialog({
                 </p>
                 {/* Shown as a sum, not as a single grown number. A customer
                     who sees ₱135 where the card said ₱120 checks the menu;
-                    one who sees "₱120 + ₱15 add-ons" checks their own taps. */}
-                {extras.length > 0 && (
+                    one who sees "₱120 + ₱15 add-ons" checks their own taps.
+                    
+                    Only when there is money in it. A free drink is still an
+                    extra, and "₱189.00 + ₱0.00 add-ons" under an unchanged
+                    price is a line that explains nothing and makes the
+                    customer look twice for a charge that isn't there. */}
+                {extrasTotal(extras) > 0 && (
                   <p className="text-xs font-semibold text-ink-800/50">
                     ₱{Number(chosen.price).toFixed(2)} + ₱
                     {extrasTotal(extras).toFixed(2)} add-ons
