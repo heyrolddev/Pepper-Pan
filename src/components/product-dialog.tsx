@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
@@ -269,7 +270,28 @@ export function ProductDialog({
               )}
             </div>
 
-            {!staff && (
+            {/* Staff and the owner have no cart — that rule predates this
+                dialog, and the cart empties itself for them on load, so an
+                Add button here would fill something that wipes itself.
+                
+                What was wrong was saying it with NOTHING. The controls simply
+                did not render, which leaves a blank panel under the price and
+                reads as a dish you cannot order — reported as exactly that.
+                A missing button explains nothing; this says whose screen it
+                is and where the till actually is. */}
+            {staff ? (
+              <p className="rounded-xl bg-ink-950/5 px-4 py-3 text-center text-xs font-semibold text-ink-800/60">
+                You&apos;re signed in as staff, so there&apos;s no cart here —
+                this is the customer&apos;s view of the menu.{" "}
+                <Link
+                  href="/admin/counter"
+                  className="font-bold text-brand-600 underline underline-offset-2"
+                >
+                  Ring it up on the Counter
+                </Link>
+                .
+              </p>
+            ) : (
               <button
                 onClick={add}
                 disabled={gone}
