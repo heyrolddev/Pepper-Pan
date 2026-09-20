@@ -156,11 +156,37 @@ export function ProductDialog({
         exit={still ? undefined : { y: 30, opacity: 0 }}
         transition={{ type: "spring", stiffness: 320, damping: 32 }}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-t-3xl bg-cream-50 outline-none sm:rounded-3xl"
+        /**
+         * Two columns that scroll independently, rather than one box that
+         * scrolls as a whole.
+         *
+         * What is on the left — the photograph and what the dish IS — does
+         * not change while you are picking, so scrolling it away to reach the
+         * drinks is a plain loss. And the panel it shared a scrollbar with
+         * now holds three or four fieldsets, so on a laptop the Add button
+         * was below the fold on any dish with add-ons: the customer had to
+         * scroll past the thing they had come to buy to find the way to buy
+         * it.
+         */
+        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl bg-cream-50 outline-none sm:grid sm:max-h-[86vh] sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] sm:grid-rows-[minmax(0,1fr)] sm:rounded-3xl"
       >
-        <div className="grid sm:grid-cols-2">
-          {/* ---- the photograph, which is the point ---- */}
-          <div className="relative aspect-square w-full overflow-hidden bg-white sm:rounded-l-3xl">
+        <>
+          {/* ---- the photograph, and what the dish is ----
+              Both on this side, which is the change. The name, the stars and
+              the description used to sit at the top of the right-hand column,
+              above the choices — so the half of the dialog holding the
+              picture ended in a slab of empty cream, while the half holding
+              the controls opened with two paragraphs the customer had already
+              read on the card they tapped. Identity on the left, decisions on
+              the right, and neither side is padding. */}
+          <div className="flex shrink-0 flex-col bg-cream-100/40 sm:min-h-0 sm:overflow-y-auto sm:rounded-l-3xl">
+          {/* A band on a phone, a square on a laptop.
+              Square on both put the photograph, the name and the description
+              past the fold of a 390px sheet — so the first thing a customer
+              saw of the dish they had just tapped was a picture with no name
+              on it, and the options they came for were two scrolls down.
+              A 224px band still shows the food. */}
+          <div className="relative h-56 w-full shrink-0 overflow-hidden bg-white sm:aspect-square sm:h-auto sm:rounded-tl-3xl">
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
                 // Keyed on the picture, so changing size crossfades to the
@@ -208,14 +234,12 @@ export function ProductDialog({
             </button>
           </div>
 
-          {/* ---- what it is, and how you want it ---- */}
-          <div className="flex flex-col gap-4 p-6 sm:p-7">
-            <div>
+            <div className="flex flex-col gap-1.5 p-5 sm:p-7">
               <h2 className="font-display text-2xl font-black leading-tight text-ink-950 sm:text-3xl">
                 {product.name}
               </h2>
               {product.avgRating != null && product.reviewCount > 0 && (
-                <span className="mt-1.5 flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5">
                   <Stars rating={product.avgRating} />
                   <span className="text-xs font-semibold text-ink-800/55">
                     {product.avgRating.toFixed(1)} ({product.reviewCount})
@@ -223,11 +247,25 @@ export function ProductDialog({
                 </span>
               )}
               {product.description && (
-                <p className="mt-2 text-sm leading-relaxed text-ink-800/75">
+                <p className="line-clamp-2 text-sm leading-relaxed text-ink-800/75 sm:line-clamp-none">
                   {product.description}
                 </p>
               )}
+              {/* Which of the ways of having it is in the basket. With four
+                  ji pai on one card this is the only line that confirms the
+                  taps landed where the customer meant — and it belongs beside
+                  the photograph it just changed, not under the controls. */}
+              {product.axes.length > 0 && (
+                <p className="mt-1 text-xs font-bold text-ink-800/45">
+                  {chosen.name}
+                </p>
+              )}
             </div>
+          </div>
+
+          {/* ---- how you want it ---- */}
+          <div className="flex min-h-0 flex-1 flex-col sm:flex-initial">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5 sm:p-7">
 
             {/* ── which dish is this ──────────────────────────────────
                 The same panel the add-ons below sit in, so the dialog reads
@@ -298,13 +336,6 @@ export function ProductDialog({
               </fieldset>
             ))}
 
-            {/* What is actually going in the basket. With four ji pai on one
-                card, "Giant Jipai w/cheese (SPICY)" is the only line that
-                confirms the taps landed where the customer meant. */}
-            {product.axes.length > 0 && (
-              <p className="text-xs font-semibold text-ink-800/45">{chosen.name}</p>
-            )}
-
             {groups.map((group) => (
               <AddOnGroup
                 key={group.id}
@@ -322,7 +353,22 @@ export function ProductDialog({
               />
             ))}
 
-            <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-ink-950/10 pt-4">
+            </div>
+
+            {/* ── the buy bar, pinned ─────────────────────────────────────
+                Its own strip below the scroll area rather than the last
+                thing in it. A dish with three add-on groups is taller than a
+                laptop, and the price and the Add button are the two things
+                that must never be the reason somebody scrolls. */}
+            <div className="relative shrink-0 border-t border-ink-950/10 bg-cream-50 p-6 pt-4 sm:p-7 sm:pt-4">
+              {/* A soft edge above the bar, so a list that continues behind
+                  it looks like it continues. Cut off by a hard line, a half
+                  a row of sauces reads as the end of the sauces. */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 -top-10 h-10 bg-gradient-to-t from-cream-50 to-transparent"
+              />
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-display text-3xl font-black text-brand-600">
                   ₱{unit.toFixed(2)}
@@ -373,7 +419,7 @@ export function ProductDialog({
                 A missing button explains nothing; this says whose screen it
                 is and where the till actually is. */}
             {staff ? (
-              <p className="rounded-xl bg-ink-950/5 px-4 py-3 text-center text-xs font-semibold text-ink-800/60">
+              <p className="mt-4 rounded-xl bg-ink-950/5 px-4 py-3 text-center text-xs font-semibold text-ink-800/60">
                 You&apos;re signed in as staff, so there&apos;s no cart here —
                 this is the customer&apos;s view of the menu.{" "}
                 <Link
@@ -388,7 +434,7 @@ export function ProductDialog({
               <button
                 onClick={add}
                 disabled={gone || !!unanswered}
-                className={`w-full rounded-full px-6 py-3.5 font-bold transition-colors ${
+                className={`mt-4 w-full rounded-full px-6 py-4 font-display text-lg font-black transition-colors ${
                   gone || unanswered
                     ? "cursor-not-allowed bg-ink-950/10 text-ink-800/40"
                     : added
@@ -408,8 +454,9 @@ export function ProductDialog({
                         : `Add ${qty > 1 ? `${qty} ` : ""}to cart`))}
               </button>
             )}
+            </div>
           </div>
-        </div>
+        </>
       </motion.div>
     </motion.div>
   );
