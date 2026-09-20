@@ -243,7 +243,22 @@ function GroupDialog({
    * that one first).
    */
   const found = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    /**
+     * Every word, in any order — the rule `AdminSearch` uses on every other
+     * list in HQ.
+     *
+     * This one asked for the whole query as one contiguous run, so "jipai
+     * solo" found nothing while "solo jipai" worked, and "solo jipai cheese"
+     * found nothing at all even though "Solo Jipai w/cheese (Original)" is
+     * sitting right there. Two search boxes on the same screen behaving
+     * differently is worse than either rule on its own: whichever one you
+     * learn, the other one is broken.
+     */
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const hit = (name: string) => {
+      const n = name.toLowerCase();
+      return terms.every((t) => n.includes(t));
+    };
     const matching = meals
       .filter((m) => !chosen.includes(m.id))
       /**
@@ -257,7 +272,7 @@ function GroupDialog({
        * are never coming back to the menu.
        */
       .filter((m) => m.is_public)
-      .filter((m) => !q || m.name.toLowerCase().includes(q));
+      .filter((m) => terms.length === 0 || hit(m.name));
     // A dish already in THIS draft stays offerable, so editing a card does
     // not have to start from nothing.
     const free = matching.filter((m) => !takenBy.has(m.id) || draft.values[m.id]);
