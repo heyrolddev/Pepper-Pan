@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { useDialog } from "@/lib/dialog";
 
 /**
  * The one dialog shape HQ uses.
@@ -25,11 +25,12 @@ import { createPortal } from "react-dom";
  * ranked against the page itself. Every dialog in HQ goes through here, so
  * this fixes the ones nobody has noticed yet as well as the one that was
  * reported.
+ *
+ * The portal, the scroll lock, Escape and the focus trap all live in
+ * `useDialog` now — not for tidiness, but because they were copied from the
+ * sign-out confirmation and then improved only here, leaving the original
+ * with every fault. See that hook for what each one costs when it is missing.
  */
-/** Nothing to subscribe to: whether we are in a browser never changes. */
-const neverChanges = () => () => {};
-const inBrowser = () => true;
-const onServer = () => false;
 
 export function AdminDialog({
   title,
@@ -53,19 +54,10 @@ export function AdminDialog({
   // React Compiler rejects the latter outright, and it is right to. This says
   // the same thing without a second render pass — "false on the server, true
   // in a browser" is exactly the question the hook exists to answer.
-  const mounted = useSyncExternalStore(neverChanges, inBrowser, onServer);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
-  }, [busy, onClose]);
+  const { mounted, panel } = useDialog<HTMLDivElement>({
+    onClose,
+    closable: !busy,
+  });
 
   if (!mounted) return null;
 
@@ -83,7 +75,11 @@ export function AdminDialog({
       />
       {/* Bottom sheet on a phone, centred card on a laptop. The store room
           gets updated standing at the shelf more often than sitting down. */}
-      <div className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-cream-50 p-6 shadow-2xl ring-1 ring-ink-950/10 sm:max-w-lg sm:rounded-3xl">
+      <div
+        ref={panel}
+        tabIndex={-1}
+        className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-cream-50 p-6 shadow-2xl outline-none ring-1 ring-ink-950/10 sm:max-w-lg sm:rounded-3xl"
+      >
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <h2 className="font-display text-2xl font-black text-ink-950">{title}</h2>

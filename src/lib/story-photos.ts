@@ -10,27 +10,38 @@ import type { Announcement } from "@/lib/announcements";
  *
  * ── The rule ─────────────────────────────────────────────────────────────
  *
- * The section must never be empty. A homepage that says "Our story" beside a
- * hole is worse than one showing the same photograph it showed last year, and
- * the ways to end up with a hole are all ordinary: nothing uploaded yet, every
- * photo switched off for a reshoot, a storage outage, a migration not yet run.
+ * The photograph of the stall itself — lanterns over the tables, somebody at
+ * the counter — always leads, and everything the owner adds is dealt behind
+ * it. It was the other way round at first: uploads REPLACED it, on the
+ * reasoning that otherwise there is a picture on the homepage no screen in HQ
+ * can remove. The owner asked for the opposite, and they are right about
+ * their own shop — that picture is what the section is about, and it should
+ * be the one a customer sees before they touch anything.
  *
- * So `fallback` — the stall photo that has been there since the beginning — is
- * used when, and only when, there is nothing else. Once the owner adds their
- * own, theirs are the deck and the old one steps aside, because otherwise
- * there would be a picture on the homepage that no screen in HQ can remove.
+ * It also means the section can never be empty, which matters more than it
+ * sounds: a homepage that says "Our story" beside a hole reads as a page that
+ * failed to load, not as a shop with no photographs yet. The ways to end up
+ * there are all ordinary — nothing uploaded, everything switched off for a
+ * reshoot, a storage outage, a migration not yet run.
+ *
+ * The cost is that the lead photograph is not removable from HQ. That is a
+ * one-line change here the day the shop wants a different one.
  */
 
 export type StoryPhoto = { src: string; alt: string };
 
 export function storyPhotosFrom(
   rows: Announcement[],
-  fallback: StoryPhoto
+  lead: StoryPhoto
 ): StoryPhoto[] {
-  const photos = rows
+  const added = rows
     // The deck renders an image and nothing else, so a row without one is not
     // a card — it is a black square with a caption nobody can see.
     .filter((r) => Boolean(r.image_url))
+    // Uploading the lead photograph again in HQ should not deal it twice. It
+    // is the likeliest thing for the owner to try, because it is the picture
+    // already on the site and the obvious way to "add" it.
+    .filter((r) => r.image_url !== lead.src)
     .map((r) => ({
       src: r.image_url!,
       // `title` is required by the table, but "required" and "filled in with
@@ -39,5 +50,5 @@ export function storyPhotosFrom(
       alt: r.title.trim() || "A photo inside Pepper Pan",
     }));
 
-  return photos.length > 0 ? photos : [fallback];
+  return [lead, ...added];
 }

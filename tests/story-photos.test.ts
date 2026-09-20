@@ -33,29 +33,29 @@ const row = (over: Partial<Announcement> = {}): Announcement => ({
 
 const FALLBACK = { src: "/original.jpg", alt: "The stall" };
 
-test("the owner's photos become the deck, caption and all", () => {
+test("the stall photo leads, and the owner's are dealt behind it", () => {
   const out = storyPhotosFrom(
     [row({ id: 1 }), row({ id: 2, title: "Ate Len at the counter", image_url: "b.jpg" })],
     FALLBACK
   );
   assert.deepEqual(out, [
+    FALLBACK,
     { src: "https://example.test/a.jpg", alt: "Lanterns over the tables" },
     { src: "b.jpg", alt: "Ate Len at the counter" },
   ]);
 });
 
-test("their photos replace the original rather than queueing behind it", () => {
-  // Otherwise there is a picture on the homepage that no screen in HQ can
-  // remove, which is the complaint that started this.
-  const out = storyPhotosFrom([row()], FALLBACK);
-  assert.equal(out.length, 1);
-  assert.notEqual(out[0].src, FALLBACK.src);
+test("uploading the lead photograph again does not deal it twice", () => {
+  // The likeliest thing for the owner to try: it is the picture already on
+  // the site, and adding it is the obvious way to put it first.
+  const out = storyPhotosFrom([row({ image_url: FALLBACK.src, title: "The stall" })], FALLBACK);
+  assert.deepEqual(out, [FALLBACK]);
 });
 
 test("nothing uploaded, or everything switched off, still shows a photograph", () => {
   assert.deepEqual(storyPhotosFrom([], FALLBACK), [FALLBACK]);
-  // A row with no picture is not a card. If it were the only row, dropping it
-  // has to fall back rather than leave an empty deck.
+  // A row with no picture is not a card. Dropping it must not leave a hole
+  // where the section's photograph should be.
   assert.deepEqual(storyPhotosFrom([row({ image_url: null })], FALLBACK), [FALLBACK]);
 });
 
