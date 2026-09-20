@@ -116,9 +116,29 @@ function ProductCard({
       )}
       {/* The one thing on the card that says there is more behind it. A count
           rather than a chevron: "2 sizes" tells a customer what the tap is
-          for, where an arrow only says that something happens. */}
+          for, where an arrow only says that something happens.
+
+          Green, because it is the only badge on the card that is GOOD NEWS.
+          It was a translucent black, which is what "Sold out" is — two
+          opposite messages in one colour, on cards that carry both, so the
+          eye had to read every badge to sort them. Now the grid answers at a
+          glance: black is gone, yellow is nearly gone, green is a choice.
+
+          Jade rather than the gold used for "Only 2 left": that one is also
+          on these cards, on the opposite corner, and a second yellow badge
+          would be a warning-coloured thing that is not a warning.
+
+          Except on a sold-out card, where it goes quiet. "2 FLAVOURS" in
+          bright green above a dish nobody can buy today reads as an offer,
+          and the card underneath has already faded to say otherwise. */}
       {product.variants.length > 1 && (
-        <span className="absolute right-3 top-3 z-10 rounded-full bg-ink-950/75 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-cream-50 backdrop-blur">
+        <span
+          className={`absolute right-3 top-3 z-10 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide backdrop-blur ${
+            soldOut
+              ? "bg-ink-950/45 text-cream-50/80"
+              : "bg-jade-600 text-cream-50 ring-1 ring-jade-700/40"
+          }`}
+        >
           {product.axes.length === 1
             ? `${product.axes[0].values.length} ${product.axes[0].name.toLowerCase()}s`
             : `${product.variants.length} ways`}
