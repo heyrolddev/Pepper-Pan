@@ -10,7 +10,6 @@ import {
   togglePinned,
 } from "@/app/admin/promos/actions";
 import {
-  isSlotKind,
   KIND_ADD,
   KIND_BLURB,
   KIND_NEW_TITLE,
@@ -268,7 +267,7 @@ function Row({
                 add a description or a picture to give it a card
               </span>
             )}
-            {row.pinned && (
+            {row.pinned && row.kind !== "story" && (
               <span className="rounded-full bg-gold-400 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide text-ink-950">
                 ★ Pinned
               </span>
@@ -284,6 +283,13 @@ function Row({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 sm:justify-end">
+          {/* No star on a story photo. The star picks WHICH of too many
+              things gets one of the homepage's few slots; the deck has a slot
+              per photograph, so the button changes nothing — and a control
+              that does nothing is read as one that is broken, or worse, as
+              the reason a photo is not appearing. The arrows below are what
+              ordering the deck actually needs. */}
+          {row.kind !== "story" && (
           <button
             onClick={() => run(() => togglePinned(row.id, !row.pinned))}
             disabled={pending}
@@ -301,10 +307,14 @@ function Row({
           >
             {row.pinned ? "★" : "☆"}
           </button>
-          {/* Order matters for the strip, where it decides what scrolls past
-              first, and for the band, where it decides which one of these is
-              the one shown. News is newest-first and has no order to set. */}
-          {(row.kind === "promo" || isSlotKind(row.kind)) && (
+          )}
+          {/* Stated as "everything except news" rather than as a list of the
+              kinds that have arrows. It was a list, and the story photos were
+              added to the table without being added to it — so the one kind
+              whose whole point is the order it is dealt in was the one kind
+              with no way to set it. News is the only real exception: it is
+              newest-first, so there is no order to set. */}
+          {row.kind !== "news" && (
             <>
               <button
                 onClick={() => run(() => reorderAnnouncement(row.id, -1))}

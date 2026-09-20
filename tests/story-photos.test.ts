@@ -33,23 +33,28 @@ const row = (over: Partial<Announcement> = {}): Announcement => ({
 
 const FALLBACK = { src: "/original.jpg", alt: "The stall" };
 
-test("the stall photo leads, and the owner's are dealt behind it", () => {
+test("the owner's photos are the deck, in the order this list gives them", () => {
   const out = storyPhotosFrom(
     [row({ id: 1 }), row({ id: 2, title: "Ate Len at the counter", image_url: "b.jpg" })],
     FALLBACK
   );
   assert.deepEqual(out, [
-    FALLBACK,
     { src: "https://example.test/a.jpg", alt: "Lanterns over the tables" },
     { src: "b.jpg", alt: "Ate Len at the counter" },
   ]);
 });
 
-test("uploading the lead photograph again does not deal it twice", () => {
-  // The likeliest thing for the owner to try: it is the picture already on
-  // the site, and adding it is the obvious way to put it first.
-  const out = storyPhotosFrom([row({ image_url: FALLBACK.src, title: "The stall" })], FALLBACK);
-  assert.deepEqual(out, [FALLBACK]);
+test("the stall photo steps aside once there is anything to show", () => {
+  /**
+   * It led the deck for one commit, because the owner asked for that picture
+   * to be first. They had already uploaded the same photograph in HQ, so a
+   * built-in copy pinned to the front showed the stall twice in a three-card
+   * deck. Ordering the rows is what they actually wanted, and it puts their
+   * own copy first without a second mechanism that can disagree with it.
+   */
+  const out = storyPhotosFrom([row()], FALLBACK);
+  assert.equal(out.length, 1);
+  assert.notEqual(out[0].src, FALLBACK.src);
 });
 
 test("nothing uploaded, or everything switched off, still shows a photograph", () => {
