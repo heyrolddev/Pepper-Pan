@@ -14,6 +14,7 @@ import {
   optionSoldOut,
   reconcile,
   resolveChoice,
+  ruleLabel,
   toggleOption,
   unitPrice,
   type ModifierGroup,
@@ -306,4 +307,17 @@ test("more ticks than the group allows is refused", () => {
   });
   const got = resolveChoice([addons], ["a", "b", "c"], "Pork Solo Rice");
   assert.match(got.problem ?? "", /only pick 2/);
+});
+
+/* ---- what the customer is being asked to do ------------------------ */
+
+test("the rule badge says the number it means, in all five shapes", () => {
+  const r = (min: number, max: number) => ruleLabel({ min, max });
+  assert.equal(r(0, 1), "Optional");
+  assert.equal(r(1, 1), "Required");
+  assert.equal(r(2, 2), "Pick 2");
+  assert.equal(r(0, 3), "Up to 3");
+  // The one the shop's own data hit. "Pick 1" reads as "pick exactly one", so
+  // a customer entitled to two drinks never taps the second.
+  assert.equal(r(1, 2), "Pick 1–2");
 });

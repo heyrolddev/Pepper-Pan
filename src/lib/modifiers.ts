@@ -234,6 +234,27 @@ export function toggleOption(
   return { ...choice, [group.id]: [...current, optionId] };
 }
 
+/**
+ * The badge beside a group's name — what the customer is being asked to do.
+ *
+ * Written once because three screens ask it: the dish dialog, the till, and
+ * the owner's editor. Written at ALL because the first version had two cases
+ * and needed five, and the gap showed up in the shop's own data: a "Choose
+ * your drinks" set to at-least-one-and-up-to-two was labelled "Pick 1", which
+ * reads as "pick exactly one" — so a customer entitled to two drinks is told
+ * they get one, and never taps the second.
+ *
+ * Every case says the number it means:
+ *   0,1  Optional     1,1  Required
+ *   2,2  Pick 2       0,3  Up to 3       1,2  Pick 1–2
+ */
+export function ruleLabel(group: Pick<ModifierGroup, "min" | "max">): string {
+  const { min, max } = group;
+  if (min < 1) return max === 1 ? "Optional" : `Up to ${max}`;
+  if (min === max) return max === 1 ? "Required" : `Pick ${max}`;
+  return `Pick ${min}–${max}`;
+}
+
 /** Would another tick fit? What the checklist's chips are disabled by. */
 export function isFull(group: ModifierGroup, choice: ModifierChoice): boolean {
   return group.max > 1 && chosenIn(choice, group.id).length >= group.max;
