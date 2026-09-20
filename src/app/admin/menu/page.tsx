@@ -5,6 +5,8 @@ import { MenuWorkspace } from "@/components/menu-workspace";
 import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
 import { TakeoutMergePanel } from "@/components/takeout-merge-panel";
+import { TakeoutPurgePanel } from "@/components/takeout-purge-panel";
+import { planTakeoutPurge } from "@/lib/takeout-purge";
 import { ProductGroups, type GroupRow } from "@/components/product-groups";
 import { normalizeOptions } from "@/lib/menu-products";
 import { planTakeoutMerge } from "@/lib/takeout-merge";
@@ -59,9 +61,14 @@ export default async function AdminMenuPage() {
 
   // Read-only, so it is safe on every load. It is what decides whether the
   // collapse panel exists at all.
-  const merge = canEdit
-    ? await planTakeoutMerge()
-    : { rows: [], skipped: [], before: 0, after: 0, error: null };
+  // Both read-only, so they are safe on every load, and both take themselves
+  // off the screen when there is nothing left to do.
+  const [merge, purge] = canEdit
+    ? await Promise.all([planTakeoutMerge(), planTakeoutPurge()])
+    : [
+        { rows: [], skipped: [], before: 0, after: 0, error: null },
+        { rows: [], blocked: [], totalOrderLines: 0, error: null },
+      ];
 
   type MealRow = AdminMeal & {
     product_id: string | null;
@@ -126,6 +133,10 @@ export default async function AdminMenuPage() {
           away once there isn't — a one-time job shouldn't leave a permanent
           button on the screen. */}
       {canEdit && <TakeoutMergePanel plan={merge} />}
+
+      {/* Below the merge, because it is the step after it: the merge hides
+          the twins, this is for when they are no longer wanted at all. */}
+      {canEdit && <TakeoutPurgePanel plan={purge} />}
 
       {/* Above the dish list, because it is about the SHAPE of the menu and
           the list below is about the contents of it. Owner only: grouping

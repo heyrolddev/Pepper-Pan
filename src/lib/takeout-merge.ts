@@ -20,7 +20,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * out of the till while leaving the history intact.
  */
 
-const TWIN = /^\(\s*T\.?\s*O\.?\s*\)/i;
+/** One rule for what a take-out twin is, shared with the purge. */
+export const TWIN = /^\(\s*T\.?\s*O\.?\s*\)/i;
 const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 const stripPrefix = (s: string) => s.replace(/^\(\s*T\.?\s*O\.?\s*\)\s*/i, "");
 

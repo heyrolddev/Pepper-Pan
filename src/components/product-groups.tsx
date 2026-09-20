@@ -59,6 +59,9 @@ type Draft = {
 const field =
   "w-full rounded-xl border-2 border-ink-950/15 bg-cream-50 px-3 py-2 text-sm text-ink-950 outline-none transition-colors focus:border-brand-600";
 
+/** Enough that a real search is never cut short, few enough to stay readable. */
+const SEARCH_SHOWN = 24;
+
 export function ProductGroups({
   groups,
   meals,
@@ -226,13 +229,58 @@ function GroupDialog({
   const byId = useMemo(() => new Map(meals.map((m) => [m.id, m])), [meals]);
   const chosen = draft.members;
 
-  const available = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return meals
+  /**
+   * What the search offers, and what it is leaving out.
+   *
+   * It was a bare `.slice(0, 8)`. On a menu with eight Solo Jipai variants it
+   * showed exactly eight and stopped, with nothing on screen to say there
+   * were more — so a dish that existed, matched, and was free to be added
+   * simply could not be found, and the search looked broken rather than full.
+   *
+   * Two different reasons a match can be missing, and they need different
+   * answers from the owner, so they are counted separately: there are more
+   * than fit (type a bit more), or it is already on another card (take it off
+   * that one first).
+   */
+  const found = useMemo(() => {
+    /**
+     * Every word, in any order — the rule `AdminSearch` uses on every other
+     * list in HQ.
+     *
+     * This one asked for the whole query as one contiguous run, so "jipai
+     * solo" found nothing while "solo jipai" worked, and "solo jipai cheese"
+     * found nothing at all even though "Solo Jipai w/cheese (Original)" is
+     * sitting right there. Two search boxes on the same screen behaving
+     * differently is worse than either rule on its own: whichever one you
+     * learn, the other one is broken.
+     */
+    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const hit = (name: string) => {
+      const n = name.toLowerCase();
+      return terms.every((t) => n.includes(t));
+    };
+    const matching = meals
       .filter((m) => !chosen.includes(m.id))
-      .filter((m) => !takenBy.has(m.id) || draft.values[m.id])
-      .filter((m) => !q || m.name.toLowerCase().includes(q))
-      .slice(0, 8);
+      /**
+       * A dish that is not on the menu cannot be one of the customer's
+       * choices, so offering it here only ever builds a card that does not
+       * work — which is the very thing the warning below this list exists to
+       * explain. Not offering it is better than explaining it afterwards.
+       *
+       * It also clears out the "(T.O)" twins, which is most of what was
+       * cluttering this search: they were hidden by the take-out merge and
+       * are never coming back to the menu.
+       */
+      .filter((m) => m.is_public)
+      .filter((m) => terms.length === 0 || hit(m.name));
+    // A dish already in THIS draft stays offerable, so editing a card does
+    // not have to start from nothing.
+    const free = matching.filter((m) => !takenBy.has(m.id) || draft.values[m.id]);
+    return {
+      shown: free.slice(0, SEARCH_SHOWN),
+      more: Math.max(0, free.length - SEARCH_SHOWN),
+      elsewhere: matching.length - free.length,
+    };
   }, [meals, chosen, takenBy, draft.values, query]);
 
   function addMeal(id: string) {
@@ -422,6 +470,15 @@ function GroupDialog({
                       <span className="ml-2 text-xs font-normal text-ink-800/50">
                         ₱{Number(byId.get(id)?.price ?? 0).toFixed(2)}
                       </span>
+                      {/* A hidden dish is not on the menu, so it is not one of
+                          the customer's choices either — and the card says
+                          nothing about it. Labelled here because this is the
+                          only screen where the two facts sit together. */}
+                      {byId.get(id)?.is_public === false && (
+                        <span className="ml-2 rounded-full bg-ink-950/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-ink-800/60">
+                          Hidden
+                        </span>
+                      )}
                     </span>
                     <button
                       onClick={() => removeMeal(id)}
@@ -458,25 +515,44 @@ function GroupDialog({
             className={`${field} mt-2`}
           />
           {query.trim() !== "" && (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {available.length === 0 ? (
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {found.shown.length === 0 ? (
                 <p className="text-xs text-ink-800/50">
-                  Nothing else matches. A dish already on another card has to be
-                  taken off that one first.
+                  Nothing else matches that.
                 </p>
               ) : (
-                available.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => {
-                      addMeal(m.id);
-                      setQuery("");
-                    }}
-                    className="rounded-full bg-ink-950/5 px-3 py-1.5 text-xs font-bold text-ink-800 hover:bg-ink-950/10"
-                  >
-                    + {m.name}
-                  </button>
-                ))
+                <div className="flex flex-wrap gap-1.5">
+                  {found.shown.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        addMeal(m.id);
+                        setQuery("");
+                      }}
+                      className="rounded-full bg-ink-950/5 px-3 py-1.5 text-xs font-bold text-ink-800 hover:bg-ink-950/10"
+                    >
+                      + {m.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(found.more > 0 || found.elsewhere > 0) && (
+                <p className="text-xs text-ink-800/50">
+                  {found.more > 0 && (
+                    <>
+                      {found.more} more match{found.more === 1 ? "es" : ""} — type
+                      a bit more to narrow it down.{" "}
+                    </>
+                  )}
+                  {found.elsewhere > 0 && (
+                    <>
+                      {found.elsewhere}{" "}
+                      {found.elsewhere === 1 ? "is" : "are"} already on another
+                      card, and {found.elsewhere === 1 ? "has" : "have"} to be
+                      taken off that one first.
+                    </>
+                  )}
+                </p>
               )}
             </div>
           )}
@@ -558,6 +634,29 @@ function GroupDialog({
         >
           {draft.isActive ? "✓ Grouped on the menu" : "Off — shown as separate cards"}
         </button>
+
+        {/**
+          * The one that looks like a broken feature.
+          *
+          * The customer's menu only ever sees dishes that are ON it, so a
+          * hidden dish is silently not one of the choices. Hide one of a pair
+          * and the card is left with a single option — and a row of buttons
+          * with one button in it is not a choice, so the whole row disappears.
+          * On the menu that reads as "the flavours stopped working", with the
+          * card in HQ looking perfectly correct, which is exactly how it was
+          * reported.
+          */}
+        {chosen.length >= 2 &&
+          chosen.filter((id) => byId.get(id)?.is_public !== false).length < 2 && (
+            <p className="rounded-xl bg-gold-50 px-4 py-2.5 text-sm text-ink-800/80 ring-1 ring-gold-400/40">
+              Only{" "}
+              {chosen.filter((id) => byId.get(id)?.is_public !== false).length} of
+              these {chosen.length} dishes is shown on the menu — the rest are
+              hidden. A customer needs at least two to have anything to choose
+              between, so the buttons will not appear at all. Un-hide them on
+              the dish list below.
+            </p>
+          )}
 
         {clash && (
           <p className="rounded-xl bg-gold-50 px-4 py-2.5 text-sm text-ink-800/80 ring-1 ring-gold-400/40">

@@ -91,6 +91,26 @@ test("an axis with one value is not a choice and is not offered", () => {
   assert.deepEqual(axesOf(one), [{ name: "Size", values: ["16oz", "22oz"] }]);
 });
 
+test("hiding one of a pair takes the whole row of buttons away", () => {
+  /**
+   * Reported as "the flavours stopped working" on a card that looked correct
+   * in HQ. The customer's menu only ever loads dishes that are ON it, so a
+   * hidden dish never reaches this function — and one option left is not a
+   * choice, so the row vanishes rather than showing a single button that does
+   * nothing. Correct, and invisible, which is why the editor now warns.
+   */
+  const bothShown = [
+    v({ id: "a", sort: 0, options: { Flavors: "La (Spicy)" } }),
+    v({ id: "b", sort: 1, options: { Flavors: "Xiao La" } }),
+  ];
+  assert.deepEqual(axesOf(bothShown), [
+    { name: "Flavors", values: ["La (Spicy)", "Xiao La"] },
+  ]);
+
+  // The menu page filters hidden dishes out before this, so one arrives.
+  assert.deepEqual(axesOf([bothShown[0]]), []);
+});
+
 test("a dish with no options offers nothing to choose", () => {
   assert.deepEqual(axesOf([v({ id: "solo" })]), []);
 });

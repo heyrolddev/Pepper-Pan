@@ -7,6 +7,7 @@ import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CATEGORY_COLOURS, cleanCategories, fallbackColour } from "@/lib/categories";
 import { applyTakeoutMerge } from "@/lib/takeout-merge";
+import { applyTakeoutPurge } from "@/lib/takeout-purge";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 
 const BLOCKED_MESSAGE =
@@ -571,4 +572,38 @@ export async function addCategoryToMeals(input: {
   revalidatePath("/admin/menu");
   revalidatePath("/menu");
   return { error: null, changed };
+}
+
+/**
+ * Delete the "(T.O)" twins for good.
+ *
+ * Owner only, and a step above the merge in what it can do: the merge hid
+ * dishes, this removes them and the order lines that name them. The plan is
+ * recomputed inside `applyTakeoutPurge` rather than taken from the browser,
+ * so a stale tab cannot name a dish that has since been put back.
+ */
+export async function runTakeoutPurge(): Promise<{
+  deleted: number;
+  lines: number;
+  failed: string[];
+  error: string | null;
+}> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) {
+    return { deleted: 0, lines: 0, failed: [], error: "Only the owner can do this." };
+  }
+
+  const result = await applyTakeoutPurge();
+  if (result.deleted > 0) {
+    await createAdminClient().from("activity_log").insert({
+      category: "menu",
+      description:
+        `Deleted ${result.deleted} old take-out duplicate dish` +
+        `${result.deleted === 1 ? "" : "es"} for good` +
+        `${result.lines > 0 ? `, and ${result.lines} order line${result.lines === 1 ? "" : "s"} naming them` : ""}.`,
+      actor: viewer?.profile?.id ?? null,
+    });
+    revalidateMenu();
+  }
+  return result;
 }
