@@ -55,6 +55,7 @@ type OptionRow = {
   label: string;
   price_override: number | null;
   sort_order: number;
+  max_qty: number;
   option_meal_id: string | null;
   meals: { price: number; is_available: boolean } | null;
 };
@@ -79,7 +80,7 @@ export async function loadModifiers(
     supabase
       .from("modifier_options")
       .select(
-        "id, group_id, label, price_override, sort_order, option_meal_id, meals:option_meal_id(price, is_available)"
+        "id, group_id, label, price_override, sort_order, max_qty, option_meal_id, meals:option_meal_id(price, is_available)"
       )
       .eq("is_active", true)
       .order("sort_order"),
@@ -110,6 +111,9 @@ export async function loadModifiers(
       // and would take a perfectly sellable add-on off the menu.
       makeable: o.option_meal_id ? (makeable?.get(o.option_meal_id) ?? null) : null,
       available: o.meals?.is_available !== false,
+      // 1 unless the owner said otherwise, which is every option that
+      // existed before 0050 — a tick, exactly as it was.
+      maxQty: Math.max(1, Number(o.max_qty) || 1),
       sort: o.sort_order ?? 0,
     });
     optionsByGroup.set(o.group_id, list);

@@ -60,6 +60,7 @@ export type ModifierOptionRow = {
   label: string;
   option_meal_id: string | null;
   price_override: number | null;
+  max_qty: number;
   sort_order: number;
 };
 
@@ -131,6 +132,7 @@ const draftOf = (g: ModifierGroupRow): Draft => ({
       mealId: o.option_meal_id ?? "",
       label: o.label,
       priceOverride: o.price_override,
+      maxQty: Math.max(1, Number(o.max_qty) || 1),
     })),
   productIds: [...g.productIds],
   mealIds: [...g.mealIds],
@@ -158,11 +160,26 @@ function toneOf(g: { min_select: number; is_active: boolean }) {
  * hide inside it, and nothing about it resembles the thing being built. These
  * are the chips, with the money where the money goes.
  */
-function OptionChip({ label, price }: { label: string; price: number }) {
+function OptionChip({
+  label,
+  price,
+  maxQty,
+}: {
+  label: string;
+  price: number;
+  maxQty: number;
+}) {
   const free = price <= 0;
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-cream-50 py-1 pl-3 pr-1.5 text-xs font-bold text-ink-950 ring-1 ring-ink-950/10">
       <span className="truncate">{label}</span>
+      {/* Only where it is more than one. "×1" on every chip would be noise
+          on the setting that is almost always left alone. */}
+      {maxQty > 1 && (
+        <span className="rounded-full bg-ink-950/[0.07] px-1.5 py-0.5 text-[10px] font-black tabular-nums text-ink-800/70">
+          up to {maxQty}
+        </span>
+      )}
       <span
         className={`rounded-full px-1.5 py-0.5 text-[10px] font-black tabular-nums ${
           free ? "bg-jade-600/12 text-jade-700" : "bg-gold-400/30 text-ink-900"
@@ -235,6 +252,7 @@ export function ModifierGroups({
           mealId: o.mealId,
           label: o.label,
           priceOverride: o.priceOverride,
+          maxQty: o.maxQty,
         })),
         productIds: draft.productIds,
         mealIds: draft.mealIds,
@@ -439,6 +457,7 @@ export function ModifierGroups({
                             key={o.id}
                             label={o.label}
                             price={priceOf(o)}
+                            maxQty={Math.max(1, Number(o.max_qty) || 1)}
                           />
                         ))}
                       </div>
@@ -783,6 +802,33 @@ function Editor({
                       aria-label="What the chip says"
                       className={`${field} min-w-0 sm:flex-1`}
                     />
+
+                    {/* How many of THIS one. Not the group's "how many
+                        answers" above — extra rice can sensibly be taken
+                        twice, and "upgrade to large" cannot, so the answer
+                        belongs on the answer. */}
+                    <label className="flex shrink-0 items-center gap-2 rounded-xl bg-cream-100 px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-ink-800/55">
+                      Max
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={o.maxQty}
+                        onChange={(e) => {
+                          const next = [...draft.options];
+                          next[at] = {
+                            ...o,
+                            maxQty: Math.max(
+                              1,
+                              Math.min(20, Number(e.target.value) || 1)
+                            ),
+                          };
+                          setDraft({ ...draft, options: next });
+                        }}
+                        aria-label={`How many ${o.label || "of this"} may be taken`}
+                        className="w-14 rounded-lg border-2 border-ink-950/15 bg-cream-50 px-2 py-1 text-sm font-bold normal-case tabular-nums tracking-normal text-ink-950 outline-none focus:border-brand-600"
+                      />
+                    </label>
                     <input
                       inputMode="decimal"
                       value={o.priceOverride ?? ""}
@@ -816,7 +862,13 @@ function Editor({
                   ...draft,
                   options: [
                     ...draft.options,
-                    { key: nextKey(), mealId: "", label: "", priceOverride: null },
+                    {
+                      key: nextKey(),
+                      mealId: "",
+                      label: "",
+                      priceOverride: null,
+                      maxQty: 1,
+                    },
                   ],
                 })
               }
@@ -828,7 +880,9 @@ function Editor({
             <p className="text-[11px] leading-relaxed text-ink-800/50">
               Leave the price blank to charge whatever that dish costs — one
               price to keep up to date instead of two. Type <strong>0</strong>{" "}
-              for a drink that comes free with the combo.
+              for a drink that comes free with the combo. <strong>Max</strong>{" "}
+              is how many of that one answer a customer may take — leave it at
+              1 for a plain tick, raise it for something like extra rice.
             </p>
           </div>
         </Step>
@@ -917,6 +971,20 @@ function Editor({
                     <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-950">
                       {o.label.trim() || "(no label yet)"}
                     </span>
+                    {/* The stepper the customer will get, drawn but not
+                        wired: this panel is a picture of the dish dialog, and
+                        a working control here would be a second place to set
+                        something that is already set above. */}
+                    {o.maxQty > 1 && (
+                      <span
+                        aria-hidden
+                        className="flex shrink-0 items-center gap-0.5 rounded-full bg-ink-950/5 px-1 py-0.5 text-xs font-black text-ink-800/50"
+                      >
+                        <span className="px-1">−</span>
+                        <span className="tabular-nums text-ink-950">1</span>
+                        <span className="px-1">+</span>
+                      </span>
+                    )}
                     <span className="shrink-0 text-sm font-bold tabular-nums text-ink-800/70">
                       {o.price > 0 ? `+${peso(o.price)}` : "Free"}
                     </span>

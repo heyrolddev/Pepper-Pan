@@ -23,10 +23,15 @@ type PlaceOrderInput = {
   // `name` is the browser's copy, used only to name a sold-out dish back to
   // the same customer. Prices and availability always come from the database.
   //
-  // `optionIds` is the same principle one level down: which add-ons were
-  // ticked, and nothing about what they are called or what they cost. Both of
-  // those are re-read here — see `resolveChoice`.
-  items: { mealId: string; qty: number; name?: string; optionIds?: string[] }[];
+  // `options` is the same principle one level down: which add-ons were
+  // ticked and how many of each, and nothing about what they are called or
+  // what they cost. Both of those are re-read here — see `resolveChoice`.
+  items: {
+    mealId: string;
+    qty: number;
+    name?: string;
+    options?: { id: string; qty: number }[];
+  }[];
   /**
    * Manila wall-clock, as a `datetime-local` value ("2026-09-01T18:30").
    * Null means "as soon as you can".
@@ -150,7 +155,7 @@ export async function placeOrder(
       m.product_id,
     ])
   );
-  const wantsAddOns = input.items.some((i) => (i.optionIds ?? []).length > 0);
+  const wantsAddOns = input.items.some((i) => (i.options ?? []).length > 0);
   const addOns = wantsAddOns
     ? await loadModifiers(supabase)
     : { byMeal: new Map(), byProduct: new Map(), all: [], error: null };
@@ -161,10 +166,14 @@ export async function placeOrder(
     };
   }
 
+  /** How one cart line is told from another, including the quantities. */
+  const signature = (i: PlaceOrderInput["items"][number]) =>
+    i.mealId + "|" + (i.options ?? []).map((o) => `${o.id}:${o.qty}`).join("+");
+
   const extrasFor = new Map<string, ChosenExtra[]>();
   for (const item of input.items) {
-    const ids = item.optionIds ?? [];
-    if (ids.length === 0) continue;
+    const picks = item.options ?? [];
+    if (picks.length === 0) continue;
     const groups = groupsFor(
       item.mealId,
       productById.get(item.mealId) ?? null,
@@ -173,20 +182,20 @@ export async function placeOrder(
     );
     const { extras, problem } = resolveChoice(
       groups,
-      ids,
+      picks,
       nameById.get(item.mealId) ?? "your order"
     );
     if (problem) return { error: problem };
-    extrasFor.set(item.mealId + "|" + ids.join("+"), extras);
+    extrasFor.set(signature(item), extras);
   }
   const extrasOfItem = (i: PlaceOrderInput["items"][number]) =>
-    extrasFor.get(i.mealId + "|" + (i.optionIds ?? []).join("+")) ?? [];
+    extrasFor.get(signature(i)) ?? [];
 
   const subtotal = input.items.reduce(
     (sum, i) =>
       sum +
       (priceById.get(i.mealId)! +
-        extrasOfItem(i).reduce((n, e) => n + e.price, 0)) *
+        extrasOfItem(i).reduce((n, e) => n + e.price * e.qty, 0)) *
         i.qty,
     0
   );
@@ -374,7 +383,8 @@ export async function placeOrder(
     labelOf.set(i.mealId, nameById.get(i.mealId) ?? "an item");
     for (const e of extrasOfItem(i)) {
       if (!e.mealId) continue;
-      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + i.qty);
+      // Two extra rice on a line of three is six portions.
+      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + i.qty * e.qty);
       labelOf.set(e.mealId, e.label);
     }
   }
@@ -453,8 +463,10 @@ export async function placeOrder(
         option_id: e.optionId,
         meal_id: e.mealId,
         label: e.label,
+        // Per one, the same rule as `order_lines.price_at_sale`. The quantity
+        // multiplies it, here and in `order_requirements`.
         price_at_sale: e.price,
-        qty: 1,
+        qty: e.qty,
       }))
     );
     if (extraRows.length > 0) {

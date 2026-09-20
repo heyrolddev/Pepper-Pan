@@ -26,7 +26,10 @@ import {
   extrasTotal,
   isFull,
   optionSoldOut,
+  qtyOf,
   reconcile,
+  ruleLabel,
+  setOptionQty,
   toggleOption,
   type ChosenExtra,
   type ModifierChoice,
@@ -289,7 +292,10 @@ export function CounterTill({
         name: l.meal.name,
         qty: l.qty,
         price: l.meal.price,
-        extras: l.extras.map((e) => ({ label: e.label, price: e.price })),
+        extras: l.extras.map((e) => ({
+          label: e.qty > 1 ? `${e.label} \u00d7${e.qty}` : e.label,
+          price: e.price * e.qty,
+        })),
       })),
       total,
       dineIn,
@@ -326,7 +332,10 @@ export function CounterTill({
         name: l.meal.name,
         qty: l.qty,
         price: l.meal.price,
-        extras: l.extras.map((e) => ({ label: e.label, price: e.price })),
+        extras: l.extras.map((e) => ({
+          label: e.qty > 1 ? `${e.label} \u00d7${e.qty}` : e.label,
+          price: e.price * e.qty,
+        })),
       }));
       const result = await recordWalkInSale({
         // Ids only, the same as the website sends. Every peso on the sale is
@@ -335,7 +344,7 @@ export function CounterTill({
         lines: lines.map((l) => ({
           mealId: l.meal.id,
           qty: l.qty,
-          optionIds: l.extras.map((e) => e.optionId),
+          options: l.extras.map((e) => ({ id: e.optionId, qty: e.qty })),
         })),
         method,
         reference,
@@ -1183,7 +1192,6 @@ function AddOnSheet({
     >
       <div className="flex flex-col gap-4">
         {groups.map((group) => {
-          const picked = choice[group.id] ?? [];
           const full = isFull(group, choice);
           return (
             <fieldset
@@ -1201,51 +1209,95 @@ function AddOnSheet({
                       : "bg-ink-950/10 text-ink-800/60"
                   }`}
                 >
-                  {group.min >= 1
-                    ? group.max === 1
-                      ? "Required"
-                      : `Pick ${group.min}`
-                    : group.max === 1
-                      ? "Optional"
-                      : `Up to ${group.max}`}
+                  {ruleLabel(group)}
                 </span>
               </legend>
 
               <div className="mt-1 grid grid-cols-2 gap-2">
                 {group.options.map((option) => {
-                  const on = picked.includes(option.id);
+                  const qty = qtyOf(choice, group.id, option.id);
+                  const on = qty > 0;
                   const out = optionSoldOut(option);
                   const blocked = out || (full && !on);
+                  const countable = option.maxQty > 1 && !out;
                   return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      disabled={blocked}
-                      aria-pressed={on}
-                      onClick={() =>
-                        setTicked((t) =>
-                          toggleOption(group, reconcile(groups, t), option.id)
-                        )
-                      }
-                      className={`flex min-h-14 flex-col justify-center rounded-xl px-3 py-2 text-left transition-colors ${
-                        on
-                          ? "bg-ink-950 text-cream-50"
-                          : blocked
-                            ? "cursor-not-allowed bg-ink-950/[0.04] text-ink-800/35"
-                            : "bg-cream-50 text-ink-950 ring-1 ring-ink-950/10 hover:bg-cream-200"
-                      }`}
-                    >
-                      <span className="text-sm font-bold leading-tight">
-                        {option.label}
-                      </span>
-                      <span className="text-xs font-bold tabular-nums opacity-70">
-                        {out
-                          ? "sold out"
-                          : option.price > 0
-                            ? `+${peso(option.price, 0)}`
-                            : "free"}
-                      </span>
-                    </button>
+                    <div key={option.id} className="relative">
+                      <button
+                        type="button"
+                        disabled={blocked}
+                        aria-pressed={on}
+                        onClick={() =>
+                          setTicked((t) =>
+                            toggleOption(group, reconcile(groups, t), option.id)
+                          )
+                        }
+                        className={`flex min-h-14 w-full flex-col justify-center rounded-xl px-3 py-2 text-left transition-colors ${
+                          on
+                            ? "bg-ink-950 text-cream-50"
+                            : blocked
+                              ? "cursor-not-allowed bg-ink-950/[0.04] text-ink-800/35"
+                              : "bg-cream-50 text-ink-950 ring-1 ring-ink-950/10 hover:bg-cream-200"
+                        }`}
+                      >
+                        <span className="pr-14 text-sm font-bold leading-tight">
+                          {option.label}
+                        </span>
+                        <span className="text-xs font-bold tabular-nums opacity-70">
+                          {out
+                            ? "sold out"
+                            : option.price > 0
+                              ? `+${peso(option.price * Math.max(1, qty), 0)}`
+                              : "free"}
+                          {countable && !on && ` · up to ${option.maxQty}`}
+                        </span>
+                      </button>
+
+                      {/* On top of the tile rather than inside it — a button
+                          cannot contain a button, and at a counter the minus
+                          is tapped as often as the tile itself. */}
+                      {countable && on && (
+                        <span className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-cream-50 p-0.5 ring-1 ring-ink-950/10">
+                          <button
+                            type="button"
+                            aria-label={`One fewer ${option.label}`}
+                            onClick={() =>
+                              setTicked((t) =>
+                                setOptionQty(
+                                  group,
+                                  reconcile(groups, t),
+                                  option.id,
+                                  qty - 1
+                                )
+                              )
+                            }
+                            className="grid h-7 w-7 place-items-center rounded-full font-black text-ink-950 hover:bg-ink-950/10"
+                          >
+                            −
+                          </button>
+                          <span className="w-4 text-center font-display text-sm font-black tabular-nums text-ink-950">
+                            {qty}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={qty >= option.maxQty}
+                            aria-label={`One more ${option.label}`}
+                            onClick={() =>
+                              setTicked((t) =>
+                                setOptionQty(
+                                  group,
+                                  reconcile(groups, t),
+                                  option.id,
+                                  qty + 1
+                                )
+                              )
+                            }
+                            className="grid h-7 w-7 place-items-center rounded-full font-black text-ink-950 hover:bg-ink-950/10 disabled:opacity-30"
+                          >
+                            +
+                          </button>
+                        </span>
+                      )}
+                    </div>
                   );
                 })}
               </div>

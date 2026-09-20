@@ -84,7 +84,7 @@ export default async function AdminMenuPage() {
       .order("name"),
     supabase
       .from("modifier_options")
-      .select("id, group_id, label, option_meal_id, price_override, sort_order")
+      .select("id, group_id, label, option_meal_id, price_override, max_qty, sort_order")
       .eq("is_active", true)
       .order("sort_order"),
     supabase.from("meal_modifier_groups").select("meal_id, group_id"),
@@ -141,6 +141,7 @@ export default async function AdminMenuPage() {
     label: string;
     option_meal_id: string | null;
     price_override: number | null;
+    max_qty: number;
     sort_order: number;
   };
   const optionRows = (modOptionRows ?? []) as OptRow[];

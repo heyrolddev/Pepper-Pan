@@ -17,11 +17,15 @@ import { groupsFor, resolveChoice, type ChosenExtra } from "@/lib/modifiers";
 /**
  * One line rung up.
  *
- * `optionIds` is what was ticked, and nothing else — no labels, no prices.
+ * `options` is what was ticked and how many of each — no labels, no prices.
  * The till runs in a browser like any other page, so every peso on the sale
  * is re-read here from the menu. See `resolveChoice`.
  */
-export type CounterLine = { mealId: string; qty: number; optionIds?: string[] };
+export type CounterLine = {
+  mealId: string;
+  qty: number;
+  options?: { id: string; qty: number }[];
+};
 
 export type CounterResult =
   | { error: string; orderId?: undefined; total?: undefined; ticket?: undefined }
@@ -106,7 +110,8 @@ export async function recordWalkInSale(input: {
     labelOf.set(l.mealId, nameById.get(l.mealId) ?? "an item");
     for (const e of extrasPerLine[at]) {
       if (!e.mealId) continue;
-      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + l.qty);
+      // Two extra rice on a line of three is six portions.
+      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + l.qty * e.qty);
       labelOf.set(e.mealId, e.label);
     }
   });
@@ -136,7 +141,7 @@ export async function recordWalkInSale(input: {
       m.product_id,
     ])
   );
-  const wantsAddOns = lines.some((l) => (l.optionIds ?? []).length > 0);
+  const wantsAddOns = lines.some((l) => (l.options ?? []).length > 0);
   const addOns = wantsAddOns
     ? await loadModifiers(supabase)
     : { byMeal: new Map(), byProduct: new Map(), all: [], error: null };
@@ -146,8 +151,8 @@ export async function recordWalkInSale(input: {
 
   const extrasPerLine: ChosenExtra[][] = [];
   for (const l of lines) {
-    const ids = l.optionIds ?? [];
-    if (ids.length === 0) {
+    const picks = l.options ?? [];
+    if (picks.length === 0) {
       extrasPerLine.push([]);
       continue;
     }
@@ -158,14 +163,14 @@ export async function recordWalkInSale(input: {
         addOns.byMeal,
         addOns.byProduct
       ),
-      ids,
+      picks,
       nameById.get(l.mealId) ?? "that dish"
     );
     if (problem) return { error: problem };
     extrasPerLine.push(extras);
   }
   const extraTotal = (at: number) =>
-    extrasPerLine[at].reduce((n, e) => n + e.price, 0);
+    extrasPerLine[at].reduce((n, e) => n + e.price * e.qty, 0);
 
   const subtotal = lines.reduce(
     (sum, l, at) => sum + (priceById.get(l.mealId)! + extraTotal(at)) * l.qty,
@@ -256,7 +261,7 @@ export async function recordWalkInSale(input: {
             meal_id: e.mealId,
             label: e.label,
             price_at_sale: e.price,
-            qty: 1,
+            qty: e.qty,
           }))
         )
       : [];

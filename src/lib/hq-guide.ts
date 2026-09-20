@@ -426,6 +426,7 @@ export const TOPICS: GuideTopic[] = [
     question: "How do I offer extra rice, or let them pick a drink?",
     triggers: [
       "add on", "add ons", "addon", "extra rice", "dagdag kanin", "sobrang kanin",
+      "dalawang kanin", "ilan ang extra", "how many extra rice", "quantity add on",
       "choose your drink", "pick a drink", "drink option", "combo", "combo meal",
       "make it a meal", "upgrade", "sides", "extras", "mamili ng inumin",
       "parang jollibee", "parang mcdo", "value meal",
@@ -437,6 +438,7 @@ export const TOPICS: GuideTopic[] = [
       "So: make \"Extra rice\" as a dish, give it its recipe and its price, and untick Show on menu so it does not get a card of its own. Then make the group, pick that dish as an option, and attach the group to the menu cards that should offer it.\n\n" +
       "Because the option is a dish, everything downstream already works. It costs what that dish costs, it takes the rice off the shelf when it sells, it goes sold out when the rice runs out, and the profit on the order counts it. An add-on that was just a name and a price would be money coming in with no cost against it, and every combo would look more profitable than it is.\n\n" +
       "Leave the option's price blank to charge whatever the dish costs — then you only change rice in one place. Type 0 for a drink that comes free with the combo.\n\n" +
+      "MAX is how many of that one answer a customer may take. Leave it at 1 and the option is a plain tick; raise it and they get a − 1 + stepper, so somebody who wants two extra rice orders two instead of two whole rice meals. Two portions of rice come off the shelf and two are costed — the counting was already there, it just had nothing to count.\n\n" +
       "Tick \"They must answer\" for a combo where a drink has to be chosen; leave it off for an optional extra. \"How many can they pick\" turns one group into a checklist.\n\n" +
       "Attach to a MENU CARD, not to each dish, when all the variants take the same thing — four Solo Ji Pai and one \"Choose your drink\". Adding a seventh drink is then one edit instead of four.\n\n" +
       "It shows the same way on the website and on the Counter, and it prints on the receipt under the dish with its own price, so the paper adds up.",

@@ -24,7 +24,10 @@ import {
   extrasTotal,
   isFull,
   optionSoldOut,
+  qtyOf,
   reconcile,
+  ruleLabel,
+  setOptionQty,
   toggleOption,
   type ModifierChoice,
   type ModifierGroup,
@@ -288,10 +291,15 @@ export function ProductDialog({
               <AddOnGroup
                 key={group.id}
                 group={group}
-                chosen={choice[group.id] ?? []}
+                choice={choice}
                 full={isFull(group, choice)}
                 onToggle={(optionId) =>
                   setTicked((t) => toggleOption(group, reconcile(groups, t), optionId))
+                }
+                onQty={(optionId, qty) =>
+                  setTicked((t) =>
+                    setOptionQty(group, reconcile(groups, t), optionId, qty)
+                  )
                 }
               />
             ))}
@@ -398,24 +406,18 @@ export function ProductDialog({
  */
 function AddOnGroup({
   group,
-  chosen,
+  choice,
   full,
   onToggle,
+  onQty,
 }: {
   group: ModifierGroup;
-  chosen: string[];
+  choice: ModifierChoice;
   full: boolean;
   onToggle: (optionId: string) => void;
+  onQty: (optionId: string, qty: number) => void;
 }) {
   const single = group.max === 1;
-  const rule =
-    group.min >= 1
-      ? single
-        ? "Required"
-        : `Pick ${group.min}`
-      : single
-        ? "Optional"
-        : `Up to ${group.max}`;
 
   return (
     <fieldset className="min-w-0 rounded-2xl bg-cream-100 p-4 ring-1 ring-ink-950/10">
@@ -430,7 +432,7 @@ function AddOnGroup({
               : "bg-ink-950/10 text-ink-800/60"
           }`}
         >
-          {rule}
+          {ruleLabel(group)}
         </span>
       </legend>
 
@@ -440,54 +442,99 @@ function AddOnGroup({
 
       <div className="mt-1 flex flex-col">
         {group.options.map((option) => {
-          const on = chosen.includes(option.id);
+          const qty = qtyOf(choice, group.id, option.id);
+          const on = qty > 0;
           const out = optionSoldOut(option);
           // Full only blocks the ones not already ticked — otherwise the
           // customer cannot undo their own second choice.
           const blocked = out || (full && !on);
+          const countable = option.maxQty > 1 && !out;
 
           return (
-            <button
+            <div
               key={option.id}
-              type="button"
-              role={single ? "radio" : "checkbox"}
-              aria-checked={on}
-              disabled={blocked}
-              onClick={() => onToggle(option.id)}
-              className={`flex items-center gap-3 rounded-xl px-2 py-2.5 text-left transition-colors ${
-                blocked
-                  ? "cursor-not-allowed text-ink-800/35"
-                  : "hover:bg-cream-50"
-              }`}
+              className="flex items-center gap-1 rounded-xl px-2 py-1 transition-colors has-[button:hover]:bg-cream-50"
             >
-              <span
-                aria-hidden
-                className={`grid h-5 w-5 shrink-0 place-items-center border-2 text-[11px] font-black ${
-                  single ? "rounded-full" : "rounded-md"
-                } ${
-                  on
-                    ? "border-ink-950 bg-ink-950 text-cream-50"
-                    : "border-ink-950/25 bg-cream-50"
+              <button
+                type="button"
+                role={single ? "radio" : "checkbox"}
+                aria-checked={on}
+                disabled={blocked}
+                onClick={() => onToggle(option.id)}
+                className={`flex min-w-0 flex-1 items-center gap-3 py-1.5 text-left ${
+                  blocked ? "cursor-not-allowed text-ink-800/35" : ""
                 }`}
               >
-                {on ? "✓" : ""}
-              </span>
+                <span
+                  aria-hidden
+                  className={`grid h-5 w-5 shrink-0 place-items-center border-2 text-[11px] font-black ${
+                    single ? "rounded-full" : "rounded-md"
+                  } ${
+                    on
+                      ? "border-ink-950 bg-ink-950 text-cream-50"
+                      : "border-ink-950/25 bg-cream-50"
+                  }`}
+                >
+                  {on ? "✓" : ""}
+                </span>
 
-              <span className="min-w-0 flex-1 text-sm font-bold leading-snug">
-                {option.label}
-                {out && (
-                  <span className="ml-1.5 text-[10px] font-black uppercase tracking-wide">
-                    · sold out
+                <span className="min-w-0 flex-1 text-sm font-bold leading-snug">
+                  {option.label}
+                  {out && (
+                    <span className="ml-1.5 text-[10px] font-black uppercase tracking-wide">
+                      · sold out
+                    </span>
+                  )}
+                  {/* Said once, on the row it applies to. A customer who
+                      cannot see that seconds are allowed never asks for one. */}
+                  {countable && !on && (
+                    <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-800/40">
+                      up to {option.maxQty}
+                    </span>
+                  )}
+                </span>
+              </button>
+
+              {/* The stepper appears once the option is on, and only where
+                  more than one is allowed. Shown before it is ticked it would
+                  be a control that does nothing; hidden afterwards, the
+                  customer has no way to ask for the second. */}
+              {countable && on && (
+                <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-ink-950/5 p-0.5">
+                  <Step
+                    label={`One fewer ${option.label}`}
+                    onClick={() => onQty(option.id, qty - 1)}
+                  >
+                    −
+                  </Step>
+                  <span
+                    aria-live="polite"
+                    className="w-5 text-center font-display text-sm font-black tabular-nums text-ink-950"
+                  >
+                    {qty}
                   </span>
-                )}
-              </span>
+                  <Step
+                    label={`One more ${option.label}`}
+                    onClick={() => onQty(option.id, qty + 1)}
+                    disabled={qty >= option.maxQty}
+                  >
+                    +
+                  </Step>
+                </span>
+              )}
 
               {/* Free is written as free. A blank space next to a ₱15 row
                   reads as a price that failed to load. */}
-              <span className="shrink-0 text-sm font-bold tabular-nums text-ink-800/70">
-                {option.price > 0 ? `+₱${option.price.toFixed(2)}` : "Free"}
+              <span
+                className={`shrink-0 pl-1 text-sm font-bold tabular-nums ${
+                  blocked ? "text-ink-800/35" : "text-ink-800/70"
+                }`}
+              >
+                {option.price > 0
+                  ? `+₱${(option.price * Math.max(1, qty)).toFixed(2)}`
+                  : "Free"}
               </span>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -498,18 +545,21 @@ function AddOnGroup({
 function Step({
   label,
   onClick,
+  disabled = false,
   children,
 }: {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
-      className="grid h-9 w-9 place-items-center rounded-full bg-cream-50 text-lg font-black text-ink-950 transition-colors hover:bg-cream-100"
+      className="grid h-8 w-8 place-items-center rounded-full bg-cream-50 text-base font-black text-ink-950 transition-colors hover:bg-cream-100 disabled:cursor-not-allowed disabled:opacity-35 sm:h-9 sm:w-9 sm:text-lg"
     >
       {children}
     </button>

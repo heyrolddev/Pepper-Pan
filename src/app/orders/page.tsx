@@ -23,7 +23,7 @@ type OrderLine = {
   qty: number;
   price_at_sale: number;
   meals: { name: string } | null;
-  order_line_extras: { label: string; price_at_sale: number }[] | null;
+  order_line_extras: { label: string; price_at_sale: number; qty: number }[] | null;
 };
 
 type Order = {
@@ -90,7 +90,7 @@ export default async function OrdersPage() {
   const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, scheduled_for, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale))"
+      "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, scheduled_for, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale, qty))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
@@ -181,10 +181,13 @@ export default async function OrdersPage() {
       // Read from the order, not from the menu. A customer looking at last
       // month's receipt should see what they were charged for, even if the
       // add-on has since been renamed or taken off.
-      extras: (l.order_line_extras ?? []).map((e) => ({
-        label: e.label,
-        price: Number(e.price_at_sale) || 0,
-      })),
+      extras: (l.order_line_extras ?? []).map((e) => {
+        const qty = Math.max(1, Number(e.qty) || 1);
+        return {
+          label: qty > 1 ? `${e.label} \u00d7${qty}` : e.label,
+          price: (Number(e.price_at_sale) || 0) * qty,
+        };
+      }),
     })),
   }));
 
