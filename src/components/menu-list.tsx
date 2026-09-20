@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
-import { useCart } from "@/lib/cart-context";
 import { Stars } from "@/components/stars";
 import { LOW_STOCK_SERVINGS } from "@/lib/costing";
 import { ProductDialog } from "@/components/product-dialog";
@@ -31,9 +30,19 @@ import {
  * open from the day this ships rather than only the handful that were tidied
  * up first.
  *
- * Add stays on the card for a group of one, because for most of this menu
- * there is nothing to choose and making somebody open a dialog to buy one
- * bowl of noodles is a tap charged for nothing.
+ * Add opens that door too, rather than dropping one straight in the basket.
+ *
+ * It used to add directly whenever there was nothing to choose, on the
+ * reasoning that opening a dialog to buy one bowl of noodles is a tap charged
+ * for nothing. That reasoning only holds for ONE bowl. Somebody ordering four
+ * had to tap four times and watch the same card flash "Added ✓" four times
+ * with no running count anywhere near it, where the dialog has a stepper and
+ * asks once. The shop's own owner put it plainly: it is easier for a customer
+ * who is ordering a lot.
+ *
+ * So every card behaves the same way now, which is worth something on its
+ * own — a grid where some buttons add and others open is a grid where you
+ * find out which by pressing it.
  */
 
 function initialOf(name: string) {
@@ -51,9 +60,6 @@ function ProductCard({
   staff: boolean;
   onOpen: () => void;
 }) {
-  const { addItem } = useCart();
-  const [added, setAdded] = useState(false);
-
   const only = product.variants.length === 1 ? product.variants[0] : null;
   const soldOut = product.soldOut;
   // Only ever shown for a card with one dish behind it. "Only 2 left" over a
@@ -66,14 +72,6 @@ function ProductCard({
     only.makeable !== undefined &&
     only.makeable <= LOW_STOCK_SERVINGS;
 
-  function handleAdd(e: React.MouseEvent) {
-    // The card itself is the door. Without this, adding also opens it.
-    e.stopPropagation();
-    if (soldOut || !only) return;
-    addItem({ mealId: only.id, name: only.name, price: Number(only.price) });
-    setAdded(true);
-    setTimeout(() => setAdded(false), 1200);
-  }
 
   return (
     <motion.li
@@ -202,17 +200,27 @@ function ProductCard({
               only fill a cart that leads to a refusal. */}
           {!staff && (
             <button
-              onClick={only ? handleAdd : (e) => { e.stopPropagation(); onOpen(); }}
+              // `stopPropagation` is still needed even though both the card
+              // and the button now open the same dialog: without it the click
+              // runs twice, and the second one lands on a card that is
+              // already behind an overlay.
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
+              }}
               disabled={soldOut}
+              // Says what it does, not what it opens. "Add +" is the outcome
+              // the customer is after and the dialog is one step on the way;
+              // labelling it "Choose" or "See" would describe the software's
+              // route rather than their errand.
+              aria-label={`Add ${product.name} — opens the dish`}
               className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold transition-all sm:px-4 sm:py-2 sm:text-sm ${
                 soldOut
                   ? "cursor-not-allowed bg-ink-950/10 text-ink-800/40"
-                  : added
-                    ? "bg-jade-600 text-cream-50"
-                    : "bg-ink-950 text-cream-50 hover:bg-brand-600"
+                  : "bg-ink-950 text-cream-50 hover:bg-brand-600"
               }`}
             >
-              {soldOut ? "Sold out" : added ? "Added ✓" : only ? "Add +" : "Choose"}
+              {soldOut ? "Sold out" : "Add +"}
             </button>
           )}
         </div>

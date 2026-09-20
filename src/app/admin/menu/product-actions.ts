@@ -70,8 +70,29 @@ export async function saveProductGroup(input: {
   };
 
   if (id) {
-    const { error } = await db.from("menu_products").update(row).eq("id", id);
+    /**
+     * `.select("id")`, and the row count checked, because an UPDATE that
+     * matches nothing is not an error in PostgREST — it succeeds, returns no
+     * rows, and reports `error: null`.
+     *
+     * Without this the rename path cannot fail visibly: the dialog closes,
+     * the activity log says the card was updated, and the menu goes on
+     * showing the old name with nothing anywhere saying why. That is the
+     * exact shape of the report this fixes, and the exact trap
+     * `setMealAvailability` already guards against with the same two lines.
+     */
+    const { data, error } = await db
+      .from("menu_products")
+      .update(row)
+      .eq("id", id)
+      .select("id");
     if (error) return { error: error.message };
+    if (!data || data.length === 0) {
+      return {
+        error:
+          "That menu card no longer exists — it may have been ungrouped in another tab. Close this and take another look at the list.",
+      };
+    }
   } else {
     const { data, error } = await db
       .from("menu_products")
@@ -113,15 +134,22 @@ export async function saveProductGroup(input: {
   }
 
   for (const [i, m] of input.members.entries()) {
-    const { error } = await db
+    // Same reason as the card itself: a dish that has been deleted since the
+    // dialog was opened would silently not be attached, and the card would
+    // come back with a size missing and no explanation.
+    const { data, error } = await db
       .from("meals")
       .update({
         product_id: id,
         options: cleanOptions(m.options),
         variant_sort: i,
       })
-      .eq("id", m.mealId);
+      .eq("id", m.mealId)
+      .select("id");
     if (error) return { error: error.message };
+    if (!data || data.length === 0) {
+      return { error: "One of those dishes no longer exists. Reload the page and try again." };
+    }
   }
 
   await db.from("activity_log").insert({

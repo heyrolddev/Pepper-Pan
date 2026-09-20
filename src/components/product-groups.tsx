@@ -187,6 +187,11 @@ export function ProductGroups({
           draft={draft}
           setDraft={setDraft}
           meals={meals}
+          // Every OTHER card's name, so the dialog can say when this one is
+          // about to become a second card with the same name on the menu.
+          otherNames={groups
+            .filter((g) => g.id !== draft.id)
+            .map((g) => ({ id: g.id, name: g.name }))}
           // A dish can only be on one card. Its own group's members stay
           // pickable so editing does not have to start from nothing.
           takenBy={inAGroup}
@@ -201,12 +206,14 @@ function GroupDialog({
   draft,
   setDraft,
   meals,
+  otherNames,
   takenBy,
   onClose,
 }: {
   draft: Draft;
   setDraft: (d: Draft | null) => void;
   meals: AdminMeal[];
+  otherNames: { id: string; name: string }[];
   takenBy: Set<string>;
   onClose: () => void;
 }) {
@@ -302,6 +309,22 @@ function GroupDialog({
     );
     setDraft({ ...draft, axes, values });
   }
+
+  /**
+   * Another card already called this.
+   *
+   * Not blocked, because two cards with one name is legal and might even be
+   * deliberate — but it is almost never what happened. What happened is the
+   * owner opened the wrong card and typed over its name, and then could not
+   * find the old one on the menu, because it is now sitting next to an
+   * identical twin. That was reported as "renaming breaks it": nothing broke,
+   * the card just stopped being findable by the name it used to have.
+   *
+   * Case- and space-insensitive, since "Pork Rice" and "pork  rice" are the
+   * same name to everyone except a string comparison.
+   */
+  const tidy = (x: string) => x.trim().replace(/\s+/g, " ").toLowerCase();
+  const clash = otherNames.find((g) => tidy(g.name) === tidy(draft.name) && tidy(draft.name));
 
   const missing = chosen.filter((id) =>
     draft.axes.some((a) => a.trim() && !(draft.values[id]?.[a.trim()] ?? "").trim())
@@ -535,6 +558,15 @@ function GroupDialog({
         >
           {draft.isActive ? "✓ Grouped on the menu" : "Off — shown as separate cards"}
         </button>
+
+        {clash && (
+          <p className="rounded-xl bg-gold-50 px-4 py-2.5 text-sm text-ink-800/80 ring-1 ring-gold-400/40">
+            Another menu card is already called{" "}
+            <strong>“{clash.name}”</strong>. Save this and the menu shows two
+            cards with the same name, which is usually a sign the wrong card
+            got opened — check the dishes listed above are the ones you meant.
+          </p>
+        )}
 
         {missing.length > 0 && chosen.length >= 2 && (
           <p className="rounded-xl bg-gold-50 px-4 py-2.5 text-sm text-ink-800/80 ring-1 ring-gold-400/40">
