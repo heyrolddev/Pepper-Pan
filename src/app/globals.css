@@ -736,3 +736,38 @@ input[type="number"]::-webkit-inner-spin-button {
   white-space: pre;
   tab-size: 2;
 }
+
+/* ------------------------------------------------------------------ *
+ * The menu grid's entrance, in CSS
+ *
+ * Every card used to be a motion component with `layout`, an `AnimatePresence`
+ * around the grid in `popLayout` mode, and a `whileHover`. On a 72-dish menu
+ * that is 72 spring simulations and, on any change of filter, a full
+ * measure-every-card-before-and-after layout pass — which is exactly the work
+ * that shows up as a grid that stutters when you tap a category.
+ *
+ * The same fade-and-rise costs nothing here: `opacity` and `transform` are
+ * composited, and `both` holds the card at the start of the animation so a
+ * staggered one is never visible before its turn. The stagger is an
+ * `animation-delay` set per card rather than a delay negotiated in JavaScript.
+ * ------------------------------------------------------------------ */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.card-in {
+  animation: card-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Shown, not animated. `both` would otherwise hold it at opacity 0. */
+  .card-in {
+    animation: none;
+  }
+}

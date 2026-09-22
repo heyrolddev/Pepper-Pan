@@ -5,10 +5,12 @@ import { AnnouncementMedia, hasMedia } from "@/components/announcement-media";
 import { getPublicFeed } from "@/lib/announcements-server";
 import { shortDate, windowText } from "@/lib/announcement-format";
 import type { Announcement } from "@/lib/announcements";
+import { canonical } from "@/lib/site";
 
 export const metadata = {
   title: "News & promos",
   description: "What's running at the stall right now, and what's new.",
+  alternates: canonical("news"),
 };
 
 // Same reason as the homepage: a promo whose window closes tonight has to come

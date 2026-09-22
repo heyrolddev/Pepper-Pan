@@ -40,11 +40,23 @@ export const metadata: Metadata = {
     template: `%s · ${SHOP.name}`,
   },
   description: SHOP.description,
-  // Every public page resolves to one address. Without this a search engine
-  // treats the Vercel preview URL, the bare domain and the www one as three
-  // different sites competing with each other, and splits the ranking of each
-  // page between them.
-  alternates: { canonical: "/" },
+  /**
+   * NO CANONICAL HERE. It used to say `{ canonical: "/" }`, and that was the
+   * most expensive line in this file.
+   *
+   * Metadata in a Next layout is INHERITED by every page under it that does
+   * not override the same key. Only /menu set its own — so /reviews, /terms,
+   * /news and every single promo post shipped
+   * `<link rel="canonical" href="https://…/">`, which tells a search engine
+   * "this page is a duplicate of the homepage, index that instead". The shop
+   * was asking Google to drop its own reviews page and every promo from the
+   * index, while `sitemap.ts` was busy submitting them all for crawling. Two
+   * files, directly contradicting each other, with nothing on any screen to
+   * say so.
+   *
+   * Each public page names its own now — see `canonical()` in src/lib/site.ts
+   * — and the homepage's lives on the homepage.
+   */
   // Search engines have not used this tag for ranking in over a decade. It is
   // kept because some Philippine directory and aggregator sites still read it
   // when they scrape a listing — that is its whole remaining job, so the

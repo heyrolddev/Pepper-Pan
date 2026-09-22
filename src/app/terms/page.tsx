@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
-import { SHOP } from "@/lib/site";
+import { canonical, SHOP } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Terms & conditions",
   description:
     "How ordering, paying, pickup, delivery and cancellations work at Pepper Pan.",
+  alternates: canonical("terms"),
 };
 
 /**

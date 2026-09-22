@@ -99,3 +99,21 @@ export function siteUrl(): string {
 
   return "http://localhost:3000";
 }
+
+/**
+ * The one address a page wants to be found at.
+ *
+ * Every public page names its own, and that is the whole point: metadata in a
+ * Next layout is inherited, so a single canonical in the root layout silently
+ * became every page's canonical — and told a search engine that the reviews,
+ * the terms and every promo post were duplicates of the homepage.
+ *
+ * A helper rather than a string per page because the mistake it prevents is
+ * invisible: a canonical typed by hand can be subtly wrong — a trailing
+ * slash, a missing one, the preview domain — and nothing anywhere renders
+ * differently when it is.
+ */
+export function canonical(path = "/"): { canonical: string } {
+  const clean = path === "/" ? "" : `/${path.replace(/^\/+|\/+$/g, "")}`;
+  return { canonical: `${siteUrl()}${clean}` };
+}

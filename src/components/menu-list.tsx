@@ -74,13 +74,23 @@ function ProductCard({
 
 
   return (
-    <motion.li
-      layout
-      initial={{ opacity: 0, y: 22 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96 }}
-      transition={{ duration: 0.35, delay: Math.min(index, 8) * 0.04 }}
-      whileHover={{ y: -6 }}
+    /**
+     * A plain `li` with a CSS entrance, where this was a motion component
+     * with `layout`, an exit animation and a `whileHover`.
+     *
+     * Seventy-two dishes meant seventy-two spring simulations on the page at
+     * once, and `layout` inside an `AnimatePresence` meant every tap on a
+     * category filter measured every card's box before and after and animated
+     * the difference. That is the most expensive possible way to fade a
+     * photograph in, and it is paid on the one interaction the menu exists
+     * for.
+     *
+     * The stagger is an `animation-delay`, capped so the ninth card onwards
+     * all arrive together — a customer should never be waiting on a queue of
+     * animations to see the food.
+     */
+    <li
+      style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
       // `relative` matters: the sold-out badge is absolutely positioned, and
       // without a positioned ancestor it escapes to the top-left of the page
       // — which it did, landing on the logo. It only looked right on some
@@ -99,7 +109,9 @@ function ProductCard({
         }
       }}
       aria-label={`${product.name} — see details`}
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl bg-white text-left ring-1 ring-ink-950/[0.08] transition-shadow hover:shadow-xl hover:shadow-ink-950/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+      // The lift is a CSS transform now: composited, off the main thread, and
+      // indistinguishable from the spring it replaces.
+      className="card-in group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl bg-white text-left ring-1 ring-ink-950/[0.08] transition-[transform,box-shadow] duration-300 hover:-translate-y-1.5 hover:shadow-xl hover:shadow-ink-950/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
     >
       {/* Square, to match how the food is actually photographed: a round dish
           shot from above fills a square and gets trimmed by anything else. The
@@ -245,7 +257,7 @@ function ProductCard({
           )}
         </div>
       </div>
-    </motion.li>
+    </li>
   );
 }
 
@@ -534,17 +546,18 @@ export function MenuList({
               hasFilters ? "" : "lg:grid-cols-4"
             }`}
           >
-            <AnimatePresence mode="popLayout">
-              {filtered.map((product, i) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  index={i}
-                  staff={staff}
-                  onOpen={() => setOpen(product.id)}
-                />
-              ))}
-            </AnimatePresence>
+            {/* No AnimatePresence. An exit animation on a filtered grid is
+                what forces the expensive layout path — and nobody has ever
+                needed to watch the dishes they filtered OUT leave. */}
+            {filtered.map((product, i) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                index={i}
+                staff={staff}
+                onOpen={() => setOpen(product.id)}
+              />
+            ))}
           </ul>
         )}
       </div>

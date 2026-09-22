@@ -34,6 +34,13 @@ import { getSchedule } from "@/lib/hours-server";
 import { DAY_NAMES, formatClock } from "@/lib/hours";
 import { isConfigured } from "@/lib/auth";
 import { ShopSchema } from "@/components/shop-schema";
+import { canonical } from "@/lib/site";
+
+/**
+ * The homepage's own canonical, which used to live in the root layout and be
+ * inherited by every page in the shop. See the note there.
+ */
+export const metadata = { alternates: canonical("/") };
 
 const ADDRESS =
   "In front of Palengkeni (New Apalit, Pampanga Public Market), beside Osave!, Apalit, Philippines";
