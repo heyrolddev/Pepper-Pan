@@ -4,6 +4,7 @@ import { AnnouncementMedia, hasMedia } from "@/components/announcement-media";
 import { Chili, NoodleBowl } from "@/components/spot-art";
 import { getAnnouncement } from "@/lib/announcements-server";
 import { longDate, windowText } from "@/lib/announcement-format";
+import { canonical } from "@/lib/site";
 
 // The window is checked by the database on every read, so the page has to be
 // re-fetched for a finished promo to start 404ing.
@@ -22,6 +23,7 @@ export async function generateMetadata({ params }: PageProps<"/news/[id]">) {
   return {
     title: `${row.title} · Pepper Pan`,
     description: row.body ?? "From the stall at Pepper Pan.",
+    alternates: canonical(`news/${row.id}`),
     openGraph: {
       title: row.title,
       description: row.body ?? undefined,

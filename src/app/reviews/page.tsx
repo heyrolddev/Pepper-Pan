@@ -4,10 +4,12 @@ import { Stars } from "@/components/stars";
 import { ReviewList } from "@/components/review-list";
 import { getPublicReviews } from "@/lib/reviews-server";
 import { isConfigured } from "@/lib/auth";
+import { canonical } from "@/lib/site";
 
 export const metadata = {
   title: "Reviews",
   description: "What our customers say about Pepper Pan.",
+  alternates: canonical("reviews"),
 };
 
 export default async function ReviewsPage() {

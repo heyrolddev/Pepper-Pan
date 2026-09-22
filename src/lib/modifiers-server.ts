@@ -65,11 +65,18 @@ export async function loadModifiers(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any, any, any>,
   /**
-   * Servings the shelf can still make, per dish — `loadAvailability()`. Passed
-   * in rather than fetched, because every caller already has it and computing
-   * it twice on one page load is the whole stock picture twice.
+   * Servings the shelf can still make, per dish — `loadAvailability()`.
+   *
+   * Passed in rather than fetched, because every caller already has it and
+   * computing it twice on one page load is the whole stock picture twice.
+   *
+   * A PROMISE is accepted, and that is the point: the stock picture is four
+   * more tables, and awaiting it before calling this made two independent
+   * reads into a queue. Handed the un-awaited promise, both sets of queries
+   * are in flight at once and this waits for it only at the moment it has
+   * something to do with it.
    */
-  makeable?: Map<string, number>
+  makeable?: Map<string, number> | Promise<Map<string, number>>
 ): Promise<ModifierBook> {
   const [groups, options, mealAttach, productAttach] = await Promise.all([
     supabase
@@ -99,6 +106,9 @@ export async function loadModifiers(
     return { ...EMPTY, error: failure.message };
   }
 
+  // Only now, with the add-on queries already answered.
+  const stock = await makeable;
+
   const optionsByGroup = new Map<string, ModifierOption[]>();
   for (const o of (options.data ?? []) as unknown as OptionRow[]) {
     const list = optionsByGroup.get(o.group_id) ?? [];
@@ -109,7 +119,7 @@ export async function loadModifiers(
       price: optionPrice(o.price_override, o.meals?.price ?? null),
       // Null, not zero, when there is no recipe: zero means "can't make any"
       // and would take a perfectly sellable add-on off the menu.
-      makeable: o.option_meal_id ? (makeable?.get(o.option_meal_id) ?? null) : null,
+      makeable: o.option_meal_id ? (stock?.get(o.option_meal_id) ?? null) : null,
       available: o.meals?.is_available !== false,
       // 1 unless the owner said otherwise, which is every option that
       // existed before 0050 — a tick, exactly as it was.
