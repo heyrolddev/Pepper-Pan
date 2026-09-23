@@ -32,6 +32,10 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
     // always meant and the only one that cannot cost a fortnight of typing.
     inventoryMode: "counts",
     money: false,
+    // Same reasoning as the inventory default: the gentler of the two, and
+    // the one that leaves nothing the owner has to type again.
+    moneyMode: "records",
+    history: false,
   });
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -39,8 +43,11 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string[] | null>(null);
 
+  /** The tick boxes, as opposed to the two "how far does it go" choices. */
+  type ToggleKey = Exclude<keyof ResetScope, "inventoryMode" | "moneyMode">;
+
   const ITEMS: {
-    key: Exclude<keyof ResetScope, "inventoryMode">;
+    key: ToggleKey;
     label: string;
     detail: string;
     count: number;
@@ -81,8 +88,15 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
       key: "money",
       label: "Money records",
       detail:
-        "The cash ledger, monthly bills, assets and utang. Your payment settings and GCash details are not touched.",
+        "The cash ledger, monthly bills, assets, customer utang, supplier utang, running costs and marketing spend. Your payment settings and GCash details are not touched \u2014 and neither are your suppliers, only what they were owed.",
       count: counts.cashEntries,
+    },
+    {
+      key: "history",
+      label: "Activity log and shifts",
+      detail:
+        "Who did what, and what each shift took. Needs orders ticked as well, since orders point at the shifts that rang them up.",
+      count: counts.history,
     },
   ];
 
@@ -156,6 +170,56 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
                 answered. Asked here rather than as a seventh checkbox because
                 it is not a seventh thing to clear — it is how far the sixth
                 one goes, and the two answers are a fortnight of typing apart. */}
+            {item.key === "money" && scope.money && (
+              <div className="ml-4 mt-2 flex flex-col gap-2 border-l-2 border-brand-600/25 pl-4">
+                {(
+                  [
+                    {
+                      mode: "records" as const,
+                      label: "Just the records",
+                      detail:
+                        "Every entry in the books. What you typed as your opening cash, GCash and bank balances stays.",
+                    },
+                    {
+                      mode: "everything" as const,
+                      label: "The opening balances too",
+                      detail:
+                        "Also resets what you said was in the cash box, the GCash wallet and the bank on day one \u2014 so the Money page starts from nothing rather than from a practice figure.",
+                    },
+                  ]
+                ).map((opt) => (
+                  <label
+                    key={opt.mode}
+                    className={`flex cursor-pointer items-start gap-3 rounded-2xl p-3 ring-1 transition-colors ${
+                      scope.moneyMode === opt.mode
+                        ? opt.mode === "everything"
+                          ? "bg-brand-50 ring-brand-600/40"
+                          : "bg-jade-50 ring-jade-600/40"
+                        : "bg-cream-50 ring-ink-950/10 hover:bg-cream-200"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="money-mode"
+                      checked={scope.moneyMode === opt.mode}
+                      onChange={() =>
+                        setScope((s) => ({ ...s, moneyMode: opt.mode }))
+                      }
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-ink-950">
+                        {opt.label}
+                      </span>
+                      <span className="block text-xs text-ink-800/60">
+                        {opt.detail}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+
             {item.key === "inventory" && scope.inventory && (
               <div className="ml-4 mt-2 flex flex-col gap-2 border-l-2 border-brand-600/25 pl-4">
                 {(
