@@ -6,6 +6,9 @@ import { formatDateTimeFull } from "@/lib/format-date";
 import { CATEGORY_LABEL, type Activity } from "@/lib/activity";
 import { loadMoreActivity } from "@/app/admin/history/actions";
 
+const boxClass =
+  "w-full rounded-xl bg-cream-50 px-3 py-2.5 text-sm font-semibold text-ink-950 ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400";
+
 /**
  * Everything the shop has done.
  *
@@ -226,8 +229,6 @@ function Line({ row }: { row: Activity }) {
   );
 }
 
-const boxClass =
-  "w-full rounded-xl bg-cream-50 px-3 py-2.5 text-sm font-semibold text-ink-950 ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
