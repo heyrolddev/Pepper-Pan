@@ -22,6 +22,7 @@ const gas = (spentOn: string, size: string, amount: number): RunningCost => ({
   amount,
   sizeLabel: size,
   spentOn,
+  ledgerId: null,
   supplierName: null,
   note: null,
 });

@@ -6,7 +6,8 @@ import { formatDate } from "@/lib/format-date";
 import { peso } from "@/lib/peso";
 import { ACCOUNT_LABELS, type Account } from "@/lib/money-accounts";
 import type { Debt } from "@/lib/money-server";
-import { deleteDebt, settleDebt } from "@/app/admin/money/spending-actions";
+import type { Supplier } from "@/lib/suppliers";
+import { addDebt, deleteDebt, settleDebt } from "@/app/admin/money/spending-actions";
 
 /**
  * What Pepper Pan owes.
@@ -40,31 +41,73 @@ export function SupplierDebts({
   owedToSuppliers,
   totalHeld,
   openPots,
+  suppliers,
 }: {
   debts: Debt[];
   owedToSuppliers: number;
   /** What every pot holds, so the screen can say what is actually the shop's. */
   totalHeld: number;
   openPots: Account[];
+  /** For naming who is owed. Optional: an utang can be to somebody who is not
+   *  on the supplier list yet, and the shop should not have to add them first
+   *  just to write down that it owes them money. */
+  suppliers: Supplier[];
 }) {
   const [seeAll, setSeeAll] = useState(false);
   const [paying, setPaying] = useState<{ debt: Debt; amount: number } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Debt | null>(null);
+  const [adding, setAdding] = useState(false);
   const [busy, startBusy] = useTransition();
   const [problem, setProblem] = useState<string | null>(null);
 
   const open = debts.filter((d) => d.amount - d.paid > 0.001);
 
+  /**
+   * Always offered, even with nothing owed — and that is the point of it.
+   *
+   * A debt could only ever get here one way: by taking a delivery on credit
+   * through Inventory. Borrow ₱2,000 off Aling Nena for a gas tank, or agree
+   * to pay the landlord's helper next week, and there was nowhere to write it
+   * down at all. So the shop's "Actually yours" figure counted pesos that were
+   * already spoken for — the exact thing this panel exists to prevent, missing
+   * for every obligation that did not arrive as a delivery.
+   */
+  const addButton = (
+    <div>
+      <button
+        onClick={() => setAdding(true)}
+        className="rounded-xl bg-ink-950 px-5 py-2.5 text-sm font-black text-cream-50 transition-colors hover:bg-ink-800"
+      >
+        + Record an utang
+      </button>
+    </div>
+  );
+
+  const dialogs = (
+    <>
+      {adding && (
+        <AddDialog
+          suppliers={suppliers}
+          onClose={() => setAdding(false)}
+        />
+      )}
+    </>
+  );
+
   if (open.length === 0) {
     return (
-      <p className="text-sm text-ink-800/60">
-        Nothing owed. Every delivery is paid for.{" "}
-        <span className="text-ink-800/45">
-          A delivery taken on utang turns up here on its own — the stock
-          arrives, no money moves, and the shop owes it until you say it&apos;s
-          paid.
-        </span>
-      </p>
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-ink-800/60">
+          Nothing owed. Every delivery is paid for.{" "}
+          <span className="text-ink-800/45">
+            A delivery taken on utang turns up here on its own — the stock
+            arrives, no money moves, and the shop owes it until you say it&apos;s
+            paid. Anything else the shop owes, write down below.
+          </span>
+        </p>
+        {addButton}
+        {dialogs}
+      </div>
     );
   }
 
@@ -90,6 +133,8 @@ export function SupplierDebts({
           See all {open.length} →
         </button>
       )}
+
+      {addButton}
 
       {/* The subtraction, which is the whole reason this panel is on the money
           screen and not a page of its own. The pots really do hold what they
@@ -156,6 +201,8 @@ export function SupplierDebts({
           }}
         />
       )}
+
+      {dialogs}
 
       {confirmRemove && (
         <AdminDialog
@@ -304,6 +351,172 @@ function List({
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Writing down money the shop owes somebody.
+ *
+ * Deliberately three fields and no money movement. A debt recorded here is an
+ * obligation, not a transaction — nothing leaves a pot, nothing lands in the
+ * ledger — which is the same rule the rest of this panel runs on and the
+ * reason the drawer keeps passing a physical count. The pesos move when
+ * somebody taps Paid.
+ *
+ * The supplier is optional, and stays optional on purpose. Half the utang a
+ * stall takes on is to a person rather than to a supplier the shop buys stock
+ * from, and forcing them onto the supplier list first is the sort of friction
+ * that ends with the debt not being written down at all — which is strictly
+ * worse than a debt with a name in the description.
+ */
+function AddDialog({
+  suppliers,
+  onClose,
+}: {
+  suppliers: Supplier[];
+  onClose: () => void;
+}) {
+  const [supplierId, setSupplierId] = useState("");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, startBusy] = useTransition();
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const owed = Number(amount) || 0;
+  const active = suppliers.filter((s) => s.active);
+
+  return (
+    <AdminDialog
+      title="Record an utang"
+      subtitle="Something the shop owes and hasn't paid for yet. No money moves until you tap Paid."
+      onClose={onClose}
+      busy={busy}
+    >
+      <div className="flex flex-col gap-4">
+        {problem && (
+          <p className="rounded-2xl bg-brand-600 px-4 py-3 text-sm font-semibold text-cream-50">
+            {problem}
+          </p>
+        )}
+
+        {active.length > 0 && (
+          <div>
+            <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-ink-800/55">
+              Who is owed{" "}
+              <span className="font-bold normal-case tracking-normal text-ink-800/40">
+                · optional
+              </span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {active.slice(0, 8).map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setSupplierId(supplierId === s.id ? "" : s.id)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                    supplierId === s.id
+                      ? "bg-ink-950 text-gold-400"
+                      : "bg-ink-950/5 text-ink-800/65 hover:bg-ink-950/10"
+                  }`}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-ink-800/50">
+              Not on the list? Leave it and put the name in what it was for —
+              an utang to somebody who isn&apos;t a supplier is still an utang.
+            </p>
+          </div>
+        )}
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/55">
+            What it was for
+          </span>
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Gas tank from Aling Nena"
+            className="w-full rounded-xl bg-cream-50 px-3 py-2.5 text-sm font-semibold text-ink-950 ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/55">
+            How much is owed
+          </span>
+          <span className="relative flex items-center">
+            <span className="pointer-events-none absolute left-3 text-sm font-bold text-ink-800/40">
+              ₱
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full rounded-xl bg-cream-50 py-2.5 pl-7 pr-3 text-sm font-semibold text-ink-950 ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
+            />
+          </span>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/55">
+            Note{" "}
+            <span className="font-bold normal-case tracking-normal text-ink-800/40">
+              · optional
+            </span>
+          </span>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Said we'd pay by Friday"
+            className="w-full rounded-xl bg-cream-50 px-3 py-2.5 text-sm font-semibold text-ink-950 ring-1 ring-ink-950/10 focus:outline-none focus:ring-2 focus:ring-gold-400"
+          />
+        </label>
+
+        {/* The consequence, before it happens. This panel's whole job is the
+            subtraction below it, so the one thing worth saying up front is
+            which way this moves it. */}
+        {owed > 0 && (
+          <p className="rounded-2xl bg-gold-400/20 px-4 py-3 text-sm leading-relaxed text-ink-800/80 ring-1 ring-gold-500/35">
+            <strong className="text-ink-950">{peso(owed)}</strong> comes off
+            what&apos;s actually yours. The pesos stay in the drawer until you
+            pay.
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-xl px-4 py-2.5 text-sm font-bold text-ink-800/60 hover:text-ink-950"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() =>
+              startBusy(async () => {
+                setProblem(null);
+                const res = await addDebt({
+                  supplierId,
+                  description,
+                  amount: owed,
+                  note,
+                });
+                if (res.error) setProblem(res.error);
+                else onClose();
+              })
+            }
+            disabled={busy || owed <= 0 || !description.trim()}
+            className="rounded-xl bg-ink-950 px-5 py-2.5 text-sm font-black text-cream-50 hover:bg-ink-800 disabled:opacity-40"
+          >
+            {busy ? "Recording…" : "Record it"}
+          </button>
+        </div>
+      </div>
+    </AdminDialog>
   );
 }
 

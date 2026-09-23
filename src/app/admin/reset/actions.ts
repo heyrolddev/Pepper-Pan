@@ -360,9 +360,46 @@ export async function resetShopData(input: {
         }
       }
 
+      /**
+       * The add-ons go first, and they have to.
+       *
+       * `modifier_options.option_meal_id` is ON DELETE SET NULL — the right
+       * rule when one dish is removed from a live menu, because the option
+       * survives saying so instead of a group silently emptying. It is the
+       * wrong outcome here: clearing the whole menu left every group standing
+       * with every option nulled, so the shop came back to a set of add-ons
+       * that still appeared on dishes, still charged money, and added no food
+       * to the order. Deleting the groups first takes the options with them
+       * (`group_id` cascades), and `meal_modifier_groups` and
+       * `product_modifier_groups` cascade from there.
+       */
+      const groups = await db.from("modifier_groups").delete().neq("id", all).select("id");
+      if (groups.error) throw new Error(`menu: ${groups.error.message}`);
+      deleted.push(`${groups.data?.length ?? 0} add-on groups`);
+
       const meals = await db.from("meals").delete().neq("id", all).select("id");
       if (meals.error) throw new Error(`menu: ${meals.error.message}`);
       deleted.push(`${meals.data?.length ?? 0} dishes`);
+
+      // The cards the dishes were grouped under. `meals.product_id` is SET
+      // NULL, so the order does not matter — but an empty card is worse than
+      // no card: it is a Ji Pai group with no Ji Pai in it, and the owner has
+      // to work out one at a time whether each is something they meant to
+      // keep.
+      const cards = await db.from("menu_products").delete().neq("id", all).select("id");
+      if (cards.error) throw new Error(`menu: ${cards.error.message}`);
+      deleted.push(`${cards.data?.length ?? 0} menu cards`);
+
+      // And the menu's own vocabulary. `meals.category` is free text with no
+      // foreign key, so these do not go on their own — they are the names and
+      // colours of filter pills with nothing left behind them.
+      const cats = await db
+        .from("menu_categories")
+        .delete()
+        .neq("name", all)
+        .select("name");
+      if (cats.error) throw new Error(`menu: ${cats.error.message}`);
+      deleted.push(`${cats.data?.length ?? 0} categories`);
     }
 
     // Anything that is not, exactly, the destructive word falls to the gentle

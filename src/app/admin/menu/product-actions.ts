@@ -202,20 +202,3 @@ export async function deleteProductGroup(id: string): Promise<Result> {
   revalidateMenu();
   return { error: null };
 }
-
-/** Where the card sits among the others. Ties break on name, as elsewhere. */
-export async function reorderProductGroups(ids: string[]): Promise<Result> {
-  const viewer = await getViewer();
-  if (!can(viewer, "menu.edit")) return { error: DENIED };
-
-  const db = createAdminClient();
-  for (const [i, id] of ids.entries()) {
-    const { error } = await db
-      .from("menu_products")
-      .update({ sort_order: i * 10 })
-      .eq("id", id);
-    if (error) return { error: error.message };
-  }
-  revalidateMenu();
-  return { error: null };
-}

@@ -14,7 +14,7 @@ import {
   type TankLife,
 } from "@/lib/spending";
 import type { Supplier } from "@/lib/suppliers";
-import { recordSpend } from "@/app/admin/money/spending-actions";
+import { deleteRunningCost, recordSpend } from "@/app/admin/money/spending-actions";
 
 /**
  * Everything the shop buys that is not an ingredient.
@@ -65,9 +65,18 @@ export function SpendPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [seeAll, setSeeAll] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<RunningCost | null>(null);
+  const [busy, startBusy] = useTransition();
+  const [problem, setProblem] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-4">
+      {problem && (
+        <p className="rounded-2xl bg-brand-600 px-4 py-3 text-sm font-semibold text-cream-50">
+          {problem}
+        </p>
+      )}
+
       {/* Before anything else: is the gas about to go? It is the one thing on
           this panel that stops service if it is missed. */}
       {tanks.length > 0 && <Tanks tanks={tanks} />}
@@ -107,7 +116,7 @@ export function SpendPanel({
         <>
           <ul className="flex flex-col gap-1.5">
             {runningCosts.slice(0, 4).map((r) => (
-              <Line key={r.id} row={r} />
+              <Line key={r.id} row={r} onRemove={setConfirmRemove} />
             ))}
           </ul>
           {runningCosts.length > 4 && (
@@ -129,7 +138,14 @@ export function SpendPanel({
         >
           <ul className="flex max-h-[55vh] flex-col gap-1.5 overflow-y-auto">
             {runningCosts.map((r) => (
-              <Line key={r.id} row={r} />
+              <Line
+                key={r.id}
+                row={r}
+                onRemove={(row) => {
+                  setSeeAll(false);
+                  setConfirmRemove(row);
+                }}
+              />
             ))}
           </ul>
         </AdminDialog>
@@ -142,13 +158,117 @@ export function SpendPanel({
           onClose={() => setOpen(false)}
         />
       )}
+
+      {confirmRemove && (
+        <RemoveDialog
+          row={confirmRemove}
+          busy={busy}
+          onClose={() => setConfirmRemove(null)}
+          onRemove={() =>
+            startBusy(async () => {
+              setProblem(null);
+              const res = await deleteRunningCost(confirmRemove.id);
+              if (res.error) setProblem(res.error);
+              else setConfirmRemove(null);
+            })
+          }
+        />
+      )}
     </div>
   );
 }
 
-function Line({ row }: { row: RunningCost }) {
+/**
+ * Taking a spend back out.
+ *
+ * Says which of the two things it is about to do, because they are genuinely
+ * different and the owner cannot tell them apart by looking at the row. A
+ * spend paid out of a pot gets its pesos put back; one taken on utang never
+ * moved any, and its debt is a separate row on the utang panel with its own
+ * Remove — so this says so rather than leaving the owner to discover that the
+ * money they thought they had just un-spent is still owed.
+ */
+function RemoveDialog({
+  row,
+  busy,
+  onClose,
+  onRemove,
+}: {
+  row: RunningCost;
+  busy: boolean;
+  onClose: () => void;
+  onRemove: () => void;
+}) {
+  const paid = row.ledgerId !== null;
   return (
-    <li className="flex items-center justify-between gap-3 rounded-xl bg-cream-50 px-4 py-2.5 ring-1 ring-ink-950/10">
+    <AdminDialog
+      title="Remove this spend?"
+      subtitle="Only for something recorded by mistake — a wrong figure, or the same thing twice."
+      onClose={onClose}
+      busy={busy}
+    >
+      <div className="flex flex-col gap-4">
+        <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm text-ink-800/75">
+          <strong className="text-ink-950">{row.label}</strong> —{" "}
+          {SPEND_LABEL[row.kind]} · {formatDate(row.spentOn)}
+          <span className="mt-1 block font-display text-lg font-black text-ink-950">
+            {peso(row.amount)}
+          </span>
+        </p>
+        <p
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+            paid
+              ? "bg-jade-600/10 text-ink-800/80 ring-1 ring-jade-600/25"
+              : "bg-gold-400/20 text-ink-800/80 ring-1 ring-gold-500/35"
+          }`}
+        >
+          {paid ? (
+            <>
+              <strong className="text-ink-950">{peso(row.amount)} goes back</strong>{" "}
+              into the pot it came out of, so the drawer still counts. Both the
+              spend and its money line disappear together.
+            </>
+          ) : (
+            <>
+              This one moved no money — it was taken on utang, or recorded
+              before the shop started linking the two.{" "}
+              <strong className="text-ink-950">
+                Nothing comes back into a pot.
+              </strong>{" "}
+              If a debt was raised for it, remove that on the utang panel too.
+            </>
+          )}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-xl px-4 py-2.5 text-sm font-bold text-ink-800/60 hover:text-ink-950"
+          >
+            Keep it
+          </button>
+          <button
+            onClick={onRemove}
+            disabled={busy}
+            className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-bold text-cream-50 hover:bg-brand-700 disabled:opacity-50"
+          >
+            {busy ? "Removing…" : "Remove"}
+          </button>
+        </div>
+      </div>
+    </AdminDialog>
+  );
+}
+
+function Line({
+  row,
+  onRemove,
+}: {
+  row: RunningCost;
+  onRemove: (row: RunningCost) => void;
+}) {
+  return (
+    <li className="group flex items-center justify-between gap-3 rounded-xl bg-cream-50 px-4 py-2.5 ring-1 ring-ink-950/10">
       <span className="min-w-0">
         <span className="block truncate text-sm font-semibold text-ink-950">
           {row.label}
@@ -163,8 +283,22 @@ function Line({ row }: { row: RunningCost }) {
           {row.supplierName && <> · {row.supplierName}</>}
         </span>
       </span>
-      <span className="shrink-0 font-display font-black tabular-nums text-ink-950">
-        {peso(row.amount, 0)}
+      <span className="flex shrink-0 items-center gap-1">
+        <span className="font-display font-black tabular-nums text-ink-950">
+          {peso(row.amount, 0)}
+        </span>
+        {/* Quiet until it is wanted. Removing a spend is rare and mildly
+            destructive, so it does not compete with the figure beside it —
+            but it stays reachable by keyboard and is always visible on a
+            touch screen, where there is no hover to reveal it. */}
+        <button
+          onClick={() => onRemove(row)}
+          aria-label={`Remove ${row.label}`}
+          title="Recorded by mistake?"
+          className="rounded-lg px-1.5 py-1 text-xs font-bold text-ink-800/35 transition-colors hover:bg-brand-600/10 hover:text-brand-700 focus-visible:text-brand-700 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+        >
+          ✕
+        </button>
       </span>
     </li>
   );

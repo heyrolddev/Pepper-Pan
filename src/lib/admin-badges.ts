@@ -1,5 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { can, getViewer } from "@/lib/auth";
+import { countOpenErrors } from "@/lib/error-log";
 import { ACTIVE_ORDER_STATUSES } from "@/lib/orders";
 import { OUTSTANDING_PAYMENT_STATUSES } from "@/lib/payments";
 
@@ -36,9 +38,23 @@ export type AdminBadges = {
    * has to be *done* as an order waiting on food.
    */
   staff: number;
+  /**
+   * Faults nobody has ticked off.
+   *
+   * Earns its place by the rule above — an open fault is a thing that has to
+   * be *done*, and it is the one kind of news that arrives while the owner is
+   * not looking. It had a counter written for it and no badge to put it in,
+   * so the only ways to hear about a broken checkout were the push
+   * notification (once, on the first occurrence) and happening to scroll down
+   * on Today. Both are easy to miss, and a fault nobody has seen is a fault
+   * that is still costing orders.
+   *
+   * Counted only for whoever can act on it — see `getAdminBadges`.
+   */
+  errors: number;
 };
 
-const NONE: AdminBadges = { orders: 0, inbox: 0, payments: 0, staff: 0 };
+const NONE: AdminBadges = { orders: 0, inbox: 0, payments: 0, staff: 0, errors: 0 };
 
 export async function getAdminBadges(): Promise<AdminBadges> {
   try {
@@ -62,7 +78,19 @@ export async function getAdminBadges(): Promise<AdminBadges> {
       return n ?? 0;
     };
 
-    const [orders, inbox, payments, staff] = await Promise.all([
+    /**
+     * Only the owner is counted errors, and that is not squeamishness.
+     *
+     * The rule this file opens with is that every badge is a thing the reader
+     * has to do. A cashier cannot resolve a fault, cannot read the log — the
+     * panel is behind `settings` — and cannot make the number go down by any
+     * action available to them. A permanent red number they can never clear
+     * is the exact decoration the note above warns about, and it teaches them
+     * to ignore the badges that ARE theirs: orders, and the inbox.
+     */
+    const mayFixThings = can(await getViewer(), "settings");
+
+    const [orders, inbox, payments, staff, errors] = await Promise.all([
       count("orders", () =>
         db
           .from("orders")
@@ -96,9 +124,14 @@ export async function getAdminBadges(): Promise<AdminBadges> {
           .select("id", { count: "exact", head: true })
           .eq("status", "pending")
       ),
+      // Not through `count` above: the error log is read with the admin
+      // client, because RLS on `error_log` keeps it away from the browser
+      // entirely. `countOpenErrors` already swallows its own failure and
+      // returns 0, for the same reason every count here does.
+      mayFixThings ? countOpenErrors() : Promise.resolve(0),
     ]);
 
-    return { orders, inbox, payments, staff };
+    return { orders, inbox, payments, staff, errors };
   } catch {
     // A missing migration must not take HQ down. No badges is a fair reading
     // of "we couldn't tell" — a wrong number would be worse than none.

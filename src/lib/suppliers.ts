@@ -38,18 +38,3 @@ export function telHref(phone: string | null): string | null {
   return digits.length >= 7 ? `tel:${digits}` : null;
 }
 
-/** What to show in the chip row at the till, most useful first. */
-export function chipOrder(suppliers: Supplier[], recent: string[]): Supplier[] {
-  const rank = new Map(recent.map((id, i) => [id, i]));
-  return [...suppliers]
-    .filter((s) => s.active)
-    .sort((a, b) => {
-      // Recently used first — a shop buys from the same three people most
-      // weeks, and alphabetical order puts the one they use daily in the
-      // middle of a list they have to read.
-      const ra = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
-      const rb = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
-      if (ra !== rb) return ra - rb;
-      return a.name.localeCompare(b.name);
-    });
-}

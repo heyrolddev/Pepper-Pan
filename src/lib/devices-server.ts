@@ -125,10 +125,3 @@ export async function listDevices(): Promise<DeviceRow[]> {
   return (data ?? []) as DeviceRow[];
 }
 
-export async function pendingDeviceCount(): Promise<number> {
-  const { count } = await createAdminClient()
-    .from("device_sessions")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "pending");
-  return count ?? 0;
-}

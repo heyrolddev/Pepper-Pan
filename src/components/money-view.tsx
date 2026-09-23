@@ -405,6 +405,7 @@ export function MoneyView({
           owedToSuppliers={money.owedToSuppliers}
           totalHeld={money.totalHeld}
           openPots={openPots.length > 0 ? openPots : ["cash"]}
+          suppliers={suppliers}
         />
       </Panel>
 

@@ -259,29 +259,37 @@ export async function recordSpend(input: {
   // same reason `recordRestock` writes the stock before the ledger line. A
   // ledger line for a purchase that failed to record takes pesos out of a pot
   // with nothing on screen to explain them.
-  const { error: rowError } = isAsset
-    ? await supabase.from("assets").insert({
-        name: label,
-        amount,
-        bought_on: today,
-        note: input.note.trim() || null,
-        paid_from: input.paidFrom,
-      })
-    : await supabase.from("running_costs").insert({
-        label,
-        kind: input.kind,
-        amount,
-        // Only gas carries a size, and only when one was typed. An empty
-        // string here would make `tankLife` count a sizeless refill as a
-        // size of its own.
-        size_label:
-          input.kind === "gas" && input.sizeLabel.trim() ? input.sizeLabel.trim() : null,
-        spent_on: today,
-        supplier_id: input.supplierId || null,
-        note: input.note.trim() || null,
-        created_by: viewer.profile?.id ?? null,
-      });
-  if (rowError) return { error: rowError.message };
+  const { data: row, error: rowError } = isAsset
+    ? await supabase
+        .from("assets")
+        .insert({
+          name: label,
+          amount,
+          bought_on: today,
+          note: input.note.trim() || null,
+          paid_from: input.paidFrom,
+        })
+        .select("id")
+        .single()
+    : await supabase
+        .from("running_costs")
+        .insert({
+          label,
+          kind: input.kind,
+          amount,
+          // Only gas carries a size, and only when one was typed. An empty
+          // string here would make `tankLife` count a sizeless refill as a
+          // size of its own.
+          size_label:
+            input.kind === "gas" && input.sizeLabel.trim() ? input.sizeLabel.trim() : null,
+          spent_on: today,
+          supplier_id: input.supplierId || null,
+          note: input.note.trim() || null,
+          created_by: viewer.profile?.id ?? null,
+        })
+        .select("id")
+        .single();
+  if (rowError || !row) return { error: rowError?.message ?? "Could not record that spend." };
 
   if (input.paidFrom === "unpaid") {
     const res = await recordDebt({
@@ -295,21 +303,36 @@ export async function recordSpend(input: {
     });
     if (res.error) return res;
   } else {
-    const { error: ledgerError } = await supabase.from("cash_ledger").insert({
-      date: today,
-      type: "out",
-      account: input.paidFrom,
-      amount,
-      category: isAsset ? "Equipment" : SPEND_LABEL[input.kind as SpendKind],
-      note: label + (supplierName ? ` — ${supplierName}` : ""),
-      logged_by: viewer.profile?.id ?? null,
-    });
+    const { data: line, error: ledgerError } = await supabase
+      .from("cash_ledger")
+      .insert({
+        date: today,
+        type: "out",
+        account: input.paidFrom,
+        amount,
+        category: isAsset ? "Equipment" : SPEND_LABEL[input.kind as SpendKind],
+        note: label + (supplierName ? ` — ${supplierName}` : ""),
+        logged_by: viewer.profile?.id ?? null,
+      })
+      .select("id")
+      .single();
     // Reported, not fatal: the purchase happened, and refusing to record it
     // because the ledger line would not write leaves the shop further from
     // the truth than a missing ledger row does. Same call `recordRestock`
     // makes, for the same reason.
     if (ledgerError) {
       console.error(`[spend] ledger line: ${ledgerError.message}`);
+    } else if (line) {
+      // Which line this purchase wrote, so removing the purchase can put the
+      // money back. Written after the fact rather than before, because the
+      // ledger row's id does not exist until it does — and a failure here
+      // costs the undo, not the record: the spend and the ledger line are
+      // both correct, they are just no longer joined up.
+      const { error: linkError } = await supabase
+        .from(isAsset ? "assets" : "running_costs")
+        .update({ ledger_id: line.id })
+        .eq("id", row.id);
+      if (linkError) console.error(`[spend] ledger link: ${linkError.message}`);
     }
   }
 
@@ -317,10 +340,51 @@ export async function recordSpend(input: {
   return { error: null };
 }
 
+/**
+ * Take a spend back out — and the money with it.
+ *
+ * For a typo, which is the only reason to use this. ₱2,500 of paper towels
+ * instead of ₱250 was permanent until now: `deleteRunningCost` has existed
+ * since 0045 and nothing ever called it.
+ *
+ * The ledger line goes FIRST, and that order is the whole design. A spend
+ * paid out of a pot wrote two rows, and removing only the purchase leaves the
+ * pesos gone from the drawer under a note naming something that no longer
+ * exists — the drawer fails its physical count and the money screen cannot
+ * say why. Deleting the ledger line first means a failure halfway through
+ * leaves the money back in the pot with the spend still listed: wrong, but
+ * wrong in the direction somebody notices and can simply try again. Same
+ * reasoning as `settleDebt`, one row up.
+ *
+ * A spend with no `ledger_id` moved no money to give back — it was taken on
+ * utang, or it predates the column. The debt it raised is its own row on the
+ * utang panel with its own Remove, because the two really are separate
+ * things: one is what was bought, the other is what is still owed for it.
+ */
 export async function deleteRunningCost(id: string): Promise<Result> {
   const viewer = await mayManageMoney();
   if (!viewer) return { error: "Only the owner or a manager can remove a spend." };
-  const { error } = await createAdminClient().from("running_costs").delete().eq("id", id);
+
+  const db = createAdminClient();
+  const { data: spend, error: readError } = await db
+    .from("running_costs")
+    .select("id, ledger_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) return { error: readError.message };
+  if (!spend) return { error: "That spend is already gone." };
+
+  const ledgerId = (spend as { ledger_id: string | null }).ledger_id;
+  if (ledgerId) {
+    const { error: ledgerError } = await db.from("cash_ledger").delete().eq("id", ledgerId);
+    if (ledgerError) {
+      return {
+        error: `Couldn't put the money back in the pot, so nothing was removed: ${ledgerError.message}`,
+      };
+    }
+  }
+
+  const { error } = await db.from("running_costs").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidate();
   return { error: null };

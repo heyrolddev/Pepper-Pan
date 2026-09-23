@@ -74,7 +74,8 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
     {
       key: "menu",
       label: "The whole menu",
-      detail: "Every dish, so you can type the real menu from scratch.",
+      detail:
+        "Every dish, and the menu around it — the cards they're grouped under, the category pills, and the add-ons offered with them. All of it, so you can type the real menu from scratch.",
       count: counts.meals,
     },
     {

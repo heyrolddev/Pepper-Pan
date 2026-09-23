@@ -71,6 +71,15 @@ export type RunningCost = {
   spentOn: string;
   supplierName: string | null;
   note: string | null;
+  /**
+   * The cash-ledger line this spend wrote, or null when it moved no money.
+   *
+   * Carried up to the screen so the Remove dialog can say what it is about to
+   * do — put the pesos back, or only drop the record — instead of one vague
+   * sentence that is half wrong either way. Null means utang (the money has
+   * not left yet) or a row recorded before 0051.
+   */
+  ledgerId: string | null;
 };
 
 /** How long a tank of one size actually lasts this shop, from its own refills. */
