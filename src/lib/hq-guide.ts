@@ -77,90 +77,6 @@ function mentions(haystack: string, trigger: string): boolean {
   return haystack.includes(t);
 }
 
-/**
- * The best topic for a question, or nothing.
- *
- * Scored by the length of what matched, so a question naming "break even"
- * beats one that merely contains "cost". Returning nothing is a real answer
- * here — the reply offers the topic list rather than guessing.
- */
-export function findTopic(question: string, topics: GuideTopic[] = TOPICS): GuideTopic | null {
-  const q = normalize(question);
-  if (q.length < 2) return null;
-
-  let best: { topic: GuideTopic; score: number } | null = null;
-  for (const topic of topics) {
-    let score = 0;
-    let longest = 0;
-    for (const trigger of topic.triggers) {
-      if (mentions(q, trigger)) {
-        score += trigger.length;
-        longest = Math.max(longest, trigger.length);
-      }
-    }
-    // Two-letter triggers are allowed because "OE" is a real question, and
-    // `mentions` only accepts short ones on a word boundary — so this cannot
-    // fire on the "oe" inside "does".
-    if (longest < 2) continue;
-    if (!best || score > best.score) best = { topic, score };
-  }
-  return best && best.score >= 2 ? best.topic : null;
-}
-
-/** A few things worth asking, for an empty box or a question nothing matched. */
-export function suggestions(n = 6): GuideTopic[] {
-  const wanted = [
-    "net-profit",
-    "break-even",
-    "dish-margin",
-    "restock",
-    "promo-run",
-    "roles",
-  ];
-  return wanted.map((id) => TOPICS.find((t) => t.id === id)!).filter(Boolean).slice(0, n);
-}
-
-export function topicsByGroup(): { group: Group; topics: GuideTopic[] }[] {
-  const order: Group[] = ["Money", "The kitchen", "Every day", "People", "Setting up"];
-  return order.map((group) => ({
-    group,
-    topics: TOPICS.filter((t) => t.group === group),
-  }));
-}
-
-/**
- * Filipino owners write in Taglish. Matching the mix keeps the reply sounding
- * like the shop rather than like a bank.
- */
-const TAGALOG_MARKERS = [
-  "po", "ba", "ano", "paano", "bakit", "saan", "kailan", "magkano", "ilan",
-  "yung", "ito", "iyan", "meron", "pwede", "puwede", "gusto", "kailangan",
-  "namin", "natin", "ako", "ko", "mo", "niya", "nila", "lang", "naman",
-  "kasi", "pala", "sana", "salamat", "utang", "kita", "bayad", "presyo",
-];
-
-function speaksTaglish(text: string): boolean {
-  const q = normalize(text);
-  return TAGALOG_MARKERS.some((m) => new RegExp(`(^| )${m}( |$)`).test(q));
-}
-
-/** The line before an answer, in the language the question came in. */
-export function opener(question: string, topic: GuideTopic): string {
-  return speaksTaglish(question)
-    ? `Ito po ang tungkol sa ${topic.question.toLowerCase()} —`
-    : "";
-}
-
-export function noMatchReply(question: string): string {
-  return speaksTaglish(question)
-    ? "Hindi ko pa alam 'yan — hindi ko ito iimbento. Subukan mo isa sa mga nasa ibaba, o itanong ulit gamit ang ibang salita (halimbawa: \"break even\", \"utang\", \"restock\")."
-    : "I don't know that one, and I won't invent an answer. Try one of the topics below, or ask again using a different word — for example \"break even\", \"utang\" or \"restock\".";
-}
-
-/* ------------------------------------------------------------------ */
-/* What it knows                                                       */
-/* ------------------------------------------------------------------ */
-
 export const TOPICS: GuideTopic[] = [
   // ---------------- Money -------------------------------------------
   {
@@ -796,3 +712,87 @@ export const TOPICS: GuideTopic[] = [
       "You and your manager can edit these. Staff cannot — it is the shop speaking in public.",
   },
 ];
+
+/**
+ * The best topic for a question, or nothing.
+ *
+ * Scored by the length of what matched, so a question naming "break even"
+ * beats one that merely contains "cost". Returning nothing is a real answer
+ * here — the reply offers the topic list rather than guessing.
+ */
+export function findTopic(question: string, topics: GuideTopic[] = TOPICS): GuideTopic | null {
+  const q = normalize(question);
+  if (q.length < 2) return null;
+
+  let best: { topic: GuideTopic; score: number } | null = null;
+  for (const topic of topics) {
+    let score = 0;
+    let longest = 0;
+    for (const trigger of topic.triggers) {
+      if (mentions(q, trigger)) {
+        score += trigger.length;
+        longest = Math.max(longest, trigger.length);
+      }
+    }
+    // Two-letter triggers are allowed because "OE" is a real question, and
+    // `mentions` only accepts short ones on a word boundary — so this cannot
+    // fire on the "oe" inside "does".
+    if (longest < 2) continue;
+    if (!best || score > best.score) best = { topic, score };
+  }
+  return best && best.score >= 2 ? best.topic : null;
+}
+
+/** A few things worth asking, for an empty box or a question nothing matched. */
+export function suggestions(n = 6): GuideTopic[] {
+  const wanted = [
+    "net-profit",
+    "break-even",
+    "dish-margin",
+    "restock",
+    "promo-run",
+    "roles",
+  ];
+  return wanted.map((id) => TOPICS.find((t) => t.id === id)!).filter(Boolean).slice(0, n);
+}
+
+export function topicsByGroup(): { group: Group; topics: GuideTopic[] }[] {
+  const order: Group[] = ["Money", "The kitchen", "Every day", "People", "Setting up"];
+  return order.map((group) => ({
+    group,
+    topics: TOPICS.filter((t) => t.group === group),
+  }));
+}
+
+/**
+ * Filipino owners write in Taglish. Matching the mix keeps the reply sounding
+ * like the shop rather than like a bank.
+ */
+const TAGALOG_MARKERS = [
+  "po", "ba", "ano", "paano", "bakit", "saan", "kailan", "magkano", "ilan",
+  "yung", "ito", "iyan", "meron", "pwede", "puwede", "gusto", "kailangan",
+  "namin", "natin", "ako", "ko", "mo", "niya", "nila", "lang", "naman",
+  "kasi", "pala", "sana", "salamat", "utang", "kita", "bayad", "presyo",
+];
+
+function speaksTaglish(text: string): boolean {
+  const q = normalize(text);
+  return TAGALOG_MARKERS.some((m) => new RegExp(`(^| )${m}( |$)`).test(q));
+}
+
+/** The line before an answer, in the language the question came in. */
+export function opener(question: string, topic: GuideTopic): string {
+  return speaksTaglish(question)
+    ? `Ito po ang tungkol sa ${topic.question.toLowerCase()} —`
+    : "";
+}
+
+export function noMatchReply(question: string): string {
+  return speaksTaglish(question)
+    ? "Hindi ko pa alam 'yan — hindi ko ito iimbento. Subukan mo isa sa mga nasa ibaba, o itanong ulit gamit ang ibang salita (halimbawa: \"break even\", \"utang\", \"restock\")."
+    : "I don't know that one, and I won't invent an answer. Try one of the topics below, or ask again using a different word — for example \"break even\", \"utang\" or \"restock\".";
+}
+
+/* ------------------------------------------------------------------ */
+/* What it knows                                                       */
+/* ------------------------------------------------------------------ */

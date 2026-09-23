@@ -42,6 +42,8 @@ export function CategoryPicker({
 }) {
   const [draft, setDraft] = useState("");
 
+  const [showNew, setShowNew] = useState(false);
+
   const add = (name: string) => {
     const n = name.trim();
     // Case-insensitively, because "Chicken" and "chicken" being two chips on
@@ -52,7 +54,6 @@ export function CategoryPicker({
     setShowNew(false);
   };
   const remove = (name: string) => onChange(value.filter((v) => v !== name));
-  const [showNew, setShowNew] = useState(false);
 
   const known = useMemo(
     () => new Map(categories.map((c) => [c.name, c.colour])),

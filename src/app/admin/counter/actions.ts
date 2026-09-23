@@ -46,7 +46,7 @@ export type CounterResult =
  * through the analytics, the exports and the costing without any of them
  * needing to know where it came from.
  */
-export async function recordWalkInSale(input: {
+type SaleInput = {
   lines: CounterLine[];
   method: TillMethod;
   reference?: string;
@@ -58,7 +58,37 @@ export async function recordWalkInSale(input: {
   /** Who the order is for. Goes in `contact_name`, the column that has always
    *  been there for it, so the name shows on the order as well as the paper. */
   customerName?: string;
-}): Promise<CounterResult> {
+};
+
+/**
+ * Nothing unexpected takes the till down mid-service.
+ *
+ * An uncaught throw in a server action does not surface as a message on the
+ * screen that called it — React hands it to the nearest error boundary, so HQ
+ * replaced the whole counter with "This screen didn't load" and the ticket the
+ * cashier had just typed went with it. That happened, from a plain
+ * use-before-declaration, with a customer standing at the stall.
+ *
+ * Every refusal this function means to make already comes back as
+ * `{ error }` and leaves the ticket alone. This makes that true of the ones
+ * it does not mean to make as well: the cashier reads a line, the order is
+ * still on screen, and the real reason is in the log under the reference.
+ */
+export async function recordWalkInSale(input: SaleInput): Promise<CounterResult> {
+  try {
+    return await ringUp(input);
+  } catch (e) {
+    console.error(
+      `[counter] ring-up threw: ${e instanceof Error ? e.stack ?? e.message : String(e)}`
+    );
+    return {
+      error:
+        "Something went wrong recording that sale, so nothing was saved — the ticket is still here. Try once more, and tell the owner if it happens again.",
+    };
+  }
+}
+
+async function ringUp(input: SaleInput): Promise<CounterResult> {
   const viewer = await getViewer();
   if (!can(viewer, "till")) return { error: "Only shop staff can record a sale." };
   if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
@@ -92,42 +122,6 @@ export async function recordWalkInSale(input: {
   if (missing.length > 0) {
     return {
       error: "Something on this order is no longer on the menu. Clear it and start again.",
-    };
-  }
-
-  // Same check as the website. The till is the one place someone can insist —
-  // the customer is standing there — so it says what is short and by how
-  // much rather than just refusing.
-  const makeable = await loadAvailability();
-
-  // Dishes AND add-ons, summed across the ticket first: an add-on is a dish
-  // and draws the same stock, and three lines each asking for one extra rice
-  // is three portions — checked one at a time, all three would go through.
-  const needed = new Map<string, number>();
-  const labelOf = new Map<string, string>();
-  lines.forEach((l, at) => {
-    needed.set(l.mealId, (needed.get(l.mealId) ?? 0) + l.qty);
-    labelOf.set(l.mealId, nameById.get(l.mealId) ?? "an item");
-    for (const e of extrasPerLine[at]) {
-      if (!e.mealId) continue;
-      // Two extra rice on a line of three is six portions.
-      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + l.qty * e.qty);
-      labelOf.set(e.mealId, e.label);
-    }
-  });
-
-  const short = [...needed]
-    .map(([mealId, qty]) => ({ mealId, qty, can: makeable.get(mealId) }))
-    .filter((x) => x.can !== undefined && x.can < x.qty);
-  if (short.length > 0) {
-    const detail = short
-      .map(
-        (x) =>
-          `${labelOf.get(x.mealId) ?? "an item"} (${x.can} left, ${x.qty} rung up)`
-      )
-      .join(", ");
-    return {
-      error: `Not enough stock for ${detail}. Record it anyway by fixing the count in Inventory first, or take it off the ticket.`,
     };
   }
 
@@ -176,6 +170,58 @@ export async function recordWalkInSale(input: {
     (sum, l, at) => sum + (priceById.get(l.mealId)! + extraTotal(at)) * l.qty,
     0
   );
+
+  /**
+   * Stock, AFTER the add-ons and not before them.
+   *
+   * This block used to sit above the one that declares `nameById` and
+   * `extrasPerLine` — and because the use was inside a `forEach` callback,
+   * neither TypeScript nor the build could see it: a closure MIGHT run later,
+   * so use-before-declaration inside one is not an error the compiler will
+   * call. It runs immediately here, so every single counter sale threw
+   * `Cannot access 'nameById' before initialization` out of the server action
+   * and straight into HQ's error screen. Not some sales — all of them, with
+   * or without add-ons.
+   *
+   * The order is not cosmetic either way: what the shelf has to cover is the
+   * dishes PLUS everything added to them, so the extras have to be resolved
+   * before there is anything to count.
+   */
+  // Same check as the website. The till is the one place someone can insist —
+  // the customer is standing there — so it says what is short and by how
+  // much rather than just refusing.
+  const makeable = await loadAvailability();
+
+  // Dishes AND add-ons, summed across the ticket first: an add-on is a dish
+  // and draws the same stock, and three lines each asking for one extra rice
+  // is three portions — checked one at a time, all three would go through.
+  const needed = new Map<string, number>();
+  const labelOf = new Map<string, string>();
+  lines.forEach((l, at) => {
+    needed.set(l.mealId, (needed.get(l.mealId) ?? 0) + l.qty);
+    labelOf.set(l.mealId, nameById.get(l.mealId) ?? "an item");
+    for (const e of extrasPerLine[at]) {
+      if (!e.mealId) continue;
+      // Two extra rice on a line of three is six portions.
+      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + l.qty * e.qty);
+      labelOf.set(e.mealId, e.label);
+    }
+  });
+
+  const short = [...needed]
+    .map(([mealId, qty]) => ({ mealId, qty, can: makeable.get(mealId) }))
+    .filter((x) => x.can !== undefined && x.can < x.qty);
+  if (short.length > 0) {
+    const detail = short
+      .map(
+        (x) =>
+          `${labelOf.get(x.mealId) ?? "an item"} (${x.can} left, ${x.qty} rung up)`
+      )
+      .join(", ");
+    return {
+      error: `Not enough stock for ${detail}. Record it anyway by fixing the count in Inventory first, or take it off the ticket.`,
+    };
+  }
 
   const reference = input.reference?.trim() || null;
   if (input.method === "gcash" && !reference) {
