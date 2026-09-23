@@ -72,8 +72,34 @@ export type ResetScope = {
    * way to ask for anything gentler.
    */
   inventoryMode: "counts" | "everything";
-  /** The cash ledger, purchases, consumption, waste, bills and assets. */
+  /** The cash ledger, bills, assets, utang, supplier debts and running costs. */
   money: boolean;
+  /**
+   * How much of the money side goes.
+   *
+   *   "records"     every entry: the ledger, the bills, the assets, the
+   *                 utang, the supplier debts, the running costs and the
+   *                 marketing spend.
+   *
+   *   "everything"  those, plus the opening balances — the figures typed in
+   *                 to say what was in the cash box, the GCash wallet and the
+   *                 bank on day one.
+   *
+   * Split because the opening balances are the one part of the money side
+   * that lives in `settings`, and settings are otherwise never in scope here.
+   * Clearing them silently would break the promise at the top of this file;
+   * not offering them at all leaves a practice bank balance sitting under a
+   * ledger that has been wiped, which is its own kind of wrong number.
+   */
+  moneyMode: "records" | "everything";
+  /**
+   * The audit trail: who did what, and what each shift took.
+   *
+   * Its own tick because it is neither an order nor a peso — it is the record
+   * of the shop being run, and a practice month of it is a staff report full
+   * of shifts nobody worked.
+   */
+  history: boolean;
 };
 
 export type ResetCounts = {
@@ -85,6 +111,8 @@ export type ResetCounts = {
   ingredients: number;
   batches: number;
   cashEntries: number;
+  /** Activity-log lines plus recorded shifts. */
+  history: number;
 };
 
 /**
@@ -111,7 +139,7 @@ export async function countResettable(): Promise<ResetCounts> {
   if (viewer?.profile?.role !== "owner") {
     return {
       orders: 0, meals: 0, reviews: 0, chats: 0, staffOrders: 0,
-      ingredients: 0, batches: 0, cashEntries: 0,
+      ingredients: 0, batches: 0, cashEntries: 0, history: 0,
     };
   }
 
@@ -123,17 +151,21 @@ export async function countResettable(): Promise<ResetCounts> {
     return n ?? 0;
   };
 
-  const [orders, meals, reviews, chats, ingredients, batches, cashEntries, staffIds] =
-    await Promise.all([
-      count("orders"),
-      count("meals"),
-      count("reviews"),
-      count("chat_threads"),
-      count("ingredients"),
-      count("batches"),
-      count("cash_ledger"),
-      staffAccountIds(db),
-    ]);
+  const [
+    orders, meals, reviews, chats, ingredients, batches, cashEntries,
+    activity, shifts, staffIds,
+  ] = await Promise.all([
+    count("orders"),
+    count("meals"),
+    count("reviews"),
+    count("chat_threads"),
+    count("ingredients"),
+    count("batches"),
+    count("cash_ledger"),
+    count("activity_log"),
+    count("staff_shifts"),
+    staffAccountIds(db),
+  ]);
 
   const { count: staffOrders } = staffIds.length
     ? await db
@@ -144,6 +176,7 @@ export async function countResettable(): Promise<ResetCounts> {
 
   return {
     orders, meals, reviews, chats, ingredients, batches, cashEntries,
+    history: activity + shifts,
     staffOrders: staffOrders ?? 0,
   };
 }
@@ -175,7 +208,8 @@ export async function resetShopData(input: {
     !input.scope.chat &&
     !input.scope.staffOrders &&
     !input.scope.inventory &&
-    !input.scope.money
+    !input.scope.money &&
+    !input.scope.history
   ) {
     return { ok: false, error: "Choose at least one thing to clear." };
   }
@@ -212,7 +246,11 @@ export async function resetShopData(input: {
           (input.scope.inventoryMode === "everything"
             ? "inventory, batches and recipes"
             : "stock counts (keeping ingredients and recipes)"),
-        input.scope.money && "money records",
+        input.scope.money &&
+          (input.scope.moneyMode === "everything"
+            ? "money records and opening balances"
+            : "money records"),
+        input.scope.history && "the activity log and shift records",
       ]
         .filter(Boolean)
         .join(", ") || "nothing"
@@ -469,7 +507,102 @@ export async function resetShopData(input: {
 
       const oe = await db.from("oe_templates").delete().neq("id", all).select("id");
       if (oe.error) throw new Error(`cost templates: ${oe.error.message}`);
+
+      /**
+       * Three tables this scope always meant and never touched.
+       *
+       * `running_costs`, `supplier_debts` and `marketing_campaigns` arrived in
+       * later migrations and nobody came back to add them here, so "money
+       * records" quietly meant five of the eight things it says. An owner
+       * clearing the practice data was left with practice utang to suppliers
+       * and practice electricity bills, under a screen that had told them the
+       * money was gone. Exactly the drift the backup file warns about, in the
+       * one place where the failure is silent and the wrong number is money.
+       */
+      const sd = await db.from("supplier_debts").delete().neq("id", all).select("id");
+      if (sd.error) throw new Error(`supplier utang: ${sd.error.message}`);
+      deleted.push(`${sd.data?.length ?? 0} supplier utang records`);
+
+      const rc = await db.from("running_costs").delete().neq("id", all).select("id");
+      if (rc.error) throw new Error(`running costs: ${rc.error.message}`);
+      deleted.push(`${rc.data?.length ?? 0} running costs`);
+
+      const mc = await db.from("marketing_campaigns").delete().neq("id", all).select("id");
+      if (mc.error) throw new Error(`marketing spend: ${mc.error.message}`);
+      deleted.push(`${mc.data?.length ?? 0} marketing campaigns`);
+
+      // The suppliers themselves stay. A supplier is a name and a phone
+      // number the owner typed — the same kind of thing as an ingredient, and
+      // not a record of anything that happened. What they were owed is gone;
+      // who they are is not.
+
+      if (input.scope.moneyMode === "everything") {
+        /**
+         * The opening balances: what was in the cash box, the GCash wallet
+         * and the bank on day one.
+         *
+         * The one thing this whole file touches in `settings`, and the reason
+         * it is behind its own choice rather than folded in. Left behind,
+         * they are a practice bank balance sitting on top of a ledger that
+         * has been wiped — every figure on the Money page built on a number
+         * from a week of pretending.
+         *
+         * Zeroed and switched off, not deleted: the row is the shop's
+         * settings and there is exactly one of it.
+         */
+        const bal = await db
+          .from("settings")
+          .update({
+            cash_balance_enabled: false,
+            cash_balance_starting_amount: 0,
+            cash_balance_start_date: null,
+            gcash_balance_enabled: false,
+            gcash_balance_starting_amount: 0,
+            gcash_balance_start_date: null,
+            bank_balance_enabled: false,
+            bank_balance_starting_amount: 0,
+            bank_balance_start_date: null,
+          })
+          .eq("id", 1)
+          .select("id");
+        if (bal.error) throw new Error(`opening balances: ${bal.error.message}`);
+        deleted.push("opening balances for cash, GCash and the bank");
+      }
     }
+
+    if (input.scope.history) {
+      /**
+       * Who did what, and what each shift took.
+       *
+       * Neither an order nor a peso, which is why it is its own tick and why
+       * nothing cleared it until now: a practice month left the staff report
+       * full of shifts nobody worked and an activity log of a shop that was
+       * not open.
+       *
+       * Shifts can only go once the orders have, because `orders.shift_id`
+       * points at them with no ON DELETE — Postgres would refuse, and the
+       * owner would get a foreign-key error to decode. Said plainly instead.
+       */
+      const { count: remaining } = await db
+        .from("orders")
+        .select("id", { count: "exact", head: true });
+      if ((remaining ?? 0) > 0 && !input.scope.orders) {
+        return {
+          ok: false,
+          error:
+            "Shift records can't be cleared while orders still point at them. Tick orders as well, or clear those first.",
+        };
+      }
+
+      const sh = await db.from("staff_shifts").delete().neq("id", all).select("id");
+      if (sh.error) throw new Error(`shifts: ${sh.error.message}`);
+      deleted.push(`${sh.data?.length ?? 0} shift records`);
+
+      const al = await db.from("activity_log").delete().neq("id", all).select("id");
+      if (al.error) throw new Error(`activity log: ${al.error.message}`);
+      deleted.push(`${al.data?.length ?? 0} activity log lines`);
+    }
+
   } catch (err) {
     return {
       ok: false,

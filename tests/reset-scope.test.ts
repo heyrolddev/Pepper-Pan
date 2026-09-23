@@ -117,3 +117,78 @@ test("the destructive branch is the one that has to ask for itself", () => {
   );
   assert.match(SOURCE, /const zeroInventory = input\.scope\.inventory && !wipeInventory;/);
 });
+
+/* ---- the money side ------------------------------------------------ */
+
+const moneying = branch("if (input.scope.money) {");
+const historying = branch("if (input.scope.history) {");
+
+test("money records means every table that holds money", () => {
+  /**
+   * Three of these shipped in later migrations and nobody came back to add
+   * them here, so "money records" quietly meant five of the eight things it
+   * said — and an owner clearing the practice data kept practice utang to
+   * suppliers and practice electricity bills under a screen that had told
+   * them the money was gone.
+   *
+   * Listed by name rather than counted, so the next table that arrives has
+   * to be argued about here instead of being forgotten in silence.
+   */
+  for (const table of [
+    "cash_ledger",
+    "fixed_costs",
+    "assets",
+    "receivables",
+    "oe_templates",
+    "supplier_debts",
+    "running_costs",
+    "marketing_campaigns",
+  ]) {
+    assert.equal(
+      tablesTouched(moneying).has(table),
+      true,
+      `clearing money should clear ${table}`
+    );
+  }
+});
+
+test("the suppliers themselves are not money", () => {
+  // A supplier is a name and a phone number the owner typed — the same kind
+  // of thing as an ingredient. What they were owed goes; who they are stays.
+  assert.equal(
+    new RegExp(`from\\("suppliers"\\)\\s*\\.delete\\(`).test(moneying),
+    false,
+    "the supplier directory must survive a money reset"
+  );
+});
+
+test("the opening balances only go when they are asked for", () => {
+  // The one thing this whole file touches in `settings`, which are otherwise
+  // never in scope — so it sits behind its own choice rather than folded in.
+  const guarded = branch('if (input.scope.moneyMode === "everything") {');
+  assert.match(guarded, /from\("settings"\)/);
+  for (const field of [
+    "cash_balance_starting_amount",
+    "gcash_balance_starting_amount",
+    "bank_balance_starting_amount",
+  ]) {
+    assert.match(guarded, new RegExp(`${field}: 0`), `${field} should be zeroed`);
+  }
+  // And nowhere else in the money branch.
+  const outside = moneying.replace(guarded, "");
+  assert.equal(
+    /from\("settings"\)/.test(outside),
+    false,
+    "settings must not be touched unless the balances were asked for"
+  );
+});
+
+test("shifts cannot be cleared out from under the orders that point at them", () => {
+  // `orders.shift_id` has no ON DELETE, so Postgres would refuse and hand the
+  // owner a foreign-key error to decode. Refused in words instead.
+  assert.match(historying, /from\("orders"\)/);
+  assert.match(historying, /Tick orders as well/);
+  for (const table of ["staff_shifts", "activity_log"]) {
+    assert.equal(tablesTouched(historying).has(table), true, `history should clear ${table}`);
+  }
+});
