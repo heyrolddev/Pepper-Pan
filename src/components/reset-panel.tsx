@@ -28,6 +28,9 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
     chat: false,
     staffOrders: true,
     inventory: false,
+    // The gentle one is the default, because it is the one that is almost
+    // always meant and the only one that cannot cost a fortnight of typing.
+    inventoryMode: "counts",
     money: false,
   });
   const [password, setPassword] = useState("");
@@ -37,7 +40,7 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
   const [done, setDone] = useState<string[] | null>(null);
 
   const ITEMS: {
-    key: keyof ResetScope;
+    key: Exclude<keyof ResetScope, "inventoryMode">;
     label: string;
     detail: string;
     count: number;
@@ -69,9 +72,9 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
     },
     {
       key: "inventory",
-      label: "Inventory, batches and recipes",
+      label: "Stock counts",
       detail:
-        "Every ingredient and its stock lots, every batch, and the recipes built on them \u2014 plus the purchase, consumption and waste records that describe them. Dishes stay; they are left with no recipe.",
+        "How much is on the shelf, and the purchase, consumption and waste records behind it. Choose below whether the ingredients and recipes themselves go too.",
       count: counts.ingredients + counts.batches,
     },
     {
@@ -148,6 +151,60 @@ export function ResetPanel({ counts }: { counts: ResetCounts }) {
                 <span className="block text-sm text-ink-800/60">{item.detail}</span>
               </span>
             </label>
+
+            {/* The second question, and only once the first has been
+                answered. Asked here rather than as a seventh checkbox because
+                it is not a seventh thing to clear — it is how far the sixth
+                one goes, and the two answers are a fortnight of typing apart. */}
+            {item.key === "inventory" && scope.inventory && (
+              <div className="ml-4 mt-2 flex flex-col gap-2 border-l-2 border-brand-600/25 pl-4">
+                {(
+                  [
+                    {
+                      mode: "counts" as const,
+                      label: "Just the numbers",
+                      detail:
+                        "Every ingredient, batch and recipe stays \u2014 names, units, costs, yields, and every gram and piece in them. Only how much is on the shelf goes to zero.",
+                    },
+                    {
+                      mode: "everything" as const,
+                      label: "The ingredients and recipes too",
+                      detail:
+                        "Deletes the ingredients, the batches and every recipe built on them. Dishes stay, with no recipe. Only worth it if what you typed is wrong, not just out of date.",
+                    },
+                  ]
+                ).map((opt) => (
+                  <label
+                    key={opt.mode}
+                    className={`flex cursor-pointer items-start gap-3 rounded-2xl p-3 ring-1 transition-colors ${
+                      scope.inventoryMode === opt.mode
+                        ? opt.mode === "everything"
+                          ? "bg-brand-50 ring-brand-600/40"
+                          : "bg-jade-50 ring-jade-600/40"
+                        : "bg-cream-50 ring-ink-950/10 hover:bg-cream-200"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="inventory-mode"
+                      checked={scope.inventoryMode === opt.mode}
+                      onChange={() =>
+                        setScope((s) => ({ ...s, inventoryMode: opt.mode }))
+                      }
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold text-ink-950">
+                        {opt.label}
+                      </span>
+                      <span className="block text-xs text-ink-800/60">
+                        {opt.detail}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
           </li>
         ))}
       </ul>

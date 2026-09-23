@@ -41,13 +41,37 @@ export type ResetScope = {
   /** Orders placed from an owner or staff account while testing. */
   staffOrders: boolean;
   /**
-   * Ingredients, their stock lots, batches, and every recipe built on them.
+   * The stock side of the shop.
    *
    * Absent until the owner cleared the shop before a real import and found
    * the practice inventory still sitting there. The screen had promised to
    * clear "the practice data" and had quietly meant four kinds of it.
+   *
+   * What it clears depends on `inventoryMode` — see below, because the two
+   * answers are very far apart.
    */
   inventory: boolean;
+  /**
+   * How much of the stock side goes.
+   *
+   *   "counts"      the numbers, and nothing else. Every ingredient, batch
+   *                 and recipe survives with its name, unit, cost, yield and
+   *                 every gram and piece in it. What goes to zero is how much
+   *                 is on the shelf, and the movement history that got it
+   *                 there.
+   *
+   *   "everything"  the ingredients and batches themselves, and the recipes
+   *                 built on them.
+   *
+   * Two modes rather than one, because they answer completely different
+   * questions and the difference is a fortnight of typing. "I practised with
+   * fake restocks and fake sales, and my counts are fiction" is the common
+   * one, and it has nothing to do with the recipe book being wrong. Wiping
+   * the recipes to fix the counts is like burning the cookbook because the
+   * pantry needs recounting — which is what this button used to do, with no
+   * way to ask for anything gentler.
+   */
+  inventoryMode: "counts" | "everything";
   /** The cash ledger, purchases, consumption, waste, bills and assets. */
   money: boolean;
 };
@@ -184,7 +208,10 @@ export async function resetShopData(input: {
         input.scope.menu && "the menu",
         input.scope.chat && "chat",
         input.scope.staffOrders && "staff test orders",
-        input.scope.inventory && "inventory",
+        input.scope.inventory &&
+          (input.scope.inventoryMode === "everything"
+            ? "inventory, batches and recipes"
+            : "stock counts (keeping ingredients and recipes)"),
         input.scope.money && "money records",
       ]
         .filter(Boolean)
@@ -300,7 +327,72 @@ export async function resetShopData(input: {
       deleted.push(`${meals.data?.length ?? 0} dishes`);
     }
 
-    if (input.scope.inventory) {
+    // Anything that is not, exactly, the destructive word falls to the gentle
+    // branch. A stale browser tab posting the older shape of this form sends
+    // no mode at all, and the one thing that must never happen by default is
+    // the recipe book going.
+    const wipeInventory =
+      input.scope.inventory && input.scope.inventoryMode === "everything";
+    const zeroInventory = input.scope.inventory && !wipeInventory;
+
+    if (zeroInventory) {
+      /**
+       * The numbers, and only the numbers.
+       *
+       * What survives: every ingredient with its name, unit and cost; every
+       * batch with its name and yield; every recipe line with its grams and
+       * pieces; every batch recipe; every packaging line. None of that is
+       * touched, because none of it is a count — it is the shop's own
+       * knowledge of how its food is made, and it took weeks to type.
+       *
+       * What goes: how much is on the shelf, and the movement history that
+       * produced it. The history has to go with the counts rather than be
+       * left behind, and that is not tidiness. `consumption_log` is what the
+       * reorder suggestions are computed from, so a zeroed shelf with a month
+       * of practice sales still in the log would tell the owner to buy pork
+       * for customers who never existed. Stock at zero and a usage history
+       * that disagrees with it is worse than either on its own.
+       */
+      const lots = await db.from("ingredient_lots").delete().neq("id", all).select("id");
+      if (lots.error) throw new Error(`stock lots: ${lots.error.message}`);
+
+      const pl = await db.from("purchase_log").delete().neq("id", all).select("id");
+      if (pl.error) throw new Error(`purchase log: ${pl.error.message}`);
+
+      const cl = await db.from("consumption_log").delete().neq("id", all).select("id");
+      if (cl.error) throw new Error(`consumption log: ${cl.error.message}`);
+
+      const w = await db.from("waste_log").delete().neq("id", all).select("id");
+      if (w.error) throw new Error(`waste log: ${w.error.message}`);
+
+      const cc = await db.from("cycle_counts").delete().neq("id", all).select("id");
+      if (cc.error) throw new Error(`stock counts: ${cc.error.message}`);
+
+      // The two running totals themselves. Set, not deleted — the row is the
+      // ingredient, and the ingredient stays.
+      const zi = await db
+        .from("ingredients")
+        .update({ stock: 0 })
+        .neq("id", all)
+        .select("id");
+      if (zi.error) throw new Error(`ingredient counts: ${zi.error.message}`);
+
+      const zb = await db
+        .from("batches")
+        .update({ batch_stock: 0 })
+        .neq("id", all)
+        .select("id");
+      if (zb.error) throw new Error(`batch counts: ${zb.error.message}`);
+
+      deleted.push(`${zi.data?.length ?? 0} ingredient counts set to zero`);
+      deleted.push(`${zb.data?.length ?? 0} batch counts set to zero`);
+      deleted.push(`${lots.data?.length ?? 0} stock lots`);
+      deleted.push(`${pl.data?.length ?? 0} purchases`);
+      deleted.push(`${w.data?.length ?? 0} waste entries`);
+      deleted.push("recipes, ingredients and batches kept");
+    }
+
+    if (wipeInventory) {
       // Order matters here in a way it does not elsewhere in this function,
       // because these tables point at each other and only some of those
       // pointers cascade. `ingredient_lots`, `purchase_log` and
