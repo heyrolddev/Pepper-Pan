@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setCustomerFlags } from "@/app/admin/customers/actions";
 import { formatDate } from "@/lib/format-date";
+import { peso } from "@/lib/peso";
 
 export type AdminCustomer = {
   id: string;
@@ -18,8 +19,6 @@ export type AdminCustomer = {
   totalSpent: number;
 };
 
-const peso = (n: number) =>
-  "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function CustomerRow({
   customer,

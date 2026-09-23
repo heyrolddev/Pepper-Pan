@@ -14,8 +14,8 @@ import {
   type PaymentPlan,
   type PaymentStatus,
 } from "@/lib/payments";
+import { peso } from "@/lib/peso";
 
-const peso = (n: number) => "₱" + n.toFixed(2);
 
 const TONE_CLASS = {
   good: "bg-jade-700 text-cream-50",

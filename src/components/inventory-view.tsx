@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { peso } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 import {
   CountForm,
   IngredientForm,

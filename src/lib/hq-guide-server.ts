@@ -2,7 +2,8 @@ import "server-only";
 import { loadMoney } from "@/lib/money-server";
 import { loadAvailability, loadCostBook, loadSalesVolume } from "@/lib/costing-server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { marginFor, peso, pesoRound } from "@/lib/costing";
+import { marginFor } from "@/lib/costing";
+import { peso, pesoRound } from "@/lib/peso";
 import { SPEND_LABEL, type SpendKind } from "@/lib/spending";
 import type { ExplainKind } from "@/lib/hq-guide";
 

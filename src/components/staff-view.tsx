@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { peso } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 import { formatDateTime } from "@/lib/format-date";
 import { ROLE_BLURBS, ROLE_LABELS } from "@/lib/permissions";
 import { deleteStaffAccount, setStaffRole } from "@/app/admin/staff/actions";

@@ -18,6 +18,7 @@ import {
   type PaymentPlan,
   type PaymentStatus,
 } from "@/lib/payments";
+import { peso } from "@/lib/peso";
 
 export type TrackedLine = {
   id: number;
@@ -99,7 +100,6 @@ function readyBlurb(fulfillment: string): string {
     : "Ready for pickup! We're in front of Palengkeni (New Apalit Public Market), beside Osave.";
 }
 
-const peso = (n: number) => "₱" + Number(n).toFixed(2);
 
 function StatusRail({ status, fulfillment }: { status: string; fulfillment: string }) {
   const steps: readonly Step[] = fulfillment === "delivery" ? STEPS : PICKUP_STEPS;

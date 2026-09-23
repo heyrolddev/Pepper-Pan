@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
 import { isAccount, type Account } from "@/lib/money-accounts";
 import { SPEND_KINDS, SPEND_LABEL, type SpendKind } from "@/lib/spending";
+// Not exported from here: see the note at the top of `debts-server.ts`.
+import { recordDebt } from "@/lib/debts-server";
 
 /**
  * Paying suppliers, and buying the things that are not ingredients.
@@ -66,43 +68,6 @@ export type RunningCostRow = {
   supplier_id: string | null;
   note: string | null;
 };
-
-/**
- * Record a debt the shop has taken on.
- *
- * Called from `recordRestock` when a delivery is taken unpaid, and from the
- * Spend flow for anything else bought on utang. Writes NOTHING to the ledger,
- * which is the point — see the note at the top of this file.
- *
- * Exported so `recordRestock` can call it rather than duplicating the insert:
- * a second copy of "what a debt looks like" is how the two drift apart.
- */
-export async function recordDebt(input: {
-  supplierId: string | null;
-  supplierName: string | null;
-  description: string;
-  amount: number;
-  source: "restock" | "spend" | "manual";
-  note?: string | null;
-  actorId?: string | null;
-}): Promise<Result> {
-  if (input.amount <= 0) return { error: null };
-
-  const { error } = await createAdminClient().from("supplier_debts").insert({
-    supplier_id: input.supplierId,
-    // Frozen text, the way `orders.cogs` is frozen: a supplier renamed or
-    // removed later must not silently relabel a debt already settled.
-    supplier_name: input.supplierName,
-    description: input.description,
-    amount: input.amount,
-    incurred_on: shopToday(),
-    source: input.source,
-    note: input.note ?? null,
-    created_by: input.actorId ?? null,
-  });
-  if (error) return { error: error.message };
-  return { error: null };
-}
 
 export async function addDebt(input: {
   supplierId: string;

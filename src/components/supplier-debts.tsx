@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { AdminDialog } from "@/components/admin-dialog";
 import { formatDate } from "@/lib/format-date";
-import { peso } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 import { ACCOUNT_LABELS, type Account } from "@/lib/money-accounts";
 import type { Debt } from "@/lib/money-server";
 import { deleteDebt, settleDebt } from "@/app/admin/money/spending-actions";

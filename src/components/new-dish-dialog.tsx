@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import { createMeal } from "@/app/admin/menu/actions";
-import { peso } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 
 /**
  * A new dish, started on the screen where its cost will be worked out.

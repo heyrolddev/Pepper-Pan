@@ -13,7 +13,7 @@ import { shopToday } from "@/lib/format-date";
 import { StatTile, Delta } from "@/components/stat-tile";
 import { Explain } from "@/components/explain";
 import { RecentOrders } from "@/components/recent-orders";
-import { pesoRound } from "@/lib/costing";
+import { pesoRound } from "@/lib/peso";
 import { hqTitle } from "@/lib/hq-theme";
 import { ErrorLogPanel } from "@/components/error-log-panel";
 import { listErrors } from "@/lib/error-log";

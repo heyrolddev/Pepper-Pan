@@ -44,6 +44,9 @@ export const RESTORE_ORDER = [
   "modifier_options",
   "meal_modifier_groups",
   "product_modifier_groups",
+  // Before anything that names a supplier: the purchase log, the debts and
+  // the running costs all carry `supplier_id`.
+  "suppliers",
   // Shifts before orders: an order carries `shift_id`.
   "staff_shifts",
   "orders",
@@ -59,6 +62,10 @@ export const RESTORE_ORDER = [
   "oe_templates",
   "fixed_costs",
   "assets",
+  // After `suppliers` and `profiles`, both of which they point at.
+  "supplier_debts",
+  "running_costs",
+  "marketing_campaigns",
   "reviews",
   "chat_threads",
   "chat_messages",

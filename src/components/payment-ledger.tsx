@@ -15,6 +15,7 @@ import {
   type PaymentPlan,
   type PaymentStatus,
 } from "@/lib/payments";
+import { peso } from "@/lib/peso";
 
 /**
  * Who owes what, as its own list.
@@ -67,8 +68,6 @@ const BUCKETS: { key: Bucket; label: string; hint: string }[] = [
   { key: "all", label: "Everything", hint: "Every order, however it was paid." },
 ];
 
-const peso = (n: number) =>
-  "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function bucketOf(row: LedgerRow): Exclude<Bucket, "all"> {
   if (row.payment_status === "submitted") return "attention";

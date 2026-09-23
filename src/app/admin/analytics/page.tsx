@@ -4,7 +4,7 @@ import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { AnalysisPanel } from "@/components/analysis-panel";
 import { buildSnapshot } from "./snapshot";
 import { StatTile as Tile } from "@/components/stat-tile";
-import { pesoRound } from "@/lib/costing";
+import { pesoRound } from "@/lib/peso";
 import { hqTitle } from "@/lib/hq-theme";
 
 // Whole pesos on the headline figures, for the same reason as the dashboard.

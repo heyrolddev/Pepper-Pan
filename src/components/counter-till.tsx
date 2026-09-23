@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { peso, type Shortfall } from "@/lib/costing";
+import { type Shortfall } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 import { AdminDialog } from "@/components/admin-dialog";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
 import { TILL_CHOICES, TILL_LABEL, type TillMethod } from "@/lib/till";

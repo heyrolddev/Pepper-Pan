@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { HistoryList } from "@/components/history-list";
-import { peso } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 import { formatDate } from "@/lib/format-date";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import type { MoneyPicture } from "@/lib/money-server";

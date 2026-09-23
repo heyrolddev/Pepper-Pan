@@ -501,42 +501,16 @@ export function marginFor(price: number, cost: number, costed: boolean): Margin 
   return { gross, foodCostPct, marginPct: (gross / p) * 100, verdict };
 }
 
-/** ₱1,234.50 — two decimals, because ingredient costs live in centavos. */
-export function peso(n: number, decimals = 2): string {
-  // The sign goes outside the symbol. "₱-1.25" reads as a currency code
-  // followed by a number and is easy to skim straight past — which is the
-  // worst possible place to lose a minus, since a dish that loses money once
-  // it's boxed is exactly the thing this screen exists to surface.
-  const sign = n < 0 ? "−" : "";
-  return (
-    sign +
-    "₱" +
-    Math.abs(n).toLocaleString("en-PH", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    })
-  );
-}
-
 /**
- * Whole pesos, for a headline figure.
+ * Money is written in `@/lib/peso`, not here.
  *
- * Centavos on a day's takings are three characters that never change a
- * decision, and on an *average* they are false precision. Exact amounts still
- * appear to the centavo where they are actually owed — an order total, a
- * payment, a receipt — which is what `peso` above is for.
- *
- * Lives here rather than beside the tile that renders it, and that is the
- * whole point of moving it: the tile had to become a client component to
- * animate, and a pure function that happens to share a file with a component
- * gets dragged across the client boundary with it. A server component then
- * cannot call it at all — which is exactly how the owner's Today screen
- * started returning "a server error occurred".
+ * `peso` and `pesoRound` used to live in this file, and every screen that
+ * needed to render an amount imported them from it. That meant the checkout
+ * and the floating cart — which want a peso sign and nothing else — reached
+ * for seven hundred lines of margin arithmetic to get one. It also kept this
+ * file honest in a way worth keeping: it has no imports at all, which is what
+ * lets the tests load it straight through Node.
  */
-export function pesoRound(n: number): string {
-  const sign = n < 0 ? "−" : "";
-  return sign + "₱" + Math.round(Math.abs(n)).toLocaleString("en-PH");
-}
 
 /** What this ingredient's remaining stock is worth. */
 export function stockValue(i: Ingredient): number {

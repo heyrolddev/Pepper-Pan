@@ -6,8 +6,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { AdminDialog } from "@/components/admin-dialog";
 import { lineUnitPrice, useCart } from "@/lib/cart-context";
 import { describeExtras } from "@/lib/modifiers";
+import { peso } from "@/lib/peso";
 
-const peso = (n: number) => "₱" + n.toFixed(2);
 
 /**
  * The bar that follows a customer around once they've added something, and

@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import { Combobox } from "@/components/combobox";
-import { peso } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 import {
   produceBatch,
   saveBatchRecipe,
