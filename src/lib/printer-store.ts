@@ -1,8 +1,15 @@
 "use client";
 
-import { connectPrinter, sendJob, type Connection } from "@/lib/bluetooth-printer";
+import {
+  canRemember,
+  connectPrinter,
+  onPrinterLost,
+  reconnectPrinter,
+  sendJob,
+  type Connection,
+} from "@/lib/bluetooth-printer";
 import { chunk, encodeReceipt } from "@/lib/escpos";
-import { renderReceipt, type Receipt } from "@/lib/receipt";
+import { renderReceipt, testSlip, type Receipt } from "@/lib/receipt";
 
 /**
  * The printer connection, kept outside React.
@@ -23,7 +30,54 @@ import { renderReceipt, type Receipt } from "@/lib/receipt";
 
 let conn: Connection | null = null;
 let version = 0;
+let stopWatching: (() => void) | null = null;
 const listeners = new Set<() => void>();
+
+/**
+ * Which printer this counter uses, remembered per device.
+ *
+ * Per browser rather than per account, for the same reason auto-print is: it
+ * describes a counter, not a person. The tablet by the pan has a printer
+ * beside it; the owner's phone does not.
+ */
+const DEVICE_KEY = "pepperpan.printer.id";
+
+function rememberDevice(id: string) {
+  try {
+    localStorage.setItem(DEVICE_KEY, id);
+  } catch {
+    // A browser refusing storage costs the silent reconnect, not the printer.
+  }
+}
+
+function rememberedDevice(): string | null {
+  try {
+    return localStorage.getItem(DEVICE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hold on to a connection, and notice when it goes.
+ *
+ * A printer switched off, carried away or left to sleep does not tell the
+ * page — the connection just stops working. Without the watch the till goes
+ * on showing "Ready" over a printer in a drawer, and the first anybody knows
+ * is a sale that did not print in front of a customer.
+ */
+function hold(next: Connection) {
+  stopWatching?.();
+  conn = next;
+  rememberDevice(next.id);
+  stopWatching = onPrinterLost(next, () => {
+    if (conn === next) {
+      conn = null;
+      changed();
+    }
+  });
+  changed();
+}
 
 function changed() {
   version += 1;
@@ -54,15 +108,74 @@ export const isConnected = () => conn?.isOpen() ?? false;
 export async function connect(): Promise<Connection> {
   // Reuse a live connection rather than opening the chooser over it.
   if (conn?.isOpen()) return conn;
-  conn = await connectPrinter();
-  changed();
-  return conn;
+  hold(await connectPrinter());
+  return conn!;
+}
+
+/**
+ * Wake the till's usual printer, without asking anybody anything.
+ *
+ * The morning case, and the reason this exists: the counter used to be able
+ * to reach the printer only from the receipt panel, which only appears after
+ * a sale — so the first customer of the day stood there while somebody picked
+ * a printer out of a chooser. Prep now happens during prep.
+ *
+ * Safe to call on every load. It needs no tap (a permission already granted
+ * does not prompt again), it returns false rather than throwing when the
+ * printer is off or the browser cannot remember devices, and it never opens a
+ * chooser — so the worst case is silence and a Connect button still waiting.
+ */
+export async function reconnect(): Promise<boolean> {
+  if (conn?.isOpen()) return true;
+  if (!canRemember()) return false;
+  const id = rememberedDevice();
+  if (!id) return false;
+
+  const back = await reconnectPrinter(id);
+  if (!back) return false;
+  hold(back);
+  return true;
+}
+
+/** Whether this browser could reconnect by itself, given a printer it knows. */
+export const remembersPrinters = canRemember;
+
+/** True once a printer has been paired here — even if it is not on right now. */
+export function hasPairedBefore(): boolean {
+  return rememberedDevice() !== null;
 }
 
 export function disconnect() {
+  stopWatching?.();
+  stopWatching = null;
   conn?.disconnect();
   conn = null;
   changed();
+}
+
+/**
+ * A short slip that proves the paper comes out.
+ *
+ * Connecting is not the same as working. A printer can pair, report itself
+ * connected, and still produce nothing — out of paper, roll in backwards, the
+ * wrong kind of Bluetooth underneath. The only proof is paper, and the moment
+ * to find out is during prep, not in front of the first customer.
+ *
+ * Deliberately does not look like a receipt. A test slip that resembles one
+ * ends up in a customer's hand or, worse, in the shift's paperwork.
+ */
+export async function testPrint(): Promise<PrintResult> {
+  const open = conn?.isOpen() ? conn : null;
+  if (!open) return { status: "no-printer" };
+
+  const rows = testSlip(open.name, new Date());
+
+  try {
+    await sendJob(open, chunk(encodeReceipt(rows)));
+    return { status: "printed", name: open.name };
+  } catch (e) {
+    return { status: "failed", message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /* ---------------- print automatically after a sale ---------------- */

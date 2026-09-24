@@ -24,9 +24,12 @@ type Characteristic = {
 type Service = { getCharacteristics(): Promise<Characteristic[]> };
 type Server = { connected: boolean; getPrimaryServices(): Promise<Service[]>; disconnect(): void };
 type Device = {
+  /** Stable for as long as the permission lasts. What `getDevices` matches on. */
+  id: string;
   name?: string;
   gatt?: { connect(): Promise<Server> };
   addEventListener(t: string, fn: () => void): void;
+  removeEventListener?(t: string, fn: () => void): void;
 };
 type Bluetooth = {
   getAvailability?(): Promise<boolean>;
@@ -34,6 +37,9 @@ type Bluetooth = {
     acceptAllDevices?: boolean;
     optionalServices?: string[];
   }): Promise<Device>;
+  /** Devices this page already has permission for. Not in every build — see
+   *  `knownPrinters`. */
+  getDevices?(): Promise<Device[]>;
 };
 
 function bluetooth(): Bluetooth | null {
@@ -63,12 +69,39 @@ const KNOWN_SERVICES = [
   "0000ae30-0000-1000-8000-00805f9b34fb",
 ];
 
+/**
+ * The device behind each live connection.
+ *
+ * Kept beside the connection rather than on it, because `Connection` is the
+ * shape the rest of the app writes bytes through and it has no business
+ * carrying a browser object around. Weak would be wrong here: the map IS what
+ * keeps the device reachable for as long as the connection is.
+ */
+const DEVICES = new Map<string, Device>();
+
 export type Connection = {
+  /** The browser's own id for the device, so the same printer can be found
+   *  again without asking the person which one it was. */
+  id: string;
   name: string;
   write(bytes: Uint8Array): Promise<void>;
   disconnect(): void;
   isOpen(): boolean;
 };
+
+/**
+ * Whether this browser can reconnect to a printer it already knows.
+ *
+ * `getDevices()` is the API that would let the till come back up in the
+ * morning already paired, with no chooser at all. It is still behind a flag in
+ * Chrome (`#enable-web-bluetooth-new-permissions-backend`), so it is checked
+ * for rather than assumed: where it exists the shop gets a silent reconnect,
+ * and where it does not they get a one-tap Connect — which is still the thing
+ * they asked for, just with the tap.
+ */
+export function canRemember(): boolean {
+  return typeof bluetooth()?.getDevices === "function";
+}
 
 /**
  * Ask the person to pick their printer, then find something on it to write to.
@@ -88,6 +121,37 @@ export async function connectPrinter(): Promise<Connection> {
     optionalServices: KNOWN_SERVICES,
   });
 
+  return openDevice(device);
+}
+
+/**
+ * Reconnect to a printer this browser has already been given permission for.
+ *
+ * No chooser, and — this is the part that makes it useful — no user gesture.
+ * `requestDevice` needs a tap because it is a permission prompt;
+ * `gatt.connect()` on a device already permitted does not, so the till can do
+ * this by itself the moment the page opens.
+ *
+ * Returns null rather than throwing on every ordinary failure: the flag is
+ * off, the permission was cleared, the printer is unplugged. None of those is
+ * an error worth painting on a screen at seven in the morning — they all just
+ * mean "still needs the tap".
+ */
+export async function reconnectPrinter(id: string): Promise<Connection | null> {
+  const bt = bluetooth();
+  if (!bt?.getDevices) return null;
+  try {
+    const known = await bt.getDevices();
+    const device = known.find((d) => d.id === id);
+    if (!device?.gatt) return null;
+    return await openDevice(device);
+  } catch {
+    return null;
+  }
+}
+
+/** Connect to a device already in hand, and find something on it to write to. */
+async function openDevice(device: Device): Promise<Connection> {
   if (!device.gatt) throw new Error("That device doesn't accept connections from a browser.");
   const server = await device.gatt.connect();
 
@@ -111,6 +175,8 @@ export async function connectPrinter(): Promise<Connection> {
     );
   }
 
+  DEVICES.set(device.id, device);
+
   const write = async (bytes: Uint8Array) => {
     // A copy, because some browsers detach the buffer after a write and a
     // second chunk sliced from the same array then sends nothing.
@@ -123,12 +189,32 @@ export async function connectPrinter(): Promise<Connection> {
   };
 
   return {
+    id: device.id,
     name: device.name || "Printer",
     write,
     disconnect: () => server.disconnect(),
     isOpen: () => server.connected,
   };
 }
+
+/**
+ * Tell me when this printer goes away.
+ *
+ * A thermal printer switched off, carried out of range or left to sleep does
+ * not announce itself to the page — the connection object simply stops
+ * working. Without this the till goes on showing "Ready" over a printer that
+ * is in a drawer, and the first anyone knows is a sale that does not print.
+ *
+ * Returns an unsubscribe, and tolerates a browser with no
+ * `removeEventListener` on the device rather than assuming the full shape.
+ */
+export function onPrinterLost(conn: Connection, fn: () => void): () => void {
+  const device = DEVICES.get(conn.id);
+  if (!device) return () => {};
+  device.addEventListener("gattserverdisconnected", fn);
+  return () => device.removeEventListener?.("gattserverdisconnected", fn);
+}
+
 
 /**
  * Send a whole job, in pieces, with a breath between them.
