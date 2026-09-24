@@ -9,10 +9,11 @@ import { openShiftFor } from "@/lib/shifts-server";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { orderLabel } from "@/lib/tickets";
 import { cartQuantityProblem } from "@/lib/orders";
-import { loadAvailability } from "@/lib/costing-server";
+import { loadStockPicture } from "@/lib/costing-server";
 import { METHOD_FOR_TILL, type TillMethod } from "@/lib/till";
 import { loadModifiers } from "@/lib/modifiers-server";
 import { groupsFor, resolveChoice, type ChosenExtra } from "@/lib/modifiers";
+import { poolShortfalls, type TicketLine } from "@/lib/costing";
 
 /**
  * One line rung up.
@@ -190,36 +191,50 @@ async function ringUp(input: SaleInput): Promise<CounterResult> {
   // Same check as the website. The till is the one place someone can insist —
   // the customer is standing there — so it says what is short and by how
   // much rather than just refusing.
-  const makeable = await loadAvailability();
+  const { limits } = await loadStockPicture();
 
-  // Dishes AND add-ons, summed across the ticket first: an add-on is a dish
-  // and draws the same stock, and three lines each asking for one extra rice
-  // is three portions — checked one at a time, all three would go through.
-  const needed = new Map<string, number>();
-  const labelOf = new Map<string, string>();
+  // Dishes AND add-ons, added up PER INGREDIENT and checked against the shelf
+  // once — not dish by dish.
+  //
+  // Dish by dish was the bug. Every dish's "N left" is worked out on its own
+  // against the whole shelf, which is right: two Giant Ji Pai variants sharing
+  // a tub of breading should each offer everything that tub can make. But the
+  // numbers overlap, and a check that reads them one dish at a time believes
+  // the overlap. Breading enough for two Giants, and two Originals plus two
+  // Spicies all pass their own test while the ticket takes four Giants' worth
+  // out of a tub holding two. Nothing refused it and the shelf went negative,
+  // because `apply_order_stock` subtracts without arguing.
+  // Named `drawing` rather than `ticket`: that word already means the number
+  // printed on the receipt, further down this same function.
+  const drawing: TicketLine[] = [];
   lines.forEach((l, at) => {
-    needed.set(l.mealId, (needed.get(l.mealId) ?? 0) + l.qty);
-    labelOf.set(l.mealId, nameById.get(l.mealId) ?? "an item");
+    drawing.push({ mealId: l.mealId, qty: l.qty });
     for (const e of extrasPerLine[at]) {
-      if (!e.mealId) continue;
-      // Two extra rice on a line of three is six portions.
-      needed.set(e.mealId, (needed.get(e.mealId) ?? 0) + l.qty * e.qty);
-      labelOf.set(e.mealId, e.label);
+      // An add-on IS a dish and draws the same stock. Two extra rice on a line
+      // of three is six portions.
+      if (e.mealId) drawing.push({ mealId: e.mealId, qty: l.qty * e.qty });
     }
   });
 
-  const short = [...needed]
-    .map(([mealId, qty]) => ({ mealId, qty, can: makeable.get(mealId) }))
-    .filter((x) => x.can !== undefined && x.can < x.qty);
+  const short = poolShortfalls(drawing, limits);
   if (short.length > 0) {
+    // Naming the INGREDIENT, not the dish, which is the whole point.
+    // "Not enough stock for Cheesy Giant Jipai (2 left, 6 rung up)" sent the
+    // owner looking at a shelf of thirteen marinated chickens wondering what
+    // the system was talking about. The chickens were never the problem.
+    const round = (n: number) =>
+      Number.isInteger(n) ? String(n) : n.toFixed(n < 10 ? 2 : 0);
     const detail = short
+      .slice(0, 3)
       .map(
-        (x) =>
-          `${labelOf.get(x.mealId) ?? "an item"} (${x.can} left, ${x.qty} rung up)`
+        (s) =>
+          `${s.label} (${round(s.have)} ${s.unit} left, this ticket needs ${round(s.need)})`
       )
-      .join(", ");
+      .join("; ");
     return {
-      error: `Not enough stock for ${detail}. Record it anyway by fixing the count in Inventory first, or take it off the ticket.`,
+      error:
+        `Short on ${detail}. That is what runs out first — the dishes on the ticket share it. ` +
+        `Make or buy more, fix the count in Inventory, or take something off the ticket.`,
     };
   }
 
