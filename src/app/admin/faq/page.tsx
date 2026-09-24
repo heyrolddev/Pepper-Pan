@@ -3,6 +3,8 @@ import { can, getViewer } from "@/lib/auth";
 import { FaqEditor, type FaqRow } from "@/components/faq-editor";
 import { GAVE_UP, groupUnanswered, type Unanswered } from "@/lib/faq";
 import { hqTitle } from "@/lib/hq-theme";
+import { AssistantVoice } from "@/components/assistant-voice";
+import { liveStateOf, type Announcement } from "@/lib/announcements";
 
 export default async function AdminFaqPage() {
   // "faq", not "chat". Since migration 0026 these answers are also printed on
@@ -48,6 +50,38 @@ export default async function AdminFaqPage() {
   }
 
   const rows = (data ?? []) as FaqRow[];
+
+  // What the shop says rather than what the sums say — read beside the FAQ
+  // because they are the same job from the owner's side: making Ask Pepper
+  // Pan answer the way the shop would.
+  const [voiceRes, dishRes, promoRes] = await Promise.all([
+    supabase
+      .from("chat_settings")
+      .select("featured_meal_id, featured_note, promo_note")
+      .eq("id", 1)
+      .maybeSingle(),
+    supabase
+      .from("meals")
+      .select("id, name, price")
+      .eq("is_public", true)
+      .order("name")
+      .limit(300),
+    supabase
+      .from("announcements")
+      .select("id, kind, title, body, starts_at, ends_at, is_active, sort_order, pinned")
+      .in("kind", ["promo", "dine_in"])
+      .order("sort_order")
+      .limit(20),
+  ]);
+
+  const voice = voiceRes.data as
+    | { featured_meal_id: string | null; featured_note: string | null; promo_note: string | null }
+    | null;
+  // The same "live" rule the homepage and the assistant use, so this panel
+  // cannot claim a promo is being offered when it is scheduled or finished.
+  const livePromos = ((promoRes.data ?? []) as Announcement[])
+    .filter((a) => liveStateOf(a) === "live")
+    .map((a) => a.title);
 
   // What people asked that nothing could answer. Read in thread order so a
   // question can be paired with the reply it drew.
@@ -106,6 +140,16 @@ export default async function AdminFaqPage() {
           homepage — one answer, two places, so they can never disagree.
         </p>
       </div>
+
+      <AssistantVoice
+        dishes={((dishRes.data ?? []) as { id: string; name: string; price: number }[]).map(
+          (d) => ({ id: d.id, name: d.name, price: Number(d.price) || 0 })
+        )}
+        featuredMealId={voice?.featured_meal_id ?? ""}
+        featuredNote={voice?.featured_note ?? ""}
+        promoNote={voice?.promo_note ?? ""}
+        livePromos={livePromos}
+      />
 
       <div className="flex flex-wrap items-center gap-6 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
         <div>

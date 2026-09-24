@@ -21,7 +21,6 @@ export const RESTORE_ORDER = [
   "shop_closures",
   "delivery_settings",
   "payment_settings",
-  "chat_settings",
   "profiles",
   "ingredients",
   "ingredient_lots",
@@ -34,6 +33,12 @@ export const RESTORE_ORDER = [
   // Cards before dishes: `meals.product_id` points at one.
   "menu_products",
   "meals",
+  // After the dishes, because 0052 gave `chat_settings.featured_meal_id` a
+  // reference to one. It sat with the other settings at the top of this list
+  // until then, which would have made every backup carrying a pinned
+  // recommendation fail to restore — the foreign key refusing a dish that had
+  // not been put back yet.
+  "chat_settings",
   "meal_ingredients",
   "meal_components",
   "meal_packaging",
