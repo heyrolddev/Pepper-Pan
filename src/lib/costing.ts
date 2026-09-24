@@ -740,6 +740,10 @@ export const LOW_STOCK_SERVINGS = 3;
  * to a customer right now.
  */
 export type Shortfall = {
+  /** Which ingredient or batch this line draws on. Two dishes sharing one
+   *  thing carry the same id, which is what lets a whole ticket be checked
+   *  against the shelf instead of dish by dish. */
+  refId: string;
   label: string;
   kind: "ingredient" | "batch";
   unit: string;
@@ -780,6 +784,7 @@ export function limitingFor(
       ? Number((thing as Batch).batch_stock) || 0
       : Number((thing as Ingredient).stock) || 0;
     out.push({
+      refId: line.ref_id,
       label: thing.name,
       kind: isBatch ? "batch" : "ingredient",
       unit: isBatch ? (thing as Batch).yield_unit : (thing as Ingredient).unit,
@@ -811,4 +816,116 @@ export function limitingFor(
   }
 
   return out.sort((a, b) => a.allows - b.allows);
+}
+
+
+// ---------------------------------------------------------------------------
+// One shelf, many dishes
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a ticket has to be checked as a whole, and not a dish at a time.
+ *
+ * Every dish's "N left" is worked out on its own against the whole shelf, and
+ * that is right: two variants of Giant Ji Pai both drawing on one tub of
+ * breading should each offer everything that tub can make. Nothing is
+ * reserved in advance, which is what stops a quiet stock-keeping decision from
+ * turning into "sorry, we can't sell you that" while the thing is sitting
+ * there.
+ *
+ * But it means the numbers overlap, and a check that reads them one dish at a
+ * time believes the overlap. Breading enough for 2 Giants: two Originals pass
+ * (2 ≤ 2), two Spicies pass (2 ≤ 2), and the sale takes four dishes' worth of
+ * breading out of a tub holding two. The shelf goes negative and nothing
+ * anywhere says so.
+ *
+ * So the ticket is added up per INGREDIENT first — every dish, every add-on,
+ * every serving — and compared to the shelf once. Which is the ordinary
+ * warehouse rule: you may promise the same stock to everybody right up until
+ * somebody actually takes it.
+ */
+
+/** One line of a ticket: a dish and how many of it. */
+export type TicketLine = { mealId: string; qty: number };
+
+/** Something the whole ticket would run out of, with the arithmetic shown. */
+export type PoolShort = {
+  refId: string;
+  label: string;
+  kind: "ingredient" | "batch";
+  unit: string;
+  /** On the shelf now. */
+  have: number;
+  /** What this ticket would take, across every dish on it. */
+  need: number;
+};
+
+/**
+ * Everything the ticket would draw, keyed by the thing it draws from.
+ *
+ * `Shortfall.need` is per serving, so a line of three multiplies it. A dish
+ * with no recipe contributes nothing, which is the same silence it keeps
+ * everywhere else.
+ */
+export function ticketDraw(
+  lines: TicketLine[],
+  limitsByMeal: Map<string, Shortfall[]>
+): Map<string, PoolShort> {
+  const pool = new Map<string, PoolShort>();
+  for (const line of lines) {
+    const qty = Number(line.qty) || 0;
+    if (qty <= 0) continue;
+    for (const s of limitsByMeal.get(line.mealId) ?? []) {
+      const at = pool.get(s.refId);
+      if (at) at.need += s.need * qty;
+      else {
+        pool.set(s.refId, {
+          refId: s.refId,
+          label: s.label,
+          kind: s.kind,
+          unit: s.unit,
+          have: s.have,
+          need: s.need * qty,
+        });
+      }
+    }
+  }
+  return pool;
+}
+
+/** The things this ticket would take more of than the shelf holds. */
+export function poolShortfalls(
+  lines: TicketLine[],
+  limitsByMeal: Map<string, Shortfall[]>
+): PoolShort[] {
+  return [...ticketDraw(lines, limitsByMeal).values()]
+    // A hair of tolerance: these are numerics out of Postgres, and refusing a
+    // sale over 0.0000001 g of salt would be a bug with a straight face.
+    .filter((p) => p.need > p.have + 1e-6)
+    .sort((a, b) => b.need - b.have - (a.need - a.have));
+}
+
+/**
+ * How many more of this dish the ticket can still take.
+ *
+ * The number on the card, once what is already in the basket is deducted —
+ * so a cashier adding Giant Ji Pai watches every other Giant variant count
+ * down with it, and finds out they share a tub of breading by seeing it
+ * rather than by being refused at the end.
+ *
+ * Null when the dish has no recipe: unlimited is not zero, and the card has
+ * its own way of saying "no recipe".
+ */
+export function remainingFor(
+  limits: Shortfall[],
+  taken: Map<string, PoolShort>
+): number | null {
+  if (limits.length === 0) return null;
+  let left = Infinity;
+  for (const s of limits) {
+    if (s.need <= 0) continue;
+    const already = taken.get(s.refId)?.need ?? 0;
+    left = Math.min(left, Math.floor((s.have - already) / s.need));
+  }
+  return Number.isFinite(left) ? Math.max(0, left) : null;
 }

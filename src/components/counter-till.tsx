@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { type Shortfall } from "@/lib/costing";
+import { remainingFor, ticketDraw, type Shortfall, type TicketLine as DrawLine } from "@/lib/costing";
 import { peso } from "@/lib/peso";
 import { AdminDialog } from "@/components/admin-dialog";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
@@ -168,6 +168,33 @@ export function CounterTill({
         .filter((l) => l.meal),
     [ticket, byId]
   );
+  /**
+   * What the ticket has already claimed off the shelf, per ingredient.
+   *
+   * The card used to say "2 left" for the whole time you were adding, and the
+   * refusal only arrived at the end. Worse, when two variants share a tub of
+   * breading, BOTH kept saying 2 while the basket quietly took four tubs'
+   * worth — the cards were each telling the truth and the pair of them
+   * together were lying.
+   *
+   * Subtracting the basket fixes both. Add one Giant Ji Pai and every other
+   * Giant variant counts down with it, which is how a cashier learns they
+   * share something without anyone having to explain it.
+   */
+  const claimed = useMemo(() => {
+    const limitsByMeal = new Map<string, Shortfall[]>(
+      meals.map((m) => [m.id, m.limits ?? []])
+    );
+    const drawing: DrawLine[] = [];
+    for (const l of lines) {
+      drawing.push({ mealId: l.meal.id, qty: l.qty });
+      for (const e of l.extras) {
+        if (e.mealId) drawing.push({ mealId: e.mealId, qty: l.qty * e.qty });
+      }
+    }
+    return ticketDraw(drawing, limitsByMeal);
+  }, [lines, meals]);
+
   const unitOf = (l: { meal: CounterMeal; extras: ChosenExtra[] }) =>
     l.meal.price + extrasTotal(l.extras);
   const total = lines.reduce((s, l) => s + unitOf(l) * l.qty, 0);
@@ -694,7 +721,11 @@ export function CounterTill({
                 // Never blocked at the till — the person is standing there
                 // and the count may simply be behind. Flagged loudly instead,
                 // and the server refuses if it is genuinely short.
-                const left = m.makeable;
+                // What is left AFTER the basket, not what was left when the
+                // page loaded. Falls back to the server's figure for a dish
+                // whose recipe did not come down with it.
+                const live = remainingFor(m.limits ?? [], claimed);
+                const left = live ?? m.makeable;
                 const known = left !== null && left !== undefined;
                 const out = known && left <= 0;
                 /**
