@@ -2,6 +2,8 @@ import { NotAllowed } from "@/components/not-allowed";
 import { can, getViewer } from "@/lib/auth";
 import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { AnalysisPanel } from "@/components/analysis-panel";
+import { SalesOutlook } from "@/components/sales-outlook";
+import { salesOutlook } from "@/lib/forecast-server";
 import { buildSnapshot } from "./snapshot";
 import { StatTile as Tile } from "@/components/stat-tile";
 import { pesoRound } from "@/lib/peso";
@@ -23,7 +25,7 @@ export default async function AdminAnalyticsPage() {
     return <NotAllowed>Analytics is the owner&apos;s. What needs doing this shift is on Today, and the order board has the queue.</NotAllowed>;
   }
 
-  const snapshot = await buildSnapshot();
+  const [snapshot, ahead] = await Promise.all([buildSnapshot(), salesOutlook()]);
 
   const weekday: Bar[] = snapshot.byWeekday.map((d) => ({
     label: d.day,
@@ -92,6 +94,23 @@ export default async function AdminAnalyticsPage() {
           value={snapshot.reviews.count > 0 ? snapshot.reviews.average.toFixed(1) : "—"}
           detail={`${snapshot.reviews.count} review${snapshot.reviews.count === 1 ? "" : "s"}`}
         />
+      </section>
+
+      {/* Ahead of the breakdowns, because it is the question the breakdowns
+          are all evidence for: is this working? Which day earns and when they
+          order are things you do something about — after you know whether the
+          line is going up. */}
+      <section>
+        <Panel
+          title="Where this is heading"
+          note="Weekly takings, and what today's trend carries on to. Whole weeks only — a Saturday and a Tuesday are not the same day, and a week contains one of each."
+        >
+          <SalesOutlook
+            weeks={ahead.weeks}
+            forecast={ahead.forecast}
+            direction={ahead.direction}
+          />
+        </Panel>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">

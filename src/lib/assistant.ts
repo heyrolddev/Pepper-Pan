@@ -1,4 +1,10 @@
 import "server-only";
+import {
+  OFFER_WORDS,
+  offers,
+  recommendation,
+  type AnswerFacts,
+} from "@/lib/assistant-answers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   openState,
@@ -26,6 +32,9 @@ type FaqEntry = { id: string; answer: string; triggers: string[]; priority: numb
  */
 
 type Meal = {
+  /** Carried so a pinned recommendation can be looked up by reference rather
+   *  than by name — a renamed dish must not silently stop being the pick. */
+  id: string;
   name: string;
   price: number;
   description: string | null;
@@ -38,7 +47,16 @@ type Facts = {
   closures: Closure[];
   shop: ShopSettings | null;
   meals: Meal[];
+  /** What to recommend: the owner's pick, or the sum when they haven't made one. */
   bestSeller: string | null;
+  /** True when a person chose it, which changes how the reply is worded. */
+  bestSellerPinned: boolean;
+  /** The owner's own words about the recommendation, in place of the menu blurb. */
+  featuredNote: string | null;
+  /** Live promos, straight from the ones written for the homepage. */
+  promos: { title: string; body: string | null }[];
+  /** Standing offers that are not announcements. */
+  promoNote: string | null;
   delivery: {
     enabled: boolean;
     baseFee: number;
@@ -90,21 +108,33 @@ async function loadFacts(): Promise<Facts> {
 async function readFacts(): Promise<Facts> {
   const db = createAdminClient();
 
-  const [mealsRes, deliveryRes, paymentRes, linesRes, faqRes, hoursRes, closuresRes, shopRes] =
-    await Promise.all([
+  const nowIso = new Date().toISOString();
+  const [
+    mealsRes,
+    deliveryRes,
+    paymentRes,
+    linesRes,
+    faqRes,
+    hoursRes,
+    closuresRes,
+    shopRes,
+    chatRes,
+    promoRes,
+  ] = await Promise.all([
     db
       .from("meals")
-      .select("name, price, description, is_available")
+      .select("id, name, price, description, is_available")
       .eq("is_public", true)
       .order("name")
       .limit(200),
     db.from("delivery_settings").select("*").eq("id", 1).maybeSingle(),
     db.from("payment_settings").select("*").eq("id", 1).maybeSingle(),
-    // "What's your bestseller?" deserves a real answer, so it comes from what
-    // people have actually ordered rather than the owner's guess.
+    // The fallback recommendation, when the owner has not pinned one. The
+    // price comes down with it because this is ranked by MONEY TAKEN, not by
+    // units shifted — see `readFacts`'s note below, and 0052's.
     db
       .from("order_lines")
-      .select("qty, meals(name), orders!inner(status)")
+      .select("qty, price_at_sale, meals(name), orders!inner(status)")
       .neq("orders.status", "cancelled")
       .limit(2000),
     // The service-role client bypasses RLS, so the is_active filter has to be
@@ -127,17 +157,59 @@ async function readFacts(): Promise<Facts> {
       .select("accepting_orders, paused_message, min_lead_hours, max_days_ahead")
       .eq("id", 1)
       .maybeSingle(),
+    // What the owner decided this should say, rather than what the sums did.
+    db
+      .from("chat_settings")
+      .select("featured_meal_id, featured_note, promo_note")
+      .eq("id", 1)
+      .maybeSingle(),
+    // The promos already written for the homepage. Read here rather than
+    // retyped, so the chat cannot go on advertising one that has ended —
+    // which is the failure mode of every "also paste it in here" field.
+    // Same window the row policy and `liveStateOf` use.
+    db
+      .from("announcements")
+      .select("kind, title, body, starts_at, ends_at, pinned, sort_order")
+      .in("kind", ["promo", "dine_in"])
+      .eq("is_active", true)
+      .or(`starts_at.is.null,starts_at.lte.${nowIso}`)
+      .or(`ends_at.is.null,ends_at.gt.${nowIso}`)
+      .order("pinned", { ascending: false })
+      .order("sort_order")
+      .limit(4),
   ]);
 
+  /**
+   * The fallback recommendation — by money taken, not by units shifted.
+   *
+   * This used to rank on quantity, and it told customers the shop's
+   * bestseller was extra rice. It was not wrong about the count: rice is ₱25
+   * and goes on half the orders, so it out-counts a ₱189 rice meal forever.
+   * It was answering the wrong question. Someone asking what to try wants the
+   * dish the shop is known for, and what a shop is known for shows up in what
+   * it TAKES, not in how many small things left the kitchen.
+   *
+   * Still only a fallback: the owner's pick wins, because the best thing to
+   * recommend is a decision about margin and reputation that no sum can make.
+   */
   const tally = new Map<string, number>();
-  type Line = { qty: number; meals: { name: string } | null };
+  type Line = { qty: number; price_at_sale: number; meals: { name: string } | null };
   for (const line of (linesRes.data ?? []) as unknown as Line[]) {
     const name = line.meals?.name;
     if (!name) continue;
-    tally.set(name, (tally.get(name) ?? 0) + Number(line.qty || 0));
+    const took = (Number(line.qty) || 0) * (Number(line.price_at_sale) || 0);
+    tally.set(name, (tally.get(name) ?? 0) + took);
   }
-  const bestSeller =
-    [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const earned = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  const chat = chatRes.data as
+    | { featured_meal_id: string | null; featured_note: string | null; promo_note: string | null }
+    | null;
+  const mealList = (mealsRes.data ?? []) as Meal[];
+  const pinned = chat?.featured_meal_id
+    ? (mealList.find((m) => m.id === chat.featured_meal_id) ?? null)
+    : null;
+  const bestSeller = pinned?.name ?? earned;
 
   const d = deliveryRes.data;
   const p = paymentRes.data;
@@ -149,8 +221,15 @@ async function readFacts(): Promise<Facts> {
     hours: (hoursRes.data ?? []) as DayHours[],
     closures: (closuresRes.data ?? []) as Closure[],
     shop: (shopRes.data as ShopSettings | null) ?? null,
-    meals: (mealsRes.data ?? []) as Meal[],
+    meals: mealList,
     bestSeller,
+    bestSellerPinned: pinned !== null,
+    featuredNote: chat?.featured_note?.trim() || null,
+    promos: ((promoRes.data ?? []) as { title: string; body: string | null }[]).map((a) => ({
+      title: a.title,
+      body: a.body,
+    })),
+    promoNote: chat?.promo_note?.trim() || null,
     delivery: d
       ? {
           enabled: Boolean(d.is_enabled),
@@ -418,20 +497,18 @@ function hoursAnswer(f: Facts, tl: boolean): string {
     : `${now}\n\nOur week:\n${describeWeek(f.hours)}\n\nYou'll find us ${WHERE}.`;
 }
 
-function bestSellerAnswer(f: Facts, tl: boolean): string {
-  const name = f.bestSeller;
-  const meal = name ? f.meals.find((m) => m.name === name) : null;
-
-  if (!meal) {
-    // No sales history yet — don't invent a favourite, point at the menu.
-    return tl
-      ? "Lahat po masarap, pero ang black pepper noodles po talaga ang hinahanap ng mga suki. Tingnan niyo po ang Menu page para sa buong lista!"
-      : "Our black pepper noodles are what people come back for. Have a look at the Menu page for the full list!";
-  }
-
-  return tl
-    ? `Ang pinaka-order po sa amin ay ${meal.name} — ${peso(meal.price)} lang po. ${meal.description ?? "Subukan niyo po!"}`
-    : `Our most-ordered dish is ${meal.name} at ${peso(meal.price)}. ${meal.description ?? "Give it a try!"}`;
+/** The shape `assistant-answers` wants, out of the facts we hold. */
+function answerFacts(f: Facts): AnswerFacts {
+  const dish = f.bestSeller ? (f.meals.find((m) => m.name === f.bestSeller) ?? null) : null;
+  return {
+    dish: dish
+      ? { name: dish.name, price: dish.price, description: dish.description }
+      : null,
+    pinned: f.bestSellerPinned,
+    note: f.featuredNote,
+    promos: f.promos,
+    promoNote: f.promoNote,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -522,9 +599,18 @@ export async function askAssistant(history: ChatTurn[]): Promise<AssistantReply>
     return { text: paymentAnswer(facts, tl), needsHuman: false };
   }
 
+  // --- promos and deals ----------------------------------------------------
+  //
+  // Checked BEFORE the recommendation, and the order matters: "what's your
+  // best deal" contains "best", which the branch below also listens for. A
+  // customer asking about offers would otherwise be told about a dish.
+  if (has(n, OFFER_WORDS)) {
+    return { text: offers(answerFacts(facts), tl), needsHuman: false };
+  }
+
   // --- bestseller / recommendation ----------------------------------------
   if (has(n, ["bestseller", "best seller", "sikat", "masarap", "recommend", "suggest", "ano maganda", "ano masarap", "paborito", "favorite", "popular", "top"])) {
-    return { text: bestSellerAnswer(facts, tl), needsHuman: false };
+    return { text: recommendation(answerFacts(facts), tl), needsHuman: false };
   }
 
   // --- hours ---------------------------------------------------------------

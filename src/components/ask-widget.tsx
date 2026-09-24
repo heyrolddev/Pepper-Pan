@@ -20,6 +20,10 @@ const GUEST_KEY = "pepperpan_chat_key";
 // way to show a customer that asking in Filipino will work too.
 const OPENERS = [
   "What's your bestseller?",
+  // Offered because there is now a real answer behind it, built from the
+  // promos the shop has actually got running — and because a customer who
+  // never thinks to ask never hears about them.
+  "Any promo today?",
   "What time do you open?",
   "Magkano ang delivery sa Apalit?",
 ];

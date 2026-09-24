@@ -91,3 +91,16 @@ test("a table this build doesn't know is reported, not silently dropped", () => 
   assert.ok(!("error" in r));
   assert.deepEqual(unknownTables(r), ["something_new"]);
 });
+
+test("settings that name a dish come back after the dishes", () => {
+  // `chat_settings.featured_meal_id` points at a meal (0052). Restored with
+  // the other settings at the top of the list — where it used to sit — the
+  // foreign key rejects a pinned recommendation whose dish is not in yet, and
+  // the whole restore fails on the one day it matters.
+  const at = (t: string) => RESTORE_ORDER.indexOf(t as never);
+  assert.ok(at("meals") > -1 && at("chat_settings") > -1);
+  assert.ok(
+    at("chat_settings") > at("meals"),
+    "chat_settings references meals, so it cannot precede them"
+  );
+});
