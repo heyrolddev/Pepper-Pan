@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveMyPhone } from "@/app/admin/me/actions";
+import { saveMyName, saveMyPhone } from "@/app/admin/me/actions";
 import { acceptRoleOffer, declineRoleOffer } from "@/app/account/actions";
 import { Field, inputClass } from "@/components/admin-dialog";
 import { ScreenToggle } from "@/components/screen-toggle";
@@ -33,6 +33,10 @@ export function MyAccount({
 }) {
   const router = useRouter();
 
+  const [fullName, setFullName] = useState(name ?? "");
+  const [savingName, saveName] = useTransition();
+  const [nameSaved, setNameSaved] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [number, setNumber] = useState(phone ?? "");
   const [saved, setSaved] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -107,6 +111,53 @@ export function MyAccount({
         </p>
 
         <div className="mt-6 max-w-sm">
+          <Field
+            label="Your name"
+            hint="What the till prints and the shift report says. Past sales keep the name they were rung up under, so the records stay right."
+          >
+            <input
+              value={fullName}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                setNameSaved(false);
+                setNameError(null);
+              }}
+              placeholder="Rolando Dela Cruz"
+              autoComplete="name"
+              className={inputClass}
+            />
+          </Field>
+
+          {nameError && (
+            <p className="mt-3 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-cream-50">
+              {nameError}
+            </p>
+          )}
+
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              disabled={savingName || fullName.trim() === (name ?? "").trim()}
+              onClick={() =>
+                saveName(async () => {
+                  const r = await saveMyName(fullName);
+                  if (r.error) setNameError(r.error);
+                  else {
+                    setNameSaved(true);
+                    router.refresh();
+                  }
+                })
+              }
+              className="rounded-full bg-ink-950 px-5 py-2.5 text-sm font-bold text-cream-50 transition-colors hover:bg-brand-600 disabled:opacity-50"
+            >
+              {savingName ? "Saving…" : "Save name"}
+            </button>
+            {nameSaved && (
+              <span className="text-sm font-semibold text-jade-700">Saved</span>
+            )}
+          </div>
+
+          <hr className="my-6 border-ink-950/10" />
+
           <Field
             label="Your mobile number"
             hint="Change it yourself — this is how the shop reaches you when a shift falls through."
