@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { pushToUser } from "@/lib/push";
+import { cleanName } from "@/lib/staff-name";
 
 type Result = { error: string | null };
 
@@ -65,6 +66,85 @@ export async function saveMyPhone(phone: string): Promise<Result> {
 
   revalidatePath("/admin/me");
   revalidatePath("/admin/staff");
+  return { error: null };
+}
+
+/**
+ * Change the name this person is known by.
+ *
+ * WHY THIS IS THE NAME ON THE TILL
+ *
+ * Nothing else was ever a name. `logged_by` on a sale falls back to the email
+ * when the profile has no `full_name`, so a shop whose account was opened as
+ * `heyrolddev@…` had "heyrolddev" printed against every walk-in it rang up.
+ * Not wrong, exactly — but it is a username on a receipt where a person's
+ * name belongs, and there was no screen anywhere that could change it.
+ *
+ * WHY THE OLD RECORDS DO NOT MOVE
+ *
+ * `orders.logged_by` is text, stamped at the moment of the sale — the same
+ * rule as `price_at_sale` and `order_line_extras.label`. So renaming yourself
+ * today leaves yesterday's sales saying exactly who rang them up yesterday,
+ * which is what makes a shift report evidence rather than a guess. Nothing is
+ * rewritten and nothing needs to be.
+ *
+ * The activity log is the one place that reads the other way: it stores the
+ * profile id and resolves the name when it is read, so old lines will show
+ * the new name. That is the right answer there — a person who corrected their
+ * name is the same person who did the thing.
+ *
+ * WHY IT IS SELF-SERVICE
+ *
+ * Same reasoning as the phone above, and the same safeguards: the change is
+ * logged with both the old and the new name, and the owner is told. A staff
+ * member cannot use it to gain anything — the profile id is who they are, and
+ * that does not move — and the alternative, asking the owner every time, is
+ * how the Staff screen quietly fills up with names nobody has corrected.
+ */
+export async function saveMyName(name: string): Promise<Result> {
+  const viewer = await getViewer();
+  const id = viewer?.profile?.id;
+  if (!id) return { error: "Sign in first." };
+
+  // The rules live in `staff-name` so they can be tested — this ends up on
+  // paper in a customer's hand.
+  const checked = cleanName(name);
+  if (checked.error) return { error: checked.error };
+  const trimmed = checked.name;
+
+  const db = createAdminClient();
+  const before = viewer.profile?.full_name?.trim() || viewer.email;
+  if (trimmed === before) return { error: null };
+
+  const { error } = await db.from("profiles").update({ full_name: trimmed }).eq("id", id);
+  if (error) return { error: error.message };
+
+  await db.from("activity_log").insert({
+    category: "staff",
+    description: `"${before}" is now shown as "${trimmed}"`,
+    actor: id,
+  });
+
+  // A notice, not an approval — the owner should know the name on the shift
+  // report has changed without having to be asked first.
+  try {
+    const { data: owners } = await db.from("profiles").select("id").eq("role", "owner");
+    for (const o of owners ?? []) {
+      if (o.id === id) continue;
+      await pushToUser(o.id, {
+        title: `${before} is now "${trimmed}"`,
+        body: "The name on the till and the shift report has changed.",
+        url: "/admin/staff",
+        tag: "name-changed",
+      });
+    }
+  } catch {
+    /* the change is saved either way */
+  }
+
+  revalidatePath("/admin/me");
+  revalidatePath("/admin/staff");
+  revalidatePath("/admin/counter");
   return { error: null };
 }
 

@@ -221,6 +221,42 @@ export function setAutoPrint(on: boolean) {
   changed();
 }
 
+/* ---------------- whether the strip is folded away ---------------- */
+
+const HIDDEN_KEY = "pepperpan.printer.hidden";
+let hidden: boolean | null = null;
+
+export const panelHiddenOnServer = () => false;
+
+/**
+ * Whether the counter's printer strip is folded to one line.
+ *
+ * Per device, like auto-print and for the same reason: it describes this
+ * counter's screen, not the person looking at it. Read through
+ * useSyncExternalStore, never during render — the server would say "showing"
+ * and the browser "folded", and React throws the tree away over that.
+ */
+export function panelHidden(): boolean {
+  if (hidden === null) {
+    try {
+      hidden = localStorage.getItem(HIDDEN_KEY) === "1";
+    } catch {
+      hidden = false;
+    }
+  }
+  return hidden;
+}
+
+export function setPanelHidden(on: boolean) {
+  hidden = on;
+  try {
+    localStorage.setItem(HIDDEN_KEY, on ? "1" : "0");
+  } catch {
+    // Not remembering it past this tab is a smaller loss than refusing it.
+  }
+  changed();
+}
+
 export type PrintResult =
   | { status: "printed"; name: string }
   | { status: "off" }
