@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FOOD_COST_TARGET, marginFor, peso, pesoRound } from "../src/lib/costing.ts";
+import { FOOD_COST_TARGET, marginFor } from "../src/lib/costing.ts";
+import { peso, pesoRound } from "../src/lib/peso.ts";
 
 /**
  * How money is shown, and what the shop is told about a dish.

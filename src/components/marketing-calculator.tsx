@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { AdminDialog } from "@/components/admin-dialog";
-import { peso, pesoRound } from "@/lib/costing";
+import { peso, pesoRound } from "@/lib/peso";
 import { formatDate } from "@/lib/format-date";
 import {
   CAMPAIGN_KINDS,

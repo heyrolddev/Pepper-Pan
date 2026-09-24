@@ -6,7 +6,7 @@ import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
 import { PAID_FROM_LABELS, isPaidFrom, type PaidFrom } from "@/lib/money-accounts";
-import { recordDebt } from "@/app/admin/money/spending-actions";
+import { recordDebt } from "@/lib/debts-server";
 import { loadActivity, type Activity } from "@/lib/activity-server";
 
 type Result = { error: string | null };

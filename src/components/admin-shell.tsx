@@ -53,7 +53,9 @@ const GROUPS: Group[] = [
   {
     title: "Every day",
     items: [
-      { href: "/admin", label: "Today", icon: "◉" },
+      // Badged for the error log that sits on it. Today is where a fault is
+      // read and ticked off, so the count and the page it opens agree.
+      { href: "/admin", label: "Today", icon: "◉", badge: "errors" },
       // Second, by the owner's own ask, and it earns the place: break-even,
       // what the drawer should hold and what is still owed are what somebody
       // opens HQ to check after Today itself. It sat under "Understand" with
@@ -294,7 +296,8 @@ export function AdminShell({
   shiftStartedAt: string | null;
 }) {
   const pathname = usePathname();
-  const waiting = badges.orders + badges.inbox + badges.payments + badges.staff;
+  const waiting =
+    badges.orders + badges.inbox + badges.payments + badges.staff + badges.errors;
 
   // Subscribed here, in the shell, so *every* HQ screen stays current — and
   // with it the counts in the rail, which are fetched by the layout this sits

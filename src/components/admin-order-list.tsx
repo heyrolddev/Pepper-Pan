@@ -14,6 +14,7 @@ import { Foldable } from "@/components/foldable";
 import { moneyLine, moneyState, type PaymentMethod, type PaymentPlan, type PaymentStatus } from "@/lib/payments";
 import { formatDateTimeFull } from "@/lib/format-date";
 import { EtaCountdown } from "@/components/eta-countdown";
+import { peso } from "@/lib/peso";
 
 export type AdminOrder = {
   id: string;
@@ -61,8 +62,6 @@ export type AdminOrder = {
   completedBefore: number;
 };
 
-const peso = (n: number) =>
-  "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function OrderCard({ order: o, canFix }: { order: AdminOrder; canFix: boolean }) {
   const p = o.customer;

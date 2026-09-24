@@ -27,13 +27,13 @@ import {
   type PaymentPlan,
   type PaymentSettings,
 } from "@/lib/payments";
+import { peso } from "@/lib/peso";
 
 const fieldClass =
   "rounded-2xl border-2 border-ink-950/15 bg-cream-100 px-5 py-3 font-normal text-ink-950 outline-none transition-colors placeholder:text-ink-800/40 focus:border-brand-600";
 const labelClass =
   "flex flex-col gap-2 text-xs font-bold uppercase tracking-widest text-ink-800";
 
-const peso = (n: number) => "₱" + n.toFixed(2);
 
 export type CheckoutSchedule = {
   hours: DayHours[];

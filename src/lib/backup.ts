@@ -62,6 +62,12 @@ const TABLES = [
   "order_packaging",
   // The menu's own vocabulary — the names and colours behind the filter pills.
   "menu_categories",
+  // Who the shop buys from. `purchase_log.supplier_id` points here, so a
+  // restore that skipped this table would bring back every delivery with the
+  // supplier nulled out — and the free-text name is only on the rows written
+  // before 0045, so for everything since there would be nothing left saying
+  // where it came from.
+  "suppliers",
   // Trading history
   "orders",
   "order_lines",
@@ -81,6 +87,15 @@ const TABLES = [
   // trade with — both are the break-even and payback numbers' only source.
   "fixed_costs",
   "assets",
+  // Money owed and money spent. Three more tables that arrived after this
+  // list was last read — and the most expensive three to lose, because
+  // nothing else in the system knows them: who the shop still owes, what it
+  // paid out that was not stock, and what every promo actually cost. "Start
+  // fresh" already clears all three by name; the backup that is supposed to
+  // be the way back from that did not carry them.
+  "supplier_debts",
+  "running_costs",
+  "marketing_campaigns",
   // People, and what they said
   "profiles",
   "reviews",
@@ -111,6 +126,32 @@ const TABLES = [
   // complete one, and nothing says so. Worth re-reading whenever a migration
   // adds a table.
 ] as const;
+
+/**
+ * The tables deliberately left out, and why — written down rather than simply
+ * absent.
+ *
+ * A table missing from `TABLES` and a table that has no business being there
+ * look identical from outside this file, which is exactly how four of them
+ * went missing for two migrations without anybody noticing. Naming the
+ * exclusions turns "is this list complete?" into a question a test can answer:
+ * `tests/backup-coverage.test.ts` reads every `create table` in
+ * `supabase/migrations/` and fails if one is in neither list. Adding a table
+ * now means deciding, once, which of the two it belongs in.
+ */
+export const NOT_BACKED_UP: Record<string, string> = {
+  // Browser tokens that expire on their own and re-register the next time
+  // somebody opens the site. Restoring them restores dead addresses.
+  push_subscriptions: "browser tokens — they re-register by themselves",
+  // Which phone was allowed in. Tied to a device that may be long gone, and
+  // re-approving one takes a tap.
+  device_sessions: "device approvals — re-granted in one tap",
+  // A record of what broke in a system that no longer exists once you are
+  // restoring. Restoring it would reopen faults already fixed.
+  error_log: "faults in a build that is being replaced",
+  // The safety copies themselves. A backup of the backups is a loop.
+  restore_snapshots: "the safety copies — backing these up is a loop",
+};
 
 export type BackupTable = (typeof TABLES)[number];
 

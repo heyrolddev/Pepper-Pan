@@ -192,3 +192,54 @@ test("shifts cannot be cleared out from under the orders that point at them", ()
     assert.equal(tablesTouched(historying).has(table), true, `history should clear ${table}`);
   }
 });
+
+/**
+ * Clearing "the menu" has to clear the whole menu.
+ *
+ * It used to delete `meals` and stop. What was left behind was not neutral:
+ * `modifier_options.option_meal_id` is ON DELETE SET NULL, so every add-on
+ * group survived with its options pointing at nothing — add-ons that still
+ * appeared on the menu, still charged for themselves, and put no food in the
+ * order. Alongside them sat menu cards with no dishes in them and category
+ * pills filtering an empty menu.
+ */
+const menu = branch("if (input.scope.menu) {");
+
+test("clearing the menu takes the add-ons with it", () => {
+  // Groups, not options: deleting the group cascades to its options, and to
+  // both join tables. Deleting options alone would leave empty groups.
+  assert.equal(
+    tablesTouched(menu).has("modifier_groups"),
+    true,
+    "an add-on group left standing is an add-on that adds nothing"
+  );
+});
+
+test("clearing the menu takes the cards and the categories", () => {
+  for (const table of ["menu_products", "menu_categories"]) {
+    assert.equal(
+      tablesTouched(menu).has(table),
+      true,
+      `"the whole menu" has to include ${table}`
+    );
+  }
+});
+
+test("clearing the menu still refuses while orders reference it", () => {
+  // The guard that turns a foreign-key error into a sentence. Widening what
+  // this branch deletes must not quietly step around it.
+  assert.match(menu, /scope\.orders/);
+  assert.match(menu, /can't be cleared while orders still reference it/);
+});
+
+/**
+ * Add-ons are the menu, not an order.
+ *
+ * `order_line_extras` must never be named here: it hangs off `order_lines`
+ * and cascades with them. Naming it in the menu branch would delete what past
+ * customers were charged for while their orders stayed on the books.
+ */
+test("clearing the menu never touches what past orders were charged", () => {
+  assert.equal(tablesTouched(menu).has("order_line_extras"), false);
+  assert.equal(tablesTouched(menu).has("order_lines"), false);
+});

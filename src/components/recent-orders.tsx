@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Foldable } from "@/components/foldable";
-import { peso } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 import { formatDateTimeFull } from "@/lib/format-date";
 import { STATUS_LABELS, STATUS_TONES, type OrderStatus } from "@/lib/orders";
 import { METHOD_LABEL, type PaymentMethod } from "@/lib/payments";

@@ -8,8 +8,7 @@
  * that mapping is consistent across the page.
  */
 
-const peso = (n: number) =>
-  "₱" + n.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+import { pesoRound as peso } from "@/lib/peso";
 
 export type Bar = { label: string; value: number; caption?: string };
 

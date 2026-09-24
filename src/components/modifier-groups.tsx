@@ -24,6 +24,7 @@ import {
   setModifierGroupActive,
   type OptionInput,
 } from "@/app/admin/menu/modifier-actions";
+import { peso } from "@/lib/peso";
 
 /**
  * Add-ons: extra rice, and a drink with that.
@@ -114,7 +115,6 @@ const field =
 const label =
   "text-[11px] font-black uppercase tracking-widest text-ink-800/55";
 
-const peso = (n: number) => "₱" + n.toFixed(2);
 let seq = 0;
 const nextKey = () => `new-${seq++}`;
 

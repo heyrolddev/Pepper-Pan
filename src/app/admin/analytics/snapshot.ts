@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type { ShopSnapshot } from "@/lib/marketing-analyst";
+import { tallySales, type SoldLine } from "@/lib/sales-tally";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -57,7 +58,11 @@ export async function buildSnapshot(): Promise<ShopSnapshot> {
       .gte("date", d60),
     supabase
       .from("order_lines")
-      .select("qty, price_at_sale, meals(name), orders!inner(date, status)")
+      // The add-ons come down with the lines, because an add-on is a sale of
+      // a dish and the ranking below was blind to every one of them.
+      .select(
+        "qty, price_at_sale, meals(name), order_line_extras(qty, price_at_sale, label, meals(name)), orders!inner(date, status)"
+      )
       .gte("orders.date", d30),
     supabase.from("meals").select("name, price, is_available").eq("is_public", true),
     supabase.from("reviews").select("rating, comment, created_at").eq("is_hidden", false),
@@ -74,24 +79,11 @@ export async function buildSnapshot(): Promise<ShopSnapshot> {
   const completed = last30.filter((o) => o.status === "completed");
 
   // --- items -------------------------------------------------------------
-  type Line = {
-    qty: number;
-    price_at_sale: number;
-    meals: { name: string } | null;
-    orders: { status: string } | null;
-  };
-  const tally = new Map<string, { qty: number; revenue: number }>();
-  for (const line of (linesRes.data ?? []) as unknown as Line[]) {
-    if (line.orders?.status === "cancelled") continue;
-    const name = line.meals?.name ?? "Unknown item";
-    const cur = tally.get(name) ?? { qty: 0, revenue: 0 };
-    cur.qty += Number(line.qty);
-    cur.revenue += Number(line.qty) * Number(line.price_at_sale);
-    tally.set(name, cur);
-  }
-  const ranked = [...tally.entries()]
-    .map(([name, v]) => ({ name, ...v }))
-    .sort((a, b) => b.qty - a.qty);
+  // Add-ons included — see `tallySales`, which is where the decision and the
+  // reason for it live. A `Map` of the same shape is kept for the slow movers
+  // below, which ask about one dish at a time.
+  const ranked = tallySales((linesRes.data ?? []) as unknown as SoldLine[]);
+  const tally = new Map(ranked.map((r) => [r.name, r]));
 
   // A dish nobody ordered never appears in order_lines, so the slow movers
   // have to come from the menu itself — that absence is the whole point.

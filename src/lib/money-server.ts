@@ -228,7 +228,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
     // in, so break-even adds like-for-like figures.
     supabase
       .from("running_costs")
-      .select("id, label, kind, amount, size_label, spent_on, note, suppliers(name)")
+      .select("id, label, kind, amount, size_label, spent_on, note, ledger_id, suppliers(name)")
       .gte("spent_on", since)
       .order("spent_on", { ascending: false }),
     // Gas goes back further than the break-even window on purpose: two
@@ -301,6 +301,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
       size_label: string | null;
       spent_on: string;
       note: string | null;
+      ledger_id: string | null;
       suppliers: { name: string } | { name: string }[] | null;
     }[]
   ).map((r) => ({
@@ -314,6 +315,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
       ? (r.suppliers[0]?.name ?? null)
       : (r.suppliers?.name ?? null),
     note: r.note,
+    ledgerId: r.ledger_id,
   }));
   const runningForWindow = runningCosts.reduce((s, r) => s + r.amount, 0);
   // Scaled by the calendar window it was measured over, not by trading days —
@@ -337,6 +339,10 @@ export async function loadMoney(): Promise<MoneyPicture> {
       spentOn: r.spent_on,
       supplierName: null,
       note: null,
+      // The gas window reads fewer columns than the break-even one, because
+      // `tankLife` only needs the dates and the sizes. No undo happens from
+      // here, so the link is not fetched.
+      ledgerId: null,
     })),
     today
   );

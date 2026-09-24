@@ -241,27 +241,6 @@ export async function revokeDevice(deviceRowId: string): Promise<Result> {
 }
 
 /**
- * Withdraw an offer nobody has accepted yet.
- *
- * Offers should not sit open forever — a role offered to somebody who never
- * came back is an account that could still claim shop access months later,
- * long after whatever conversation prompted it.
- */
-export async function cancelRoleOffer(profileId: string): Promise<Result> {
-  const owner = await requireOwner();
-  if (!owner) return { error: "Only the owner can withdraw an offer." };
-
-  const { error } = await createAdminClient()
-    .from("profiles")
-    .update({ pending_role: null, role_offered_at: null, role_offered_by: null })
-    .eq("id", profileId);
-  if (error) return { error: error.message };
-
-  revalidatePath("/admin/staff");
-  return { error: null };
-}
-
-/**
  * Delete an account for good.
  *
  * Only ever for somebody with no shop access — stand them down first. That

@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { peso, FOOD_COST_TARGET, type Margin } from "@/lib/costing";
+import { FOOD_COST_TARGET, type Margin } from "@/lib/costing";
+import { peso } from "@/lib/peso";
 import { RecipeEditor, type RecipeOption } from "@/components/recipe-editor";
 import { NewDishDialog } from "@/components/new-dish-dialog";
 import { setMealOnMenu } from "@/app/admin/menu/actions";
