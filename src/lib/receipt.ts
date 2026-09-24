@@ -237,3 +237,35 @@ export function asPlainText(rows: ReceiptRow[], width: RollWidth = "narrow"): st
     return " ".repeat(Math.max(0, Math.floor((cols - t.length) / 2))) + t;
   });
 }
+
+/**
+ * A slip that proves paper comes out, before anybody is waiting for one.
+ *
+ * Connected is not the same as working: a printer can pair, report itself
+ * connected and still produce nothing — out of paper, roll in backwards,
+ * Bluetooth Classic underneath. The only proof is paper, and prep is when to
+ * find that out rather than in front of the first customer.
+ *
+ * Deliberately shaped so it can never be mistaken for a receipt. It says so
+ * in the second line, and it carries no reference, no items and no total —
+ * because a convincing test slip ends up in somebody's hand, or worse, in the
+ * shift's paperwork being counted as a sale.
+ */
+export function testSlip(printerName: string, at: Date): ReceiptRow[] {
+  const when = at.toLocaleString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+    day: "numeric",
+    month: "short",
+  });
+  return [
+    { text: "PRINTER TEST", align: "centre", big: true },
+    { text: "not a receipt", align: "centre" },
+    { text: "", align: "left" },
+    { text: printerName, align: "left" },
+    { text: when, align: "left" },
+    { text: "", align: "left" },
+    { text: "If you can read this, the", align: "left" },
+    { text: "till is ready for service.", align: "left" },
+  ];
+}

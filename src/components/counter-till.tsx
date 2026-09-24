@@ -17,6 +17,7 @@ import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
 import { ticketOf } from "@/lib/tickets";
 import { ReceiptPrinter } from "@/components/receipt-printer";
+import { PrinterReady } from "@/components/printer-ready";
 import { printSale } from "@/lib/printer-store";
 import { asPlainText, renderReceipt, type Receipt } from "@/lib/receipt";
 import {
@@ -435,6 +436,11 @@ export function CounterTill({
           </p>
         </div>
       </div>
+
+      {/* Before the till, because it is the thing to do before the till — and
+          because a strip that only appears once something is wrong is a strip
+          nobody looks at during prep. */}
+      <PrinterReady />
 
       {loadError && (
         <p className="rounded-2xl bg-brand-600 px-5 py-4 text-sm text-cream-50">
