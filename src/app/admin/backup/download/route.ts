@@ -8,6 +8,7 @@ import {
   costBatches,
   costMeals,
   marginFor,
+  batchStockValue,
   stockValue,
   type Batch,
   type BatchIngredient,
@@ -302,12 +303,64 @@ export async function GET(request: NextRequest) {
   }
 
   if (kind === "inventory.csv") {
-    const { data } = await supabase.from("ingredients").select("*").order("name");
-    const rows = (data ?? []) as Ingredient[];
+    /**
+     * Ingredients AND batches, in one file that adds up.
+     *
+     * The sheet used to hold ingredients alone, which meant its Stock value
+     * column summed to a different figure from the one on the Inventory
+     * screen — and the screen is now the one that counts prepped batches too.
+     * A spreadsheet an accountant totals has to agree with the screen the
+     * owner reads, or one of them is quietly wrong and nobody can tell which.
+     *
+     * The new first column says which kind each row is, so the two can still
+     * be told apart when the file is filtered or pivoted.
+     */
+    const t = await loadRecipeTables();
+    const batchCosts = costBatches(t.batches, t.batchIngredients, t.ingredients);
+
+    const ingredientRows = [...t.ingredients]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((i) => [
+        "Ingredient",
+        i.name,
+        i.unit,
+        i.purchase_price,
+        i.purchase_qty,
+        Number(i.cost).toFixed(4),
+        i.stock,
+        i.reorder,
+        stockValue(i).toFixed(2),
+        Number(i.reorder) > 0 && Number(i.stock) <= Number(i.reorder) ? "yes" : "",
+        (i.categories ?? []).join(" / "),
+      ]);
+
+    const batchRows = [...batchCosts.values()]
+      .sort((a, b) => a.batch.name.localeCompare(b.batch.name))
+      .map((b) => {
+        const stock = Number(b.batch.batch_stock) || 0;
+        const reorder = Number(b.batch.reorder_level) || 0;
+        return [
+          "Batch",
+          b.batch.name,
+          b.batch.yield_unit,
+          // A batch is not bought, it is made — so there is no purchase price
+          // or pack size to put here, and a zero would read as "free".
+          "",
+          "",
+          b.perUnit.toFixed(4),
+          stock,
+          reorder,
+          batchStockValue({ stock, perUnit: b.perUnit }).toFixed(2),
+          reorder > 0 && stock <= reorder ? "yes" : "",
+          "",
+        ];
+      });
+
     return file(
       toCsv(
         [
-          "Ingredient",
+          "Kind",
+          "Item",
           "Unit",
           "Bought for",
           "Bought qty",
@@ -318,18 +371,7 @@ export async function GET(request: NextRequest) {
           "Low",
           "Categories",
         ],
-        rows.map((i) => [
-          i.name,
-          i.unit,
-          i.purchase_price,
-          i.purchase_qty,
-          Number(i.cost).toFixed(4),
-          i.stock,
-          i.reorder,
-          stockValue(i).toFixed(2),
-          Number(i.reorder) > 0 && Number(i.stock) <= Number(i.reorder) ? "yes" : "",
-          (i.categories ?? []).join(" / "),
-        ])
+        [...ingredientRows, ...batchRows]
       ),
       `pepperpan-inventory_${at}.csv`,
       "text/csv"

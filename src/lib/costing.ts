@@ -517,6 +517,47 @@ export function stockValue(i: Ingredient): number {
   return (Number(i.stock) || 0) * (Number(i.cost) || 0);
 }
 
+/**
+ * What a batch's remaining stock is worth.
+ *
+ * `batch_stock` is held in YIELD UNITS, not in whole batches — producing one
+ * batch adds `yield_qty` to it, and a sale takes off whatever the recipe asked
+ * for. `perUnit` is ₱ per yield unit, the same figure a recipe multiplies by.
+ * So the two simply multiply, exactly as they do for an ingredient.
+ *
+ * This is not double counting. Making a batch takes its ingredients off the
+ * shelf as it goes: the peanuts are gone from `ingredients.stock` by the time
+ * the sauce exists in `batches.batch_stock`. Counting only the ingredients —
+ * which is what the shelf total did until now — throws away the value of
+ * everything the shop has already prepped, and for a stall that preps sauces
+ * and marinades in advance that is most of a busy week's work.
+ */
+export function batchStockValue(b: { stock: number; perUnit: number }): number {
+  return (Number(b.stock) || 0) * (Number(b.perUnit) || 0);
+}
+
+/** One thing sitting on a shelf, priced or not. */
+export type ShelfLine = { value: number; priced: boolean };
+
+/**
+ * Everything on the shelves, and how much of it the shop cannot price.
+ *
+ * The count comes back with the total on purpose. A shelf total assembled
+ * from things the system has no price for is not wrong by a little — an
+ * unpriced item contributes exactly zero — and a figure that quietly reads
+ * low is worse than one that says it is low, because only the second one gets
+ * corrected. The screen prints both.
+ */
+export function shelfTotal(lines: ShelfLine[]): { total: number; unpriced: number } {
+  let total = 0;
+  let unpriced = 0;
+  for (const l of lines) {
+    total += Number(l.value) || 0;
+    if (!l.priced) unpriced += 1;
+  }
+  return { total, unpriced };
+}
+
 export function isLow(i: Ingredient): boolean {
   const reorder = Number(i.reorder) || 0;
   return reorder > 0 && (Number(i.stock) || 0) <= reorder;

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { peso } from "@/lib/peso";
+import { batchStockValue, shelfTotal } from "@/lib/costing";
 import {
   CountForm,
   IngredientForm,
@@ -250,10 +251,32 @@ export function InventoryView({
   );
 
   const low = useMemo(() => stock.filter((s) => s.low), [stock]);
-  const totalValue = useMemo(
-    () => stock.reduce((sum, s) => sum + s.value, 0),
-    [stock]
+  /**
+   * Everything on the shelves — the ingredients AND what has been prepped.
+   *
+   * This used to be the ingredients alone, so a day spent making sauces and
+   * marinades showed up as the shelf total going DOWN: the peanuts left
+   * `ingredients.stock` and the sauce they became was counted as nothing.
+   * A batch is stock; it is simply stock the shop has already done the work on.
+   *
+   * No double counting — producing a batch takes its ingredients off as it
+   * goes, so the two never hold the same peso at the same time.
+   */
+  const shelf = useMemo(
+    () =>
+      shelfTotal([
+        ...stock.map((s) => ({ value: s.value, priced: s.unitCost > 0 })),
+        ...batches.map((b) => ({
+          value: batchStockValue(b),
+          // A batch with no price is one whose recipe points at something
+          // unpriced, or that has no recipe at all. It is only worth flagging
+          // when there is some of it on the shelf to be worth anything.
+          priced: b.perUnit > 0 || b.stock <= 0,
+        })),
+      ]),
+    [stock, batches]
   );
+  const totalValue = shelf.total;
   const unpriced = useMemo(
     () => stock.filter((s) => s.unitCost <= 0).length,
     [stock]
@@ -352,7 +375,11 @@ export function InventoryView({
           <Stat
             label="Stock value"
             value={peso(totalValue, 0)}
-            sub="Money sitting on the shelves"
+            sub={
+              shelf.unpriced === 0
+                ? "Ingredients and prepped batches together"
+                : `${shelf.unpriced} with no price yet — the real figure is higher`
+            }
           />
         )}
         <Stat
