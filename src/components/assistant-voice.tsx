@@ -133,7 +133,7 @@ export function AssistantVoice({
           <p className="mt-1.5 text-sm leading-relaxed text-cream-50">
             {chosen
               ? `The one we always recommend is ${chosen.name} at ${peso(chosen.price)}. ${
-                  note.trim() || "…the dish's own description."
+                  note.trim() || "Then the dish's own description."
                 }`
               : "Our biggest seller is … — whichever dish has taken the most money."}
           </p>

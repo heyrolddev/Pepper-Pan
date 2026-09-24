@@ -287,15 +287,20 @@ function Line({
         <span className="font-display font-black tabular-nums text-ink-950">
           {peso(row.amount, 0)}
         </span>
-        {/* Quiet until it is wanted. Removing a spend is rare and mildly
-            destructive, so it does not compete with the figure beside it —
-            but it stays reachable by keyboard and is always visible on a
-            touch screen, where there is no hover to reveal it. */}
+        {/* Quiet, but never hidden.
+            
+            This was hover-to-reveal on anything wider than a phone, which
+            looked tidy and meant the owner on a laptop had no way to find out
+            the button existed at all. A control you cannot discover is a
+            control that is not there — and the whole point of this one is
+            that a mistyped spend stops being permanent. So it stays on
+            screen, faint enough not to compete with the figure beside it and
+            plain enough to be seen. */}
         <button
           onClick={() => onRemove(row)}
           aria-label={`Remove ${row.label}`}
           title="Recorded by mistake?"
-          className="rounded-lg px-1.5 py-1 text-xs font-bold text-ink-800/35 transition-colors hover:bg-brand-600/10 hover:text-brand-700 focus-visible:text-brand-700 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+          className="rounded-lg px-2 py-1.5 text-xs font-bold text-ink-800/35 transition-colors hover:bg-brand-600/10 hover:text-brand-700 focus-visible:text-brand-700"
         >
           ✕
         </button>
