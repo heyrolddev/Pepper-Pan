@@ -24,14 +24,20 @@ const boxClass =
  * question ("what happened to the chicken on Tuesday"), never browsing.
  */
 
+// One per category in ACTIVITY_CATEGORIES. A category with no tone here still
+// renders — it falls back to plain grey — so this is legibility, not safety.
 const TONE: Record<string, string> = {
   orders: "bg-brand-600 text-cream-50",
   inventory: "bg-jade-600 text-cream-50",
   movement: "bg-gold-400 text-ink-950",
-  menu: "bg-chili-600 text-cream-50",
+  // The two that mean something went wrong read hot. Waste is food thrown
+  // away; a `movement` row from the database is a shelf that went below zero.
+  waste: "bg-chili-600 text-cream-50",
+  menu: "bg-chili-400 text-ink-950",
   money: "bg-ink-950 text-gold-400",
   staff: "bg-ink-800 text-cream-50",
-  settings: "bg-ink-950/10 text-ink-800",
+  shift: "bg-jade-800 text-cream-50",
+  backup: "bg-ink-950/10 text-ink-800",
 };
 
 const SHOWN = 3;

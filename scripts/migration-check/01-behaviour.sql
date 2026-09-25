@@ -1177,3 +1177,138 @@ begin
   raise notice 'a circular recipe returns a number and stops, so a sale can still be rung up';
   delete from batch_ingredients where batch_id = 'liquid-butter' and ref_type = 'batch';
 end $$;
+
+-- ============================================================
+\echo '=== 0053 a shelf that runs short says so ==='
+-- ============================================================
+-- The subtraction was never the bug. The silence was. These check that the
+-- moment a shelf crosses below zero reaches the activity log, that it is
+-- logged once rather than on every sale afterwards, and that an ordinary
+-- sale off a shelf with enough on it stays quiet.
+
+-- A dish that needs one pack of something prepped and 60g of something bought.
+insert into ingredients (id, name, unit, cost, stock)
+  values ('short-breading', 'Short Breading', 'g', 0.5, 100)
+  on conflict (id) do update
+  set stock = 100, cost = 0.5, name = excluded.name, unit = excluded.unit;
+insert into batches (id, name, yield_qty, yield_unit, batch_stock, manual_cost_per_unit)
+  values ('short-packs', 'Short Packs', 10, 'pack', 1, 25)
+  on conflict (id) do update
+  set batch_stock = 1, manual_cost_per_unit = 25, name = excluded.name;
+insert into meals (id, name, price) values ('short-dish', 'Short Dish', 180)
+  on conflict (id) do update set price = 180;
+delete from meal_ingredients where meal_id = 'short-dish';
+insert into meal_ingredients (meal_id, ref_type, ref_id, qty) values
+  ('short-dish', 'batch', 'short-packs', 1),
+  ('short-dish', 'inv', 'short-breading', 60);
+
+\echo '--- a sale the shelf can cover moves stock and says nothing ---'
+do $$
+declare noisy int; packs numeric;
+begin
+  delete from activity_log where category = 'movement';
+  insert into orders (id, revenue, status) values ('short-ok', 180, 'completed')
+    on conflict (id) do nothing;
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+    values ('short-ok', 'short-dish', 1, 180);
+  perform apply_order_stock('short-ok');
+
+  select batch_stock into packs from batches where id = 'short-packs';
+  if packs <> 0 then
+    raise exception 'FAIL: one pack sold off a shelf of one left %, expected 0', packs;
+  end if;
+
+  select count(*) into noisy from activity_log where category = 'movement';
+  if noisy <> 0 then
+    raise exception 'FAIL: a sale the shelf could cover logged % shortfalls', noisy;
+  end if;
+  raise notice 'a sale within what is on the shelf moves stock and stays quiet';
+end $$;
+
+\echo '--- the sale that takes a batch under zero is written down, by name ---'
+do $$
+declare said text; packs numeric;
+begin
+  -- The shelf is at 0 packs now. This is the race #128 cannot catch: a
+  -- second till that read the same shelf a moment earlier.
+  insert into orders (id, revenue, status) values ('short-over', 180, 'completed')
+    on conflict (id) do nothing;
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+    values ('short-over', 'short-dish', 1, 180);
+  perform apply_order_stock('short-over');
+
+  select batch_stock into packs from batches where id = 'short-packs';
+  if packs <> -1 then
+    raise exception 'FAIL: the oversell was refused or clamped — shelf is %, expected -1', packs;
+  end if;
+
+  select description into said from activity_log
+   where category = 'movement' and description like 'Short Packs%';
+  if said is null then
+    raise exception 'FAIL: a batch went to -1 and nothing was written to the log';
+  end if;
+  if said not like '%short by 1 pack%' then
+    raise exception 'FAIL: the log does not say how short, or in what unit: %', said;
+  end if;
+  raise notice 'a batch crossing zero is logged by name, amount and unit: %', said;
+end $$;
+
+\echo '--- an ingredient crossing zero is logged the same way ---'
+do $$
+declare said text; left_over numeric;
+begin
+  -- 100g on the shelf, 60g a dish. The first sale left 40g; this one needs 60.
+  select stock into left_over from ingredients where id = 'short-breading';
+  if left_over <> -20 then
+    raise exception 'FAIL: expected the breading at -20g by now, it is %', left_over;
+  end if;
+  select description into said from activity_log
+   where category = 'movement' and description like 'Short Breading%';
+  if said is null then
+    raise exception 'FAIL: the breading went to -20g and nothing was written down';
+  end if;
+  if said not like '%short by 20 g%' then
+    raise exception 'FAIL: the breading shortfall is not stated in grams: %', said;
+  end if;
+  raise notice 'an ingredient crossing zero is logged too: %', said;
+end $$;
+
+\echo '--- an already-short shelf does not log again on every sale ---'
+do $$
+declare rows_now int; packs numeric;
+begin
+  insert into orders (id, revenue, status) values ('short-again', 180, 'completed')
+    on conflict (id) do nothing;
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+    values ('short-again', 'short-dish', 1, 180);
+  perform apply_order_stock('short-again');
+
+  select batch_stock into packs from batches where id = 'short-packs';
+  if packs <> -2 then
+    raise exception 'FAIL: the third sale did not move the shelf — it is at %', packs;
+  end if;
+
+  -- Two crossings happened in total: the batch's and the breading's. A third
+  -- sale off an already-negative shelf is the same known problem, and the
+  -- standing figure is on the Inventory screen. One row each, not one a sale.
+  select count(*) into rows_now from activity_log where category = 'movement';
+  if rows_now <> 2 then
+    raise exception 'FAIL: expected 2 crossing rows, the log has % — it is logging state, not the crossing', rows_now;
+  end if;
+  raise notice 'the log records when a shelf went short, not every sale after it';
+end $$;
+
+\echo '--- moving stock is still something only the server may do ---'
+do $$
+declare who text;
+begin
+  foreach who in array array['anon', 'authenticated', 'public'] loop
+    if has_function_privilege(who, 'apply_order_stock(text)', 'execute') then
+      raise exception 'FAIL: % may move stock directly after 0053 replaced the function', who;
+    end if;
+    if has_function_privilege(who, 'consume_ingredient(text, numeric, date, text)', 'execute') then
+      raise exception 'FAIL: % may consume ingredients directly after 0053', who;
+    end if;
+  end loop;
+  raise notice 'replacing the functions did not hand the anon key the keys to the shelf';
+end $$;

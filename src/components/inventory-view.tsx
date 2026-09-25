@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { peso } from "@/lib/peso";
-import { batchStockValue, shelfTotal } from "@/lib/costing";
+import { batchStockValue, shelfTotal, shortShelf } from "@/lib/costing";
 import {
   CountForm,
   IngredientForm,
@@ -286,6 +286,36 @@ export function InventoryView({
     [batches]
   );
 
+  /**
+   * Anything the count says there is less than none of.
+   *
+   * This cannot be folded into `low`. `isLow` needs a reorder level above zero
+   * to fire at all, so an ingredient nobody set a level for can sit at −340g
+   * and never be flagged by anything on this screen. Negative stock is its own
+   * question — not "buy more", but "the paperwork is wrong" — and it needs
+   * answering before any figure built on the count can be believed.
+   */
+  const short = useMemo(
+    () =>
+      shortShelf([
+        ...stock.map((s) => ({
+          id: s.id,
+          label: s.name,
+          kind: "ingredient" as const,
+          unit: s.unit,
+          stock: s.stock,
+        })),
+        ...batches.map((b) => ({
+          id: b.id,
+          label: b.name,
+          kind: "batch" as const,
+          unit: b.yieldUnit,
+          stock: b.stock,
+        })),
+      ]),
+    [stock, batches]
+  );
+
   const shownStock = useMemo(() => {
     const q = query.trim().toLowerCase();
     return stock
@@ -401,6 +431,44 @@ export function InventoryView({
           }
         />
       </div>
+
+      {/* Above everything else, including what is going off. A shelf in the
+          red means the numbers under every other panel on this page were
+          worked out from a count that is already known to be wrong. */}
+      {short.length > 0 && (
+        <section className="rounded-3xl bg-brand-600 p-6 text-cream-50 ring-1 ring-brand-700/40">
+          <h3 className="font-display text-xl font-black">
+            {short.length === 1
+              ? "One thing has gone below zero"
+              : `${short.length} things have gone below zero`}
+          </h3>
+          <p className="mt-1 max-w-2xl text-sm text-cream-100/80">
+            More was sold than was ever recorded as bought or made. Usually a
+            delivery that never got logged, or a batch made without pressing
+            Produce. Count what is really there and put the real number in —
+            until you do, the stock value and the shopping list below are both
+            working from this.
+          </p>
+          <ul className="mt-4 flex flex-wrap gap-2">
+            {short.map((s) => (
+              <li
+                key={`${s.kind}-${s.id}`}
+                className="rounded-2xl bg-cream-50 px-4 py-2.5 text-ink-950 ring-1 ring-ink-950/10"
+              >
+                <span className="font-bold">{s.label}</span>
+                {/* nowrap: at phone width "short by 2 pack" broke between the
+                    2 and the pack, which reads as a different number. */}
+                <span className="ml-2 whitespace-nowrap text-sm font-bold tabular-nums text-brand-700">
+                  short by {s.by.toLocaleString("en-PH")} {s.unit}
+                </span>
+                <span className="ml-2 text-xs uppercase tracking-wide opacity-40">
+                  {s.kind === "batch" ? "prepped" : "bought in"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Going off first: no amount of restocking fixes something already in
           the fridge with two days left on it. */}
