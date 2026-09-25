@@ -558,6 +558,49 @@ export function shelfTotal(lines: ShelfLine[]): { total: number; unpriced: numbe
   return { total, unpriced };
 }
 
+/** Something on a shelf that has gone below zero. */
+export type ShortShelf = {
+  id: string;
+  label: string;
+  kind: "ingredient" | "batch";
+  unit: string;
+  /** How far under zero, as a positive number. 2.5 means "short by 2.5". */
+  by: number;
+};
+
+/**
+ * What the count says the shop has less than none of.
+ *
+ * A negative stock figure is not a rounding artefact and it is not harmless.
+ * It is the system saying, in the only way it can, that more was sold than was
+ * ever recorded as bought or made — a delivery nobody logged, a batch produced
+ * without pressing the button, a miscount, or two tills confirming the same
+ * shelf in the same second.
+ *
+ * The database records the *moment* it happens (0053 writes it to the activity
+ * log). This is the other half: the standing figure, on the screen the owner
+ * opens to decide what to buy. Without it a negative is invisible — every
+ * total treats it as a number and carries on, and the reorder suggestion built
+ * on top of it quietly asks for the wrong amount.
+ *
+ * Worst first, because the one that is furthest out is the one whose paperwork
+ * went wrong first.
+ */
+export function shortShelf(
+  items: readonly { id: string; label: string; kind: "ingredient" | "batch"; unit: string; stock: number }[]
+): ShortShelf[] {
+  return items
+    .filter((i) => (Number(i.stock) || 0) < 0)
+    .map((i) => ({
+      id: i.id,
+      label: i.label,
+      kind: i.kind,
+      unit: i.unit,
+      by: Math.abs(Number(i.stock) || 0),
+    }))
+    .sort((a, b) => b.by - a.by || a.label.localeCompare(b.label));
+}
+
 export function isLow(i: Ingredient): boolean {
   const reorder = Number(i.reorder) || 0;
   return reorder > 0 && (Number(i.stock) || 0) <= reorder;

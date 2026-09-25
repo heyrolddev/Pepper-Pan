@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
 import { LiveDotIcon } from "@/components/icons";
+import { peso } from "@/lib/peso";
 
 /**
  * `Notification.permission` is a browser value that doesn't exist during SSR
@@ -81,7 +82,7 @@ export function LiveOrdersBanner() {
     onInsert: (row) => {
       const name = (row.contact_name as string) || "A customer";
       const total = Number(row.revenue ?? 0);
-      const message = `${name} just ordered ₱${total.toFixed(2)}`;
+      const message = `${name} just ordered ${peso(total)}`;
 
       setToast(message);
       if (timer.current) clearTimeout(timer.current);
