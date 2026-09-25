@@ -18,6 +18,8 @@ import {
 } from "@/lib/money-accounts";
 import type { Supplier } from "@/lib/suppliers";
 
+import { entryBasis, fromPerUnit } from "@/lib/nutrition";
+
 export type EditableIngredient = {
   id: string;
   name: string;
@@ -28,6 +30,11 @@ export type EditableIngredient = {
   categories: string[];
   stock: number;
   unitCost: number;
+  /** Per one unit, as stored. The form shows it per 100 for g and ml. */
+  kcal?: number | null;
+  protein?: number | null;
+  carbs?: number | null;
+  fat?: number | null;
 };
 
 /** Shared submit button, so every form in here ends the same way. */
@@ -87,6 +94,24 @@ export function IngredientForm({
   const [price, setPrice] = useState(String(ingredient?.purchasePrice ?? ""));
   const [qty, setQty] = useState(String(ingredient?.purchaseQty ?? ""));
   const [reorder, setReorder] = useState(String(ingredient?.reorder ?? ""));
+
+  /**
+   * Nutrition, shown the way the packet prints it.
+   *
+   * The column holds per ONE unit, because that is what a recipe quantity
+   * multiplies. Nobody types that: a bag of breading says "368 kcal per
+   * 100 g", and asking for 3.68 invites a misplaced decimal that multiplies
+   * every dish using it by ten and still looks plausible. `fromPerUnit`
+   * brings it back out in the basis it was typed in.
+   */
+  const asTyped = (v: number | null | undefined) => {
+    const out = fromPerUnit(v ?? null, ingredient?.unit ?? "");
+    return out === null ? "" : String(Number(out.toFixed(3)));
+  };
+  const [kcal, setKcal] = useState(asTyped(ingredient?.kcal));
+  const [protein, setProtein] = useState(asTyped(ingredient?.protein));
+  const [carbs, setCarbs] = useState(asTyped(ingredient?.carbs));
+  const [fat, setFat] = useState(asTyped(ingredient?.fat));
   const [opening, setOpening] = useState("");
   const [picked, setPicked] = useState<string[]>(ingredient?.categories ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +135,14 @@ export function IngredientForm({
         purchasePrice: p,
         purchaseQty: q,
         reorder: Number(reorder) || 0,
+        nutrition: {
+          // Blank stays blank. `Number("")` is 0, and a zero here would be
+          // the form claiming the ingredient has no calories.
+          kcal: kcal.trim() === "" ? null : Number(kcal),
+          protein: protein.trim() === "" ? null : Number(protein),
+          carbs: carbs.trim() === "" ? null : Number(carbs),
+          fat: fat.trim() === "" ? null : Number(fat),
+        },
         categories: picked,
         openingStock: editing ? undefined : Number(opening) || 0,
       });
@@ -225,6 +258,62 @@ export function IngredientForm({
             </Field>
           )}
         </div>
+
+        {/* ------------------------------------------------------------
+            What is in it
+
+            Off the packet, in the packet's own units. Every one of these is
+            optional and all four start blank — the dish only shows a figure
+            once EVERY ingredient in its recipe has one, so a half-filled
+            store room shows nothing rather than a total that is quietly too
+            low. Filling in the ten ingredients that actually carry the
+            calories gets most of the menu there.
+            ------------------------------------------------------------ */}
+        <details className="rounded-2xl bg-cream-100 p-3 ring-1 ring-ink-950/10">
+          <summary className="cursor-pointer text-sm font-bold text-ink-950">
+            What&apos;s in it{" "}
+            <span className="font-semibold text-ink-800/45">
+              — calories and macros, optional
+            </span>
+          </summary>
+          <p className="mt-2 text-xs text-ink-800/55">
+            Straight off the packet, per{" "}
+            <strong className="font-bold text-ink-900">
+              {entryBasis(unit) === 100 ? `100 ${unit || "g"}` : `1 ${unit || "unit"}`}
+            </strong>
+            . Leave blank if you don&apos;t know it — a dish stays blank until
+            everything in its recipe is filled in, so a guess here is worse
+            than a gap.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(
+              [
+                ["Calories", kcal, setKcal, "kcal", "368"],
+                ["Protein", protein, setProtein, "g", "9"],
+                ["Carbs", carbs, setCarbs, "g", "76"],
+                ["Fat", fat, setFat, "g", "1.2"],
+              ] as const
+            ).map(([label, value, set, suffix, example]) => (
+              <Field key={label} label={`${label} (${suffix})`}>
+                <input
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  placeholder={example}
+                  className={inputClass}
+                />
+              </Field>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-ink-800/45">
+            Energy is worked out from the three macros if you leave Calories
+            empty — 4 per gram of protein and carbs, 9 for fat, the same sum
+            the packet used.
+          </p>
+        </details>
 
         {categories.length > 0 && (
           <Field label="Tags">

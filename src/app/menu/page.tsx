@@ -10,6 +10,7 @@ import {
 } from "@/lib/menu-products";
 import { PageHeader } from "@/components/page-header";
 import { loadAvailability } from "@/lib/costing-server";
+import { loadNutrition } from "@/lib/nutrition-server";
 import { loadModifiers } from "@/lib/modifiers-server";
 import { groupsFor } from "@/lib/modifiers";
 import type { MenuCategory } from "@/lib/categories";
@@ -21,9 +22,10 @@ async function getMenu(): Promise<{
   menu: Product[] | null;
   categories: MenuCategory[];
   configured: boolean;
+  showNutrition: boolean;
 }> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return { menu: null, categories: [], configured: false };
+    return { menu: null, categories: [], configured: false, showNutrition: false };
   }
 
   try {
@@ -45,6 +47,25 @@ async function getMenu(): Promise<{
      * together too and meet at the end. See `loadModifiers`.
      */
     const stock = loadAvailability();
+    /**
+     * Handed over un-awaited like the stock read, so six more small queries
+     * go out with the rest rather than after them. A menu that waits on a
+     * calorie count before it can render is a menu that got slower for a
+     * line of grey text.
+     */
+    const nutrition = loadNutrition();
+    /**
+     * Off until the owner turns it on. Everything is blank the day 0055 runs,
+     * and a menu that grows an empty "Calories" line on every card looks
+     * broken — so the switch defaults false and the shop flips it once the
+     * ingredients are filled in. A failed read is treated as off for the
+     * same reason.
+     */
+    const showNutrition = supabase
+      .from("settings")
+      .select("show_nutrition")
+      .eq("id", 1)
+      .maybeSingle();
     const [
       { data, error },
       { data: ratings },
@@ -52,11 +73,13 @@ async function getMenu(): Promise<{
       { data: groupRows, error: groupError },
       addOns,
       makeable,
+      inside,
+      { data: nutritionSetting },
     ] = await Promise.all([
       supabase
       .from("meals")
       .select(
-        "id, name, price, description, categories, image_url, is_available, product_id, options, variant_sort"
+        "id, name, price, description, categories, image_url, is_available, product_id, options, variant_sort, code"
       )
       .eq("is_public", true)
       /**
@@ -124,6 +147,14 @@ async function getMenu(): Promise<{
       // today", and a background process overwriting it would destroy an
       // intent the system can't tell apart from its own guess.
       stock,
+
+      // What is in each dish. Empty when nobody has filled in the
+      // ingredients yet, which is the ordinary case on day one — every card
+      // simply shows no figure.
+      nutrition,
+
+      // And whether the customer is shown any of it.
+      showNutrition,
     ]);
 
     if (error) throw error;
@@ -151,6 +182,7 @@ async function getMenu(): Promise<{
       options: unknown;
       variant_sort: number | null;
       is_available: boolean;
+      code: string | null;
     };
     const rows = (data ?? []) as Row[];
     const groupOf = new Map(rows.map((m) => [m.id, m.product_id]));
@@ -162,6 +194,8 @@ async function getMenu(): Promise<{
       description: m.description,
       image_url: m.image_url,
       categories: m.categories ?? [],
+      code: m.code,
+      nutrition: inside.get(m.id) ?? null,
       options: normalizeOptions(m.options),
       sort: m.variant_sort ?? 0,
       available: m.is_available !== false,
@@ -177,10 +211,15 @@ async function getMenu(): Promise<{
       (v) => groupOf.get(v.id) ?? null
     );
 
-    return { menu, categories: (catRows ?? []) as MenuCategory[], configured: true };
+    return {
+      menu,
+      categories: (catRows ?? []) as MenuCategory[],
+      configured: true,
+      showNutrition: nutritionSetting?.show_nutrition === true,
+    };
   } catch (err) {
     console.error("Failed to load menu:", err);
-    return { menu: null, categories: [], configured: true };
+    return { menu: null, categories: [], configured: true, showNutrition: false };
   }
 }
 
@@ -209,7 +248,7 @@ const emptyStateClass =
   "rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80";
 
 export default async function MenuPage() {
-  const [{ menu, categories, configured }, viewer] = await Promise.all([
+  const [{ menu, categories, configured, showNutrition }, viewer] = await Promise.all([
     getMenu(),
     getViewer(),
   ]);
@@ -245,7 +284,12 @@ export default async function MenuPage() {
         {configured && menu && menu.length > 0 && (
           <>
             <MenuSchema products={menu} categories={categories} />
-            <MenuList products={menu} staff={staff} known={categories} />
+            <MenuList
+              products={menu}
+              staff={staff}
+              known={categories}
+              showNutrition={showNutrition}
+            />
           </>
         )}
       </section>

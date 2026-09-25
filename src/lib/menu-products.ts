@@ -37,6 +37,8 @@ import type { ModifierGroup } from "@/lib/modifiers";
 
 export type VariantOptions = Record<string, string>;
 
+import type { DishNutrition } from "@/lib/nutrition";
+
 export type Variant = {
   id: string;
   name: string;
@@ -51,6 +53,10 @@ export type Variant = {
   /** Order within its group — the order the chips are offered in. */
   sort: number;
   categories: string[];
+  /** The short name the counter says — "C1". Null until one is set. */
+  code?: string | null;
+  /** What is in it, or null when nothing has been worked out yet. */
+  nutrition?: DishNutrition | null;
   avg_rating?: number | null;
   review_count?: number;
   /**
@@ -85,6 +91,18 @@ export type Product = {
   avgRating: number | null;
   reviewCount: number;
   sortOrder: number;
+  /**
+   * The code and the nutrition of the ONE dish on this card, or null when the
+   * card holds several.
+   *
+   * Four ji pai behind one card have four codes and four calorie counts, and
+   * a card is not the place to pick between them — a range of calories is
+   * noise, and showing the first variant's code would send somebody to the
+   * counter saying "C1" for a dish that is actually C3. Cards that hold a
+   * choice carry these on the chips inside the dish instead.
+   */
+  code: string | null;
+  nutrition: DishNutrition | null;
 };
 
 export type ProductGroup = {
@@ -350,6 +368,8 @@ function productOf(
     avgRating: avg,
     reviewCount: count,
     sortOrder: group?.sort_order ?? 0,
+    code: sorted.length === 1 ? (sorted[0].code ?? null) : null,
+    nutrition: sorted.length === 1 ? (sorted[0].nutrition ?? null) : null,
   };
 }
 

@@ -6,6 +6,7 @@ import { can, getViewer } from "@/lib/auth";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CATEGORY_COLOURS, cleanCategories, fallbackColour } from "@/lib/categories";
+import { cleanCode } from "@/lib/dish-code";
 import { applyTakeoutMerge } from "@/lib/takeout-merge";
 import { applyTakeoutPurge } from "@/lib/takeout-purge";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
@@ -69,6 +70,18 @@ export async function saveMeal(input: {
   categories: string[];
   isPublic: boolean;
   isAvailable: boolean;
+  /** The short name the counter says. Blank clears it. */
+  code?: string;
+  /**
+   * The owner overruling the recipe. All four blank — the ordinary case —
+   * means "work it out from what is in it".
+   */
+  nutrition?: {
+    kcal: number | null;
+    protein: number | null;
+    carbs: number | null;
+    fat: number | null;
+  };
 }): Promise<{ error: string | null }> {
   const viewer = await getViewer();
   if (!can(viewer, "menu.edit")) {
@@ -78,6 +91,16 @@ export async function saveMeal(input: {
   if (!Number.isFinite(input.price) || input.price < 0) {
     return { error: "Enter a valid price." };
   }
+
+  // Cleaned rather than trusted: the column has a case-insensitive unique
+  // index, so "c1" typed next to an existing "C1" would fail the save with a
+  // constraint error the owner cannot act on. Blank clears the code — not
+  // every dish needs one.
+  const code = input.code === undefined ? undefined : cleanCode(input.code) || null;
+
+  const n = input.nutrition;
+  const blank = (v: number | null) =>
+    v === null || !Number.isFinite(v) || v < 0 ? null : v;
 
   const supabase = await createClient();
   // `.select()` matters: PostgREST reports success on an UPDATE that a
@@ -92,6 +115,15 @@ export async function saveMeal(input: {
       categories: cleanCategories(input.categories),
       is_public: input.isPublic,
       is_available: input.isAvailable,
+      ...(code === undefined ? {} : { code }),
+      ...(n
+        ? {
+            kcal: blank(n.kcal),
+            protein_g: blank(n.protein),
+            carbs_g: blank(n.carbs),
+            fat_g: blank(n.fat),
+          }
+        : {}),
     })
     .eq("id", input.id)
     .select("id");
@@ -606,4 +638,38 @@ export async function runTakeoutPurge(): Promise<{
     revalidateMenu();
   }
   return result;
+}
+
+/**
+ * Whether customers see calories at all.
+ *
+ * Off until the shop turns it on, and the default matters: everything is
+ * blank the day 0055 runs, so a menu that switched this on by itself would
+ * grow an empty line on seventy-three cards and look broken. The dishes that
+ * have a complete figure show one; the rest show nothing, whichever way this
+ * is set — this is the master switch over the top of that.
+ */
+export async function setShowNutrition(on: boolean): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) {
+    return { error: "Only the owner can change what the menu shows." };
+  }
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from("settings")
+    .update({ show_nutrition: on })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+
+  await supabase.from("activity_log").insert({
+    category: "menu",
+    description: on
+      ? "Turned on calories and macros on the customer menu"
+      : "Turned off calories and macros on the customer menu",
+    actor: viewer?.profile?.id ?? null,
+  });
+
+  revalidatePath("/menu");
+  revalidatePath("/admin/menu");
+  return { error: null };
 }

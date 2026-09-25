@@ -46,6 +46,38 @@
   --color-jade-800: #0a5138;
   --color-jade-900: #08402d;
 
+  /* ------------------------------------------------------------------
+   * Category colours
+   *
+   * Four hues that exist only so two categories on the menu are never nearly
+   * the same colour. Measured rather than eyeballed: every pair in the set is
+   * at least ΔE 35 apart in Lab, and every chip clears 4.5:1 against its own
+   * text. The two that used to fail were Black against Brown (ΔE 17.8, both
+   * were near-black — `ink-950` and `ink-700`) and Green against Teal
+   * (ΔE 22.6, "teal" was `jade-800`, a dark green). Both read as one colour
+   * on a phone, which is the whole thing a colour code is supposed to avoid.
+   * ------------------------------------------------------------------ */
+
+  /* Teal — a real one this time, not a darker green */
+  --color-teal-600: #0f7490;
+  --color-teal-700: #0e5f76;
+  --color-teal-800: #0c4a5c;
+
+  /* Ocean — the one cool blue, furthest from everything warm */
+  --color-ocean-600: #1e5aa8;
+  --color-ocean-700: #184a8c;
+  --color-ocean-800: #133a70;
+
+  /* Plum — red's neighbour on the other side, purple enough to tell apart */
+  --color-plum-600: #7d2b57;
+  --color-plum-700: #672446;
+  --color-plum-800: #511c37;
+
+  /* Clay — an actual brown. `ink-700` was charcoal with a hint of red in it. */
+  --color-clay-600: #8a5a3c;
+  --color-clay-700: #734b32;
+  --color-clay-800: #5c3c28;
+
   /* Chili — the red↔gold bridge */
   --color-chili-300: #fdba74;
   --color-chili-400: #fb923c;

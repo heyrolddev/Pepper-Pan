@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { toPerUnit } from "@/lib/nutrition";
 import { shopToday } from "@/lib/format-date";
 import { PAID_FROM_LABELS, isPaidFrom, type PaidFrom } from "@/lib/money-accounts";
 import { recordDebt } from "@/lib/debts-server";
@@ -94,6 +95,17 @@ export async function saveIngredient(input: {
   categories: string[];
   /** Only used when creating — afterwards stock moves through restock/sales. */
   openingStock?: number;
+  /**
+   * As the owner typed it — per 100 g for weights and volumes, per one of
+   * anything counted, the way a packet prints it. Converted to the per-one
+   * figure the column holds on the way in; see `toPerUnit`.
+   */
+  nutrition?: {
+    kcal: number | null;
+    protein: number | null;
+    carbs: number | null;
+    fat: number | null;
+  };
 }): Promise<Result & { id?: string }> {
   const viewer = await requireStock();
   if (!viewer) return { error: "Only shop staff can change the store room." };
@@ -110,6 +122,20 @@ export async function saveIngredient(input: {
   const supabase = createAdminClient();
   const cost = unitCost(input.purchasePrice, input.purchaseQty);
 
+  // Null, not zero. Zero is a claim — "this ingredient has no calories" — and
+  // it would let a dish report a complete figure that is quietly too low. A
+  // null says nobody has filled it in, and the rollup refuses to show the
+  // dish at all until they have.
+  const n = input.nutrition;
+  const nutritionCols = n
+    ? {
+        kcal_per_unit: toPerUnit(n.kcal, unit),
+        protein_per_unit: toPerUnit(n.protein, unit),
+        carbs_per_unit: toPerUnit(n.carbs, unit),
+        fat_per_unit: toPerUnit(n.fat, unit),
+      }
+    : {};
+
   if (input.id) {
     const { data, error } = await supabase
       .from("ingredients")
@@ -121,6 +147,7 @@ export async function saveIngredient(input: {
         cost,
         reorder: input.reorder,
         categories: input.categories,
+        ...nutritionCols,
       })
       .eq("id", input.id)
       .select("id");
@@ -143,6 +170,7 @@ export async function saveIngredient(input: {
       stock: input.openingStock ?? 0,
       reorder: input.reorder,
       categories: input.categories,
+      ...nutritionCols,
     })
     .select("id")
     .single();

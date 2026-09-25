@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import type { AdminMeal } from "@/components/meal-editor";
+import { loadNutrition } from "@/lib/nutrition-server";
+import { round } from "@/lib/nutrition";
+import { suggestCode } from "@/lib/dish-code";
+import { NutritionSwitch } from "@/components/nutrition-switch";
 import { MenuWorkspace } from "@/components/menu-workspace";
 import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
@@ -52,7 +56,7 @@ export default async function AdminMenuPage() {
     supabase
       .from("meals")
       .select(
-        "id, name, price, description, categories, image_url, is_public, is_available, product_id, options, variant_sort"
+        "id, name, price, description, categories, image_url, is_public, is_available, product_id, options, variant_sort, code, kcal, protein_g, carbs_g, fat_g"
       )
       .order("name"),
     // The shop's own vocabulary. Ordered the way the customer's menu orders
@@ -119,7 +123,37 @@ export default async function AdminMenuPage() {
     variant_sort: number | null;
   };
   const rows = (data ?? []) as MealRow[];
-  const meals = rows as AdminMeal[];
+
+  /**
+   * What each dish works out to, and what is stopping it.
+   *
+   * The editor shows this beside the override boxes because "why is there no
+   * calorie count on this dish" is always the same answer — one ingredient
+   * nobody has filled in — and the owner can only act on it if they are told
+   * which one.
+   */
+  const inside = await loadNutrition();
+
+  const { data: settingsRow } = await supabase
+    .from("settings")
+    .select("show_nutrition")
+    .eq("id", 1)
+    .maybeSingle();
+  const nutritionOn = settingsRow?.show_nutrition === true;
+
+  const codes = rows.map((m) => m.code ?? "").filter(Boolean);
+  const meals: AdminMeal[] = rows.map((m) => {
+    const worked = inside.get(m.id);
+    const complete = worked && worked.missing === 0 && !worked.manual;
+    return {
+      ...m,
+      worked: complete ? round(worked.per) : null,
+      missing: worked?.manual ? [] : (worked?.missingNames ?? []),
+      // Every OTHER dish's code — a dish keeping its own is not a clash.
+      codesInUse: codes.filter((c) => c !== (m.code ?? "")),
+      suggestion: suggestCode(m.categories?.[0] ?? null, codes),
+    };
+  });
   const categories = (catRows ?? []) as MenuCategory[];
 
   // Members are read off the dishes rather than held on the group, for the
@@ -208,6 +242,14 @@ export default async function AdminMenuPage() {
         <p className="rounded-2xl bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700">
           Could not load the menu: {error.message}
         </p>
+      )}
+
+      {canEdit && (
+        <NutritionSwitch
+          on={nutritionOn}
+          ready={meals.filter((m) => m.worked || m.kcal !== null).length}
+          total={meals.length}
+        />
       )}
 
       {/* Only appears while there is something to collapse, and takes itself

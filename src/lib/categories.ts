@@ -18,9 +18,17 @@
  *   it is the guarantee that whatever they pick is still readable on the
  *   customer's phone in daylight.
  *
- * Eight is enough for a street-food menu and few enough that two categories
- * are never nearly the same colour — which is the whole point of colouring
- * them.
+ * Ten, and the count is not the point — the SPACING is. The owner asked for
+ * colours where no two categories look alike, and the set this replaced had
+ * two pairs that did: Black against Brown, which were `ink-950` and `ink-700`
+ * and both read as near-black, and Green against Teal, where "teal" was
+ * `jade-800` — a darker green. Measured in Lab they were ΔE 17.8 and 22.6
+ * apart; under about 25 the eye stops treating them as different colours.
+ *
+ * Every pair in this set is at least ΔE 35 apart, and every chip clears
+ * 4.5:1 against its own text. Both were computed, not judged by eye, because
+ * "these look different enough to me on this monitor" is how the last two got
+ * in. If you add a colour, measure it against all ten first.
  */
 
 export type CategoryTone = {
@@ -42,22 +50,18 @@ export const CATEGORY_TONES: Record<string, CategoryTone> = {
     dot: "bg-brand-600",
   },
   chili: {
+    // Ink on a brighter orange, not cream on a darker one. Darkening it far
+    // enough for cream text pulled it towards red — ΔE 21.8 from `brand`,
+    // close enough to be the same colour on a card. At #f2761d it reads 6.9:1
+    // under ink and sits ΔE 35 away from red.
     label: "Orange",
-    chip: "bg-chili-600 text-cream-50",
-    soft: "bg-chili-600/12 text-chili-700",
-    dot: "bg-chili-600",
+    chip: "bg-chili-500 text-ink-950",
+    soft: "bg-chili-500/15 text-chili-700",
+    dot: "bg-chili-500",
   },
   gold: {
     // Gold is the one that cannot take cream text — it's a light colour, and
-    // the chip needs ink on it or the label vanishes.
-    //
-    // Which the comment said and the value did not: `chip` was
-    // `bg-brand-600 text-cream-50`, a straight copy of `brand`. So a category
-    // the owner deliberately coloured yellow turned RED the moment it was
-    // selected, indistinguishable from a red one — the dot beside it stayed
-    // gold, so the same category was two colours at once depending on whether
-    // you had tapped it. Ink on gold reads at 13:1, which is what the comment
-    // was asking for.
+    // the chip needs ink on it or the label vanishes. Ink on gold reads 13:1.
     label: "Yellow",
     chip: "bg-gold-400 text-ink-950",
     soft: "bg-gold-400/25 text-ink-900",
@@ -70,22 +74,38 @@ export const CATEGORY_TONES: Record<string, CategoryTone> = {
     dot: "bg-jade-600",
   },
   teal: {
+    // Was `jade-800` — a darker green, ΔE 22.6 from `jade`. Two categories
+    // coloured Green and Teal were one colour on a phone.
     label: "Teal",
-    chip: "bg-jade-800 text-cream-50",
-    soft: "bg-jade-800/12 text-jade-900",
-    dot: "bg-jade-800",
+    chip: "bg-teal-600 text-cream-50",
+    soft: "bg-teal-600/12 text-teal-800",
+    dot: "bg-teal-600",
+  },
+  ocean: {
+    label: "Blue",
+    chip: "bg-ocean-600 text-cream-50",
+    soft: "bg-ocean-600/12 text-ocean-800",
+    dot: "bg-ocean-600",
+  },
+  plum: {
+    label: "Plum",
+    chip: "bg-plum-600 text-cream-50",
+    soft: "bg-plum-600/12 text-plum-800",
+    dot: "bg-plum-600",
+  },
+  brown: {
+    // Was `ink-700`, which is charcoal with a hint of red in it — ΔE 17.8
+    // from black, the worst pair in the old set.
+    label: "Brown",
+    chip: "bg-clay-600 text-cream-50",
+    soft: "bg-clay-600/12 text-clay-800",
+    dot: "bg-clay-600",
   },
   ink: {
     label: "Black",
     chip: "bg-ink-950 text-cream-50",
     soft: "bg-ink-950/8 text-ink-900",
     dot: "bg-ink-950",
-  },
-  brown: {
-    label: "Brown",
-    chip: "bg-ink-700 text-cream-50",
-    soft: "bg-ink-700/12 text-ink-800",
-    dot: "bg-ink-700",
   },
   sand: {
     label: "Sand",
@@ -105,6 +125,94 @@ export function toneFor(colour: string | null | undefined): CategoryTone {
 }
 
 export type MenuCategory = { name: string; colour: string; sort_order: number };
+
+/**
+ * A colour for every category, with no two the same.
+ *
+ * This is the function that actually answers the owner's request, and it
+ * exists because `fallbackColour` below cannot. That one hashes the name, and
+ * a hash into ten buckets collides constantly — with five uncoloured
+ * categories the chance that two land on the same colour is about 60%. It is
+ * stable, which is what it was written for, but stable is not distinct.
+ *
+ * Two passes. Stored colours win outright: the owner picked them, and moving
+ * one because a later category wanted it would be the screen overruling the
+ * person. Then every category still without one takes the first colour
+ * nothing else has used, walking the palette in order.
+ *
+ * Past ten categories there is nothing left to give, so it wraps and starts
+ * reusing — the set is exhausted, not the rule abandoned. `clashingColours`
+ * is what tells the owner that has happened, by name, rather than leaving
+ * them to spot it.
+ */
+export function paletteFor(
+  names: readonly string[],
+  known?: Map<string, string>
+): Map<string, CategoryTone> {
+  const out = new Map<string, CategoryTone>();
+  const taken = new Set<string>();
+
+  const stored = new Map<string, string>();
+  for (const name of names) {
+    const colour = known?.get(name);
+    if (colour && CATEGORY_TONES[colour]) {
+      stored.set(name, colour);
+      taken.add(colour);
+    }
+  }
+
+  let next = 0;
+  for (const name of names) {
+    const pick = stored.get(name);
+    if (pick) {
+      out.set(name, CATEGORY_TONES[pick]);
+      continue;
+    }
+    // The first unused colour. Once every colour is spoken for this keeps
+    // walking and hands out repeats, which is the honest outcome of asking
+    // for more categories than there are colours.
+    let guard = 0;
+    while (taken.has(CATEGORY_COLOURS[next % CATEGORY_COLOURS.length]) && guard < CATEGORY_COLOURS.length) {
+      next += 1;
+      guard += 1;
+    }
+    const colour = CATEGORY_COLOURS[next % CATEGORY_COLOURS.length];
+    taken.add(colour);
+    next += 1;
+    out.set(name, CATEGORY_TONES[colour]);
+  }
+  return out;
+}
+
+/**
+ * Categories that have ended up the same colour, grouped by the colour.
+ *
+ * Only ever non-empty when the owner has set two categories to the same
+ * colour by hand, or when there are more categories than colours. Either way
+ * it is worth saying out loud on the screen where colours are chosen — a
+ * colour code with a duplicate in it is not a colour code, and the failure is
+ * completely silent otherwise.
+ */
+export function clashingColours(
+  names: readonly string[],
+  known?: Map<string, string>
+): { colour: string; label: string; names: string[] }[] {
+  const assigned = paletteFor(names, known);
+  const byLabel = new Map<string, string[]>();
+  for (const [name, tone] of assigned) {
+    const list = byLabel.get(tone.label) ?? [];
+    list.push(name);
+    byLabel.set(tone.label, list);
+  }
+  const clashes: { colour: string; label: string; names: string[] }[] = [];
+  for (const [label, group] of byLabel) {
+    if (group.length < 2) continue;
+    const colour =
+      CATEGORY_COLOURS.find((c) => CATEGORY_TONES[c].label === label) ?? "ink";
+    clashes.push({ colour, label, names: group });
+  }
+  return clashes;
+}
 
 /**
  * A colour for a category nobody has coloured yet.
@@ -283,4 +391,26 @@ export function countByCategory(items: Categorised[]): Record<string, number> {
     }
   }
   return counts;
+}
+
+/**
+ * The colour a dish card is painted, or null for no colour at all.
+ *
+ * ONE category means one answer, and the card takes it. Two or more means
+ * there is no single right answer, and the card stays cream — which is the
+ * owner's own rule, and the correct one: a dish tagged both Chicken and Rice
+ * painted in Chicken's red is a card quietly claiming to be only half of what
+ * it is, and picking the first category would make the colour depend on
+ * which order somebody happened to type the tags in.
+ *
+ * Cream is not a failure state here. It reads as "this one spans more than
+ * one part of the menu", which is true and is worth seeing.
+ */
+export function cardTone(
+  categories: readonly string[] | null | undefined,
+  palette: Map<string, CategoryTone>
+): CategoryTone | null {
+  const named = (categories ?? []).map((c) => c.trim()).filter(Boolean);
+  if (named.length !== 1) return null;
+  return palette.get(named[0]) ?? null;
 }

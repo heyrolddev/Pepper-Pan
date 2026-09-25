@@ -410,3 +410,53 @@ test("cards are alphabetical unless the owner placed one", () => {
   );
   assert.equal(placed[0].name, "Iced Spanish Latte");
 });
+
+/* ------------------------------------------------------------------
+ * The code and the calorie count on a card
+ * ------------------------------------------------------------------ */
+
+test("a card with one dish behind it carries that dish's code and figures", () => {
+  const solo = [
+    v({
+      id: "s1",
+      code: "C1",
+      nutrition: {
+        per: { kcal: 430, protein: 24, carbs: 33, fat: 21 },
+        missing: 0,
+        missingNames: [],
+        manual: false,
+      },
+    }),
+  ];
+  const [p] = buildProducts(solo, [], () => null);
+  assert.equal(p.code, "C1");
+  assert.equal(p.nutrition?.per.kcal, 430);
+});
+
+test("a card holding a choice carries neither", () => {
+  /**
+   * Four ji pai behind one card have four codes and four calorie counts, and
+   * a card is not the place to pick between them. Showing the first variant's
+   * code sends somebody to the counter saying "C1" for a dish that is C3, and
+   * a range of calories is noise. The chips inside the dish carry both.
+   *
+   * The screenshot pass could not prove this — the scratch page built the
+   * Product by hand and skipped this function entirely — so it is pinned here.
+   */
+  const many = [
+    v({ id: "a", code: "C1", nutrition: { per: { kcal: 430, protein: 24, carbs: 33, fat: 21 }, missing: 0, missingNames: [], manual: false } }),
+    v({ id: "b", code: "C2", nutrition: { per: { kcal: 742, protein: 38, carbs: 61, fat: 37 }, missing: 0, missingNames: [], manual: false } }),
+  ];
+  const [p] = buildProducts(many, [group()], inGroup({ a: "g1", b: "g1" }));
+  assert.equal(p.variants.length, 2, "the fixture did not actually group them");
+  assert.equal(p.code, null);
+  assert.equal(p.nutrition, null);
+});
+
+test("a dish with no code and no figures is null rather than undefined", () => {
+  // The card checks `product.code &&` — an undefined would work by accident
+  // and then stop working the day somebody writes `code !== null`.
+  const [p] = buildProducts([v({ id: "plain" })], [], () => null);
+  assert.equal(p.code, null);
+  assert.equal(p.nutrition, null);
+});
