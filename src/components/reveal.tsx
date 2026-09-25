@@ -1,18 +1,36 @@
-"use client";
-
-import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 
 type Direction = "up" | "down" | "left" | "right" | "scale";
 
-const offsets: Record<Direction, { x?: number; y?: number; scale?: number }> = {
-  up: { y: 28 },
-  down: { y: -28 },
-  left: { x: 36 },
-  right: { x: -36 },
-  scale: { scale: 0.94 },
-};
-
+/**
+ * Fade-and-rise as something scrolls into view — without holding the page
+ * hostage to the bundle.
+ *
+ * This used to be a `motion.div` with `initial={{ opacity: 0 }}` and a
+ * `whileInView`. Motion renders that initial state into the server HTML so
+ * there is no flash once it hydrates, which is the right call for a component
+ * that always hydrates promptly. It ships:
+ *
+ *     <div style="opacity:0;transform:translateY(28px)">
+ *
+ * The homepage has twenty-two of these. So on any load where the JavaScript
+ * had not arrived yet — a hard refresh, which re-fetches the bundle instead of
+ * taking it from cache — the entire page below the hero was invisible. Not
+ * slow: invisible, with the layout already in place, which reads as a broken
+ * site rather than a loading one. The intro splash had been covering it, and
+ * once that started skipping itself on the second load of a session there was
+ * nothing left in front of it.
+ *
+ * So the animation is CSS now, driven by a view timeline, and the element is
+ * VISIBLE by default. Nothing has to run for the words to be on the screen.
+ * Where the browser has no view timelines, and for anyone who has asked for
+ * less motion, the `@supports`/media fallbacks in globals.css leave it exactly
+ * as the server sent it. The same trade the menu grid already made with
+ * `card-in`, for the same reason.
+ *
+ * No `"use client"` either: there is nothing to hydrate, so twenty-two
+ * subtrees stop being client components.
+ */
 export function Reveal({
   children,
   delay = 0,
@@ -20,30 +38,24 @@ export function Reveal({
   className,
 }: {
   children: ReactNode;
+  /**
+   * Seconds in the old API, kept so call sites did not have to change. A view
+   * timeline has no clock — progress is scroll position — so this becomes a
+   * head start instead: a later sibling begins its fade a little further into
+   * its own entry, which reads as the same stagger going down the page.
+   */
   delay?: number;
   direction?: Direction;
   className?: string;
 }) {
-  // Someone who has asked their device for less motion gets the content in
-  // place, with no slide and no fade.
-  //
-  // This does not, on its own, stop a card sitting 36px off to the side while
-  // it waits to be scrolled into view: the preference is only known after
-  // mount, so the first render still carries the offset. What stops that from
-  // becoming a page you can drag sideways is the overflow guard in
-  // globals.css. This is here for the motion, not the layout.
-  const still = useReducedMotion();
-  const from = still ? {} : offsets[direction];
-
+  const shift = Math.min(Math.round(delay * 100), 40);
   return (
-    <motion.div
-      initial={still ? false : { opacity: 0, ...from }}
-      whileInView={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-      viewport={{ once: true, margin: "-80px" }}
-      transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
+    <div
+      data-reveal={direction}
+      style={shift ? ({ "--reveal-from": `${shift}%` } as React.CSSProperties) : undefined}
       className={className}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }

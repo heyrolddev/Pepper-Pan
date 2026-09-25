@@ -153,7 +153,15 @@ var seen=false;
 // remembered is treated as already greeted: showing the intro on every single
 // load is the worse of the two failures.
 try{seen=sessionStorage.getItem('pp-intro')==='1';}catch(e){seen=true;}
-if(hq||seen||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+
+// A reload is a deliberate re-fetch, and the one load where the bundle and
+// the hero video are NOT in cache — so it is the load with the most to cover
+// and the one the splash was missed on. navigation.type tells the two
+// apart: moving between pages in the same session stays quiet, pressing
+// refresh gets the pan again.
+var again=false;
+try{var nav=performance.getEntriesByType('navigation')[0];again=!!nav&&nav.type==='reload';}catch(e){}
+if(hq||(seen&&!again)||window.matchMedia('(prefers-reduced-motion: reduce)').matches){
   d.setAttribute('data-intro','skip');
 }else{
   try{sessionStorage.setItem('pp-intro','1');}catch(e){}

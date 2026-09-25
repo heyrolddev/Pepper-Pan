@@ -24,6 +24,7 @@ const row = (over: Partial<Announcement> = {}): Announcement => ({
   is_active: true,
   sort_order: 0,
   pinned: false,
+  placement: "both",
   image_url: "https://example.test/a.jpg",
   video_url: null,
   created_at: "2026-01-01T00:00:00Z",
@@ -70,13 +71,19 @@ test("a blank caption still says something to a screen reader", () => {
   assert.equal(storyPhotosFrom([row({ title: "   " })], FALLBACK)[0].alt.trim().length > 0, true);
 });
 
-test("a story photo needs no star, unlike everything else on that screen", () => {
-  // The star picks which of too many promos gets one of the few homepage
+test("a story photo needs no star, unlike the kinds that still use one", () => {
+  // The star picks which of too many news posts gets one of the few homepage
   // slots. The deck has a slot per photograph, so requiring one would be a
   // step that changes nothing — and a reason to think the upload failed.
+  //
+  // Contrasted against news rather than promos: since 0054 a promo answers
+  // with its placement and ignores the star entirely.
   const rows = [row({ pinned: false })];
   assert.equal(homepagePicks(rows, "story").length, 1);
-  assert.equal(homepagePicks([{ ...row(), kind: "promo" }], "promo").length, 0);
+  assert.equal(
+    homepagePicks([{ ...row(), kind: "news", pinned: false }], "news").length,
+    0
+  );
 });
 
 test("switched off, scheduled and finished photos stay out of the deck", () => {
