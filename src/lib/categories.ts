@@ -18,7 +18,9 @@
  *   it is the guarantee that whatever they pick is still readable on the
  *   customer's phone in daylight.
  *
- * Ten, and the count is not the point — the SPACING is. The owner asked for
+ * Twelve, and the count is not the point — the SPACING is. Twelve because
+ * this shop has twelve categories: at ten, two of them had to share, and the
+ * test below is what said so rather than anybody noticing on screen. The owner asked for
  * colours where no two categories look alike, and the set this replaced had
  * two pairs that did: Black against Brown, which were `ink-950` and `ink-700`
  * and both read as near-black, and Green against Teal, where "teal" was
@@ -106,6 +108,18 @@ export const CATEGORY_TONES: Record<string, CategoryTone> = {
     chip: "bg-ink-950 text-cream-50",
     soft: "bg-ink-950/8 text-ink-900",
     dot: "bg-ink-950",
+  },
+  violet: {
+    label: "Violet",
+    chip: "bg-violet-600 text-cream-50",
+    soft: "bg-violet-600/12 text-violet-800",
+    dot: "bg-violet-600",
+  },
+  lime: {
+    label: "Lime",
+    chip: "bg-lime-600 text-ink-950",
+    soft: "bg-lime-600/18 text-lime-800",
+    dot: "bg-lime-600",
   },
   sand: {
     label: "Sand",
@@ -215,33 +229,19 @@ export function clashingColours(
 }
 
 /**
- * A colour for a category nobody has coloured yet.
+ * The two that used to live here are gone: `fallbackColour`, which hashed a
+ * name into the palette, and `colourOf`, which asked it one name at a time.
  *
- * Hashed from the name rather than picked at random, so it is the same colour
- * on every screen and after every reload — a category that changes colour when
- * you refresh reads as a bug, and worse, stops being a thing the eye can
- * learn. Not stored: the moment the owner picks one, that is what's stored.
- */
-export function fallbackColour(name: string): string {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return CATEGORY_COLOURS[h % CATEGORY_COLOURS.length];
-}
-
-/**
- * The colour to paint a category, given whatever the shop has set.
+ * Between them they produced exactly the bug the owner reported. The hash
+ * collides — five uncoloured categories is about a 60% chance two land on the
+ * same colour — and `colourOf` could not notice, because it was never shown
+ * the other categories. Worse, `rememberCategory` wrote the hash STRAIGHT
+ * INTO the database when a category was created, so every category carried a
+ * stored colour that looked like a deliberate choice and was never moved.
  *
- * Written once here because the menu, the till, the costing screen and the
- * admin list all need the same answer, and a category that is red on one
- * screen and green on another is worse than no colour at all.
+ * `paletteFor` replaces both. A colour can only be picked against all the
+ * others, so that is the only signature it has.
  */
-export function colourOf(
-  name: string,
-  known: Map<string, string> | undefined
-): CategoryTone {
-  const stored = known?.get(name);
-  return toneFor(stored ?? fallbackColour(name));
-}
 
 /** What a dish's category is, with the same fallback everywhere. */
 export function categoryOf(categories: string[] | null | undefined): string {

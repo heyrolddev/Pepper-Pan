@@ -211,3 +211,74 @@ test("a category with no colour assigned yet leaves the card plain", () => {
   // two unrelated dishes look related.
   assert.equal(cardTone(["Ghost"], paletteFor(["Chicken"])), null);
 });
+
+/* ---------------- the case that shipped broken ---------------- */
+
+test("a colour stored by the old hash is not mistaken for a choice", () => {
+  /**
+   * This is the bug the owner reported after 0055 shipped, and the reason the
+   * collision-free palette changed nothing on screen.
+   *
+   * `rememberCategory` wrote `fallbackColour(name)` — a hash — into
+   * `menu_categories.colour` the moment a category was created. So every
+   * category carried a stored colour. `paletteFor` honours stored colours
+   * outright, on the grounds that the owner picked them. Nobody picked them.
+   * The shop ended up with Ji Pai, Burger and Ji Wings all the same pale
+   * sand, and the fix could not reach any of it because to the code it all
+   * looked deliberate.
+   *
+   * 0056 clears the duplicates and the app stops writing a colour at
+   * creation. What is pinned here is the behaviour that makes that work: a
+   * category whose stored colour is BLANK is treated as unset and assigned a
+   * free one — not as a category that chose the empty string.
+   */
+  const names = ["Ji Pai", "Burger", "Ji Wings"];
+  const cleared = new Map([
+    ["Ji Pai", "sand"], // the first keeps what it had
+    ["Burger", ""], // 0056 cleared these two
+    ["Ji Wings", ""],
+  ]);
+  const out = paletteFor(names, cleared);
+  const labels = names.map((n) => out.get(n)!.label);
+  assert.equal(new Set(labels).size, 3, `still sharing: ${labels.join(", ")}`);
+  assert.equal(out.get("Ji Pai")!.label, "Sand", "the kept colour moved");
+});
+
+test("clearing every colour still produces a full set of different ones", () => {
+  const names = ["Mains", "Ji Pai", "Solo", "Burger", "Premium Sides", "Coffee"];
+  const blank = new Map(names.map((n) => [n, ""]));
+  const labels = names.map((n) => paletteFor(names, blank).get(n)!.label);
+  assert.equal(new Set(labels).size, names.length, labels.join(", "));
+});
+
+test("this shop's real categories all come out different", () => {
+  // The twelve from the screenshot, with the colours the hash had given
+  // them — three sand, two orange, two black. Cleared by 0056 down to the
+  // first of each, which is what the migration does.
+  const names = [
+    "Mains", "Ji Pai", "Solo", "Burger", "Premium Sides", "Coffee",
+    "Milktea", "Raspberry", "Soft drinks", "Drinks", "Ji Wings", "Hidden",
+  ];
+  const afterMigration = new Map<string, string>([
+    ["Mains", "brand"],
+    ["Ji Pai", "sand"],
+    ["Solo", "chili"],
+    ["Burger", ""],
+    ["Premium Sides", "brown"],
+    ["Coffee", "teal"],
+    ["Milktea", "ink"],
+    ["Raspberry", "gold"],
+    ["Soft drinks", ""],
+    ["Drinks", "jade"],
+    ["Ji Wings", ""],
+    ["Hidden", ""],
+  ]);
+  const out = paletteFor(names, afterMigration);
+  const labels = names.map((n) => out.get(n)!.label);
+  assert.equal(
+    new Set(labels).size,
+    names.length,
+    `twelve categories, ${new Set(labels).size} colours: ${labels.join(", ")}`
+  );
+  assert.deepEqual(clashingColours(names, afterMigration), []);
+});

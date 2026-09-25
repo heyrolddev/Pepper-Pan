@@ -7,9 +7,11 @@ import { AdminDialog } from "@/components/admin-dialog";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
 import { TILL_CHOICES, TILL_LABEL, type TillMethod } from "@/lib/till";
 import {
+  CATEGORY_TONES,
+  cardTone,
   categoriesUsed,
+  paletteFor,
   orderForMenu,
-  colourOf,
   inCategory,
   type MenuCategory,
 } from "@/lib/categories";
@@ -147,6 +149,13 @@ export function CounterTill({
   // disagreed about everything under it. Both now read the one list.
   const order = useMemo(() => categoriesUsed(meals, known), [meals, known]);
   const categories = useMemo(() => ["All", ...order], [order]);
+
+  /**
+   * One colour per category, none of them repeated — the same assignment the
+   * customer's menu makes, from the same function, so the two screens cannot
+   * disagree about what colour Drinks is.
+   */
+  const palette = useMemo(() => paletteFor(order, colours), [order, colours]);
   const sorted = useMemo(() => orderForMenu(meals, order), [meals, order]);
 
   const shown = useMemo(() => {
@@ -686,7 +695,7 @@ export function CounterTill({
           <div className="flex flex-wrap gap-1.5">
             {categories.map((c) => {
               const on = category === c;
-              const tone = colourOf(c, colours);
+              const tone = palette.get(c) ?? CATEGORY_TONES.ink;
               return (
                 <button
                   key={c}
@@ -718,6 +727,7 @@ export function CounterTill({
               {shown.map((m) => {
                 const qty = onTicket(m.id);
                 const hasAddOns = (m.groups ?? []).length > 0;
+                const tileTone = cardTone(m.categories, palette);
                 // Never blocked at the till — the person is standing there
                 // and the count may simply be behind. Flagged loudly instead,
                 // and the server refuses if it is genuinely short.
@@ -757,10 +767,24 @@ export function CounterTill({
                   <li key={m.id} className="relative">
                     <button
                       onClick={() => tap(m)}
+                      /**
+                       * Painted the same way the customer's card is: one
+                       * category takes that category's colour, two or more
+                       * stay plain, because there is no single right answer
+                       * and picking the first would make the colour depend on
+                       * the order somebody typed the tags in.
+                       *
+                       * A tile in the basket goes black regardless. At the
+                       * counter "is this one in the order" beats "what kind of
+                       * food is it" — the colour is for finding the tile, and
+                       * once it is found the count is what matters.
+                       */
                       className={`relative flex h-full w-full flex-col justify-between gap-2 rounded-2xl p-3 text-left transition-colors ${
                         qty > 0
                           ? "bg-ink-950 text-cream-50"
-                          : "bg-cream-100 text-ink-950 ring-1 ring-ink-950/10 hover:bg-cream-200"
+                          : tileTone
+                            ? `${tileTone.soft} ring-1 ring-ink-950/10 hover:brightness-[0.97]`
+                            : "bg-cream-100 text-ink-950 ring-1 ring-ink-950/10 hover:bg-cream-200"
                       }`}
                     >
                       <span className="text-sm font-bold leading-tight">
