@@ -8,6 +8,7 @@ import {
   deleteAnnouncement,
   reorderAnnouncement,
   togglePinned,
+  setPlacement,
 } from "@/app/admin/promos/actions";
 import {
   KIND_ADD,
@@ -19,8 +20,11 @@ import {
   liveStateOf,
   STATE_TONE,
   stripItems,
+  PLACEMENT_LABEL,
+  PLACEMENT_HELP,
   type Announcement,
   type AnnouncementKind,
+  type Placement,
 } from "@/lib/announcements";
 import { MediaField } from "@/components/media-field";
 import { TrashIcon } from "@/components/icons";
@@ -148,15 +152,23 @@ function Section({
           </h3>
           <p className="mt-0.5 max-w-xl text-sm text-ink-800/60">{KIND_BLURB[kind]}</p>
           <p className="mt-1 max-w-xl text-xs text-ink-800/45">
-            {/* No star here, deliberately. The star picks WHICH of too many
-                things gets one of the homepage's few slots; the deck has a
-                slot per photograph, so there is nothing to pick. Saying "pin
-                one with ★" anyway would be a step that changes nothing and a
-                reason to think the upload had failed. */}
+            {/* Two kinds do not mention the star. The deck has a slot per
+                photograph, so there is nothing to pick between. Promos answer
+                the question outright now, on the row — "pin one with ★" was
+                describing the card's on switch as though it were a sort
+                order, which is the confusion this whole control replaces. */}
             {kind === "story" ? (
               <>
                 Up to {HOME_LIMIT[kind]} are dealt into the deck, in this order.
                 Switch one off to keep it without showing it.
+              </>
+            ) : kind === "promo" ? (
+              <>
+                Each one says for itself whether it scrolls across the top,
+                shows as a card, or both. Up to {HOME_LIMIT[kind]} cards fit on
+                the homepage, in this order — the rest stay on All news &amp;
+                promos. A card needs a description or a picture; the strip only
+                needs the title.
               </>
             ) : (
               <>
@@ -168,9 +180,9 @@ function Section({
                   : HOME_LIMIT[kind] === 1
                     ? " Pin one with ★ to choose which."
                     : ", in this order. Pin one with ★ to hold it at the front."}
-                {kind === "news" || kind === "promo"
-                  ? " The rest stay on All news & promos."
-                  : ""}
+                {/* Promos have their own branch above and say this there;
+                    dine-in and coming-soon have no list to overflow into. */}
+                {kind === "news" ? " The rest stay on All news & promos." : ""}
               </>
             )}
           </p>
@@ -202,6 +214,138 @@ function Section({
         </ul>
       )}
     </section>
+  );
+}
+
+/* ------------------------------------------------------------------
+ * Where a promo shows
+ *
+ * A promo has two possible homes and the shop needs to say which: the red
+ * strip that scrolls across the top, a card further down, or both. It used to
+ * be able to say neither — the strip silently took every live promo, and the
+ * card was gated behind a star whose tooltip said it "held this at the
+ * front".
+ *
+ * Three buttons rather than two checkboxes, because two checkboxes can both
+ * be cleared and "a live promo that shows nowhere" is not a state worth being
+ * able to reach by accident; switching it off already means that, and says so.
+ *
+ * Both sits in the middle, between the two things it is the sum of, and each
+ * button carries a drawing of the thing it puts the promo in — a band, a
+ * card, or a band above a card. The label alone would do at desktop width;
+ * the icon is what makes the row scannable on the phone the shop runs from.
+ * ------------------------------------------------------------------ */
+const PLACEMENT_ORDER: Placement[] = ["strip", "both", "home"];
+
+function PlacementIcon({ of }: { of: Placement }) {
+  const line = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.6,
+    strokeLinecap: "round" as const,
+  };
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden className="h-[18px] w-[18px] shrink-0">
+      {/* The scrolling band. Dashes rather than a solid line: it is moving
+          text, and three unequal runs read as words going past. */}
+      {of !== "home" && (
+        <>
+          <rect
+            x="0.8"
+            y={of === "both" ? 1.6 : 6}
+            width="16.4"
+            height={of === "both" ? 4.2 : 6}
+            rx="1.4"
+            {...line}
+          />
+          <path
+            d={
+              of === "both"
+                ? "M3.4 3.7h2M7.4 3.7h3M12.6 3.7h2"
+                : "M3.4 9h2M7.4 9h3M12.6 9h2"
+            }
+            {...line}
+          />
+        </>
+      )}
+      {/* The card. */}
+      {of !== "strip" && (
+        <>
+          <rect
+            x={of === "both" ? 2.8 : 2.4}
+            y={of === "both" ? 8.2 : 2.4}
+            width={of === "both" ? 12.4 : 13.2}
+            height={of === "both" ? 8 : 13.2}
+            rx="2"
+            {...line}
+          />
+          <path
+            d={
+              of === "both"
+                ? "M5.4 11.2h7M5.4 13.6h4"
+                : "M5.2 7.4h7.6M5.2 10.6h7.6M5.2 13h4.4"
+            }
+            {...line}
+          />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function PlacementPicker({ row }: { row: Announcement }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const current = row.placement;
+
+  const choose = (next: Placement) => {
+    if (next === current || pending) return;
+    startTransition(async () => {
+      const r = await setPlacement(row.id, next);
+      if (r.error) return setError(r.error);
+      setError(null);
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="mt-2.5">
+      <p className="text-[11px] font-black uppercase tracking-wide text-ink-800/45">
+        Where it shows
+      </p>
+      <div
+        role="radiogroup"
+        aria-label={`Where "${row.title}" shows`}
+        className="mt-1 inline-flex flex-wrap gap-1 rounded-xl bg-ink-950/5 p-1"
+      >
+        {PLACEMENT_ORDER.map((p) => {
+          const on = p === current;
+          return (
+            <button
+              key={p}
+              role="radio"
+              aria-checked={on}
+              disabled={pending}
+              onClick={() => choose(p)}
+              title={PLACEMENT_HELP[p]}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors disabled:opacity-50 ${
+                on
+                  ? "bg-ink-950 text-cream-50"
+                  : "text-ink-800/60 hover:bg-ink-950/5 hover:text-ink-900"
+              }`}
+            >
+              <PlacementIcon of={p} />
+              {PLACEMENT_LABEL[p]}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1 text-xs text-ink-800/50">{PLACEMENT_HELP[current]}</p>
+      {error && (
+        <p className="mt-1 text-xs font-semibold text-brand-700">{error}</p>
+      )}
+    </div>
   );
 }
 
@@ -264,12 +408,7 @@ function Row({
             >
               {tone.label}
             </span>
-            {state === "strip" && (
-              <span className="text-[11px] text-ink-800/45">
-                add a description or a picture to give it a card
-              </span>
-            )}
-            {row.pinned && row.kind !== "story" && (
+            {row.pinned && row.kind !== "story" && row.kind !== "promo" && (
               <span className="rounded-full bg-gold-400 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wide text-ink-950">
                 ★ Pinned
               </span>
@@ -279,6 +418,7 @@ function Row({
             <p className="mt-1 max-w-2xl text-sm text-ink-800/65">{row.body}</p>
           )}
           <Window row={row} />
+          {row.kind === "promo" && <PlacementPicker row={row} />}
           {error && (
             <p className="mt-1 text-xs font-semibold text-brand-700">{error}</p>
           )}
@@ -291,7 +431,7 @@ function Row({
               that does nothing is read as one that is broken, or worse, as
               the reason a photo is not appearing. The arrows below are what
               ordering the deck actually needs. */}
-          {row.kind !== "story" && (
+          {row.kind !== "story" && row.kind !== "promo" && (
           <button
             onClick={() => run(() => togglePinned(row.id, !row.pinned))}
             disabled={pending}

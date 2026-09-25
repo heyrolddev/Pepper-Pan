@@ -35,8 +35,13 @@ export type Announcement = {
   ends_at: string | null;
   is_active: boolean;
   sort_order: number;
-  /** Held at the front of its kind on the homepage. */
+  /** Held at the front of its kind on the homepage. Not used by promos. */
   pinned: boolean;
+  /**
+   * Promos only: which of the homepage's two places this one appears in.
+   * Every other kind carries 'both' and ignores it — see 0054.
+   */
+  placement: Placement;
   /** A photo, a video, both or neither. Null when there is none. */
   image_url: string | null;
   video_url: string | null;
@@ -116,6 +121,35 @@ export function liveStateOf(a: Announcement, now = new Date()): LiveState {
 }
 
 /** How many of each the homepage has room for. */
+/**
+ * The two places a promo can show on the homepage, and the three answers.
+ *
+ * The strip is the red band that scrolls across the top; a card is the block
+ * further down. They are not the same job: the strip is for a line the shop
+ * wants read on the way past ("Free coffee dine-in"), a card is for one worth
+ * stopping at. Until 0054 a promo could not be put in one without the other —
+ * the strip silently took every live promo, and a star that said it "held
+ * this at the front" was in fact the card's on switch.
+ */
+export const PLACEMENTS = ["both", "strip", "home"] as const;
+export type Placement = (typeof PLACEMENTS)[number];
+
+export const PLACEMENT_LABEL: Record<Placement, string> = {
+  both: "Both",
+  strip: "Strip only",
+  home: "Homepage only",
+};
+
+/** What each choice means, in the words the shop would use. */
+export const PLACEMENT_HELP: Record<Placement, string> = {
+  both: "Scrolls across the top and shows as a card.",
+  strip: "Scrolls across the top. No card.",
+  home: "Shows as a card. Kept out of the scrolling strip.",
+};
+
+export const inStrip = (p: Placement) => p !== "home";
+export const onHomeCard = (p: Placement) => p !== "strip";
+
 export const HOME_LIMIT: Record<AnnouncementKind, number> = {
   promo: 2,
   news: 3,
@@ -166,13 +200,23 @@ export function homepagePicks(
   const live = all
     .filter((r) => r.kind === kind && liveStateOf(r, now) === "live")
     /**
-     * The star exists because the homepage has fewer slots than the shop has
-     * promos, so something has to choose between them. A photo deck has
-     * exactly as many slots as there are photographs — there is nothing to
-     * choose between, and a second switch meaning the same thing as "on" is
-     * one more way to upload a picture and not see it appear.
+     * Promos answer with their placement now; the star was doing that job
+     * under a label that described a different one. Everything else still
+     * uses it for what it was built for: the homepage has fewer slots than
+     * the shop has news posts, so something has to choose between them.
+     *
+     * A photo deck has exactly as many slots as there are photographs — there
+     * is nothing to choose between, and a second switch meaning the same
+     * thing as "on" is one more way to upload a picture and not see it
+     * appear.
      */
-    .filter((r) => kind === "story" || r.pinned);
+    .filter((r) =>
+      kind === "story"
+        ? true
+        : kind === "promo"
+          ? onHomeCard(r.placement)
+          : r.pinned
+    );
   // A story row with no picture is nothing: the deck shows the image and
   // never the words. Dropped here rather than rendered as a black square.
   const eligible =
@@ -205,7 +249,12 @@ export function homepagePicks(
  * labels say, rather than "next up", which would send the owner away to wait
  * for a slot that is never going to come free.
  */
-export type HomeState = LiveState | "listed" | "queued" | "strip";
+export type HomeState =
+  | LiveState
+  | "listed"
+  | "queued"
+  | "strip"
+  | "needs-detail";
 
 export function homeStateOf(
   row: Announcement,
@@ -216,10 +265,19 @@ export function homeStateOf(
   if (state !== "live") return state;
   if (homepagePicks(all, row.kind, now).some((r) => r.id === row.id)) return "live";
 
-  // A promo with nothing but a title never gets a card and is left off the
-  // news page too — it exists for the scrolling strip. Saying "in All news &
-  // promos" about it would send the owner looking for it somewhere it is not.
-  if (row.kind === "promo" && !hasDetail(row)) return "strip";
+  if (row.kind === "promo") {
+    // Strip-only is now something the shop chose, not something that happened
+    // to it, so it is reported as the finished state it is rather than as a
+    // promo that failed to get a card.
+    if (!onHomeCard(row.placement)) return "strip";
+    // Asked for a card and cannot have one: a title alone has nothing to put
+    // on it. This used to be reported as "In the scrolling strip", which was
+    // true but answered a question nobody asked — the owner wanted to know
+    // why the card never appeared.
+    if (!hasDetail(row)) return "needs-detail";
+    // Wants a card, could have one, and the homepage is full.
+    return "listed";
+  }
 
   return isSlotKind(row.kind) ? "queued" : "listed";
 }
@@ -227,7 +285,11 @@ export function homeStateOf(
 export const STATE_TONE: Record<HomeState, { label: string; chip: string }> = {
   live: { label: "On the homepage", chip: "bg-jade-600 text-cream-50" },
   listed: { label: "Not starred — in All news & promos", chip: "bg-ink-950/[0.07] text-ink-800/70" },
-  strip: { label: "In the scrolling strip", chip: "bg-ink-950/[0.07] text-ink-800/70" },
+  strip: { label: "In the scrolling strip", chip: "bg-gold-400 text-ink-950" },
+  "needs-detail": {
+    label: "No card yet — needs a description or a picture",
+    chip: "bg-brand-600 text-cream-50",
+  },
   queued: { label: "Not starred", chip: "bg-ink-950/[0.07] text-ink-800/70" },
   scheduled: { label: "Scheduled", chip: "bg-brand-600 text-cream-50" },
   finished: { label: "Finished", chip: "bg-ink-950/10 text-ink-800/60" },
@@ -251,6 +313,13 @@ const DEFAULT_STRIP = [
 ];
 
 export function stripItems(promos: Announcement[]): string[] {
-  const live = promos.map((p) => p.title.trim()).filter(Boolean);
+  const live = promos
+    // A promo set to "Homepage only" has been deliberately kept out of here.
+    // Before 0054 there was no way to say that: the strip took every live
+    // promo, so a long sentence written for a card scrolled past the top of
+    // the page as well, where nobody could read it at that speed.
+    .filter((p) => inStrip(p.placement))
+    .map((p) => p.title.trim())
+    .filter(Boolean);
   return live.length > 0 ? live : DEFAULT_STRIP;
 }

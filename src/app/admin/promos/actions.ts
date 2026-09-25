@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { AnnouncementKind } from "@/lib/announcements";
+import { PLACEMENTS, type AnnouncementKind, type Placement } from "@/lib/announcements";
 import { MEDIA_BUCKET, MEDIA_PREFIX, checkMedia, storagePathOf, type MediaKind } from "@/lib/media";
 
 type Result = { error: string | null };
@@ -173,6 +173,26 @@ export async function togglePinned(id: number, pinned: boolean): Promise<Result>
   const { error } = await createAdminClient()
     .from("announcements")
     .update({ pinned })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePublic();
+  return { error: null };
+}
+
+/**
+ * Where a promo shows: the scrolling strip, a homepage card, or both.
+ *
+ * Validated here rather than trusted from the form. This is a Server Action,
+ * so it is reachable by a direct POST whatever the buttons on the page offer,
+ * and the column has a check constraint the database would reject with an
+ * error the owner cannot act on. Three known strings, or nothing happens.
+ */
+export async function setPlacement(id: number, placement: Placement): Promise<Result> {
+  if (!(await mayPost())) return { error: "Not allowed." };
+  if (!PLACEMENTS.includes(placement)) return { error: "Unknown placement." };
+  const { error } = await createAdminClient()
+    .from("announcements")
+    .update({ placement })
     .eq("id", id);
   if (error) return { error: error.message };
   revalidatePublic();

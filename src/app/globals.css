@@ -771,3 +771,60 @@ input[type="number"]::-webkit-inner-spin-button {
     animation: none;
   }
 }
+
+/* --------------------------------------------------------------------
+ * Reveal — fade-and-rise on scroll, with the page visible either way
+ *
+ * The rule that matters is the DEFAULT: `[data-reveal]` has no opacity and no
+ * transform of its own. A browser that stops reading at the next line still
+ * shows the whole page. That is not a nicety — the previous implementation
+ * shipped `opacity: 0` in the server HTML and waited for JavaScript to undo
+ * it, so a hard refresh showed a correctly laid out, completely blank page.
+ * See src/components/reveal.tsx.
+ *
+ * The animation is hung on a view timeline, so scroll position IS the
+ * progress. No observer, no bundle, nothing to hydrate — and a browser
+ * without view timelines simply never starts it, leaving the element in its
+ * natural state rather than stuck at the `from` keyframe.
+ *
+ * The range ends at `entry 50%` — as soon as half the element is on screen.
+ * A `cover`-based end was measured against this one and behaves the same on
+ * every page here (the footer always sits below, so nothing is ever the last
+ * scrollable thing); `entry` is kept because it finishes earliest, and the
+ * only property worth optimising for is how soon the words are readable.
+ * -------------------------------------------------------------------- */
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: var(--reveal-shift, translateY(28px));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    [data-reveal] {
+      animation: reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry var(--reveal-from, 0%) entry
+        calc(var(--reveal-from, 0%) + 50%);
+    }
+    /* Direction is the offset it arrives from. `up` is the default and needs
+       no rule; the rest override the one custom property the keyframe reads. */
+    [data-reveal="down"] {
+      --reveal-shift: translateY(-28px);
+    }
+    [data-reveal="left"] {
+      --reveal-shift: translateX(36px);
+    }
+    [data-reveal="right"] {
+      --reveal-shift: translateX(-36px);
+    }
+    [data-reveal="scale"] {
+      --reveal-shift: scale(0.94);
+    }
+  }
+}
