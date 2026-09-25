@@ -78,6 +78,21 @@
   --color-clay-700: #734b32;
   --color-clay-800: #5c3c28;
 
+  /* Violet and Lime — the eleventh and twelfth.
+   *
+   * Added because this shop has twelve categories and the set had ten, so two
+   * of them had to share whatever else was true. The test that says no two
+   * colours may look alike is what found it, on the shop's own list.
+   * Violet sits ΔE 28 from Blue, which is the tightest pair in the set and
+   * still comfortably above the 25 where the eye gives up. */
+  --color-violet-600: #5b3a9e;
+  --color-violet-700: #4b3083;
+  --color-violet-800: #3b2567;
+
+  --color-lime-600: #7d9c2c;
+  --color-lime-700: #667f24;
+  --color-lime-800: #4f631c;
+
   /* Chili — the red↔gold bridge */
   --color-chili-300: #fdba74;
   --color-chili-400: #fb923c;

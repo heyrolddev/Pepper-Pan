@@ -10,7 +10,13 @@ import { setMealOnMenu } from "@/app/admin/menu/actions";
 import { duplicateDish } from "@/app/admin/costing/actions";
 import { AdminDialog } from "@/components/admin-dialog";
 import { MENU_CLASS, type MenuClass } from "@/lib/costing";
-import { categoryOf, colourOf, type MenuCategory } from "@/lib/categories";
+import {
+  CATEGORY_TONES,
+  categoriesUsed,
+  categoryOf,
+  paletteFor,
+  type MenuCategory,
+} from "@/lib/categories";
 import { hqTitle } from "@/lib/hq-theme";
 
 export type DishLine = {
@@ -196,6 +202,15 @@ export function DishCosts({
   const colours = useMemo(
     () => new Map(known.map((c) => [c.name, c.colour])),
     [known]
+  );
+  /**
+   * The same assignment the menu and the till make. This screen used to call
+   * `colourOf` per name, which cannot see the other categories and so cannot
+   * tell that the colour it is handing out is already on one of them.
+   */
+  const palette = useMemo(
+    () => paletteFor(categoriesUsed(dishes, known), colours),
+    [dishes, known, colours]
   );
   const [editing, setEditing] = useState<DishRow | null>(null);
   // Which editor is open on a dish: its recipe, or what it travels in.
@@ -510,7 +525,10 @@ export function DishCosts({
                         {d.categories.length > 0 && (
                           <span
                             className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                              colourOf(categoryOf(d.categories), colours).soft
+                              (
+                                palette.get(categoryOf(d.categories)) ??
+                                CATEGORY_TONES.ink
+                              ).soft
                             }`}
                           >
                             {categoryOf(d.categories)}

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Combobox } from "@/components/combobox";
-import { CATEGORY_TONES, colourOf, type MenuCategory } from "@/lib/categories";
+import { CATEGORY_TONES, paletteFor, type MenuCategory } from "@/lib/categories";
 
 /**
  * Pick the categories, don't retype them.
@@ -74,6 +74,20 @@ export function CategoryPicker({
     [categories, value]
   );
 
+  /**
+   * The colour each name will actually end up with, worked out against the
+   * whole vocabulary. Asking per name cannot see the others, which is how two
+   * categories came to wear the same swatch here while looking deliberate.
+   */
+  const palette = useMemo(
+    () =>
+      paletteFor(
+        categories.map((c) => c.name),
+        new Map(categories.map((c) => [c.name, c.colour]))
+      ),
+    [categories]
+  );
+
   const isNew = draft.trim().length > 0 && !known.has(draft.trim());
 
   return (
@@ -81,7 +95,9 @@ export function CategoryPicker({
       {value.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {value.map((name, i) => {
-            const tone = colourOf(name, known);
+            // Against the whole vocabulary, so the swatch beside a name is
+            // the colour that name will actually be given.
+            const tone = palette.get(name) ?? CATEGORY_TONES.ink;
             return (
               <span
                 key={name}

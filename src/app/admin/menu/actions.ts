@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { CATEGORY_COLOURS, cleanCategories, fallbackColour } from "@/lib/categories";
+import { CATEGORY_COLOURS, cleanCategories } from "@/lib/categories";
 import { cleanCode } from "@/lib/dish-code";
 import { applyTakeoutMerge } from "@/lib/takeout-merge";
 import { applyTakeoutPurge } from "@/lib/takeout-purge";
@@ -57,7 +57,22 @@ async function rememberCategory(name: string): Promise<void> {
 
   await supabase.from("menu_categories").insert({
     name: clean,
-    colour: fallbackColour(clean),
+    /**
+     * Deliberately blank.
+     *
+     * This line used to write `fallbackColour(clean)` — a hash of the name —
+     * and it is the whole reason the collision-free palette added in 0055
+     * changed nothing on screen. Every category already carried a stored
+     * colour, and a stored colour is treated as the owner's own pick and
+     * never moved to break a tie.
+     *
+     * It was not the owner's pick. A hash into ten buckets chose it, and it
+     * collides: this shop ended up with Ji Pai, Burger and Ji Wings all the
+     * same pale sand. A colour can only be chosen against all the others,
+     * which is something this function cannot see and the screen can — so
+     * nothing is stored until somebody actually picks one. See 0056.
+     */
+    colour: "",
     sort_order: (last?.sort_order ?? 0) + 10,
   });
 }

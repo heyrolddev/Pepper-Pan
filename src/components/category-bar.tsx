@@ -13,6 +13,7 @@ import {
   CATEGORY_TONES,
   toneFor,
   type MenuCategory,
+  clashingColours,
 } from "@/lib/categories";
 
 /**
@@ -50,6 +51,21 @@ export function CategoryBar({
   const [saving, startMove] = useTransition();
 
   const names = useMemo(() => categories.map((c) => c.name), [categories]);
+
+  /**
+   * Categories that have ended up wearing the same colour.
+   *
+   * This screen is where the failure has to be said, because it is completely
+   * silent otherwise — two chips the same colour look exactly like two chips
+   * with colours, and the only way to notice is to lay them side by side and
+   * squint, which is how it went unreported for a fortnight. It can only
+   * happen two ways now: the owner picked the same colour twice by hand, or
+   * there are more categories than there are colours.
+   */
+  const clashes = useMemo(
+    () => clashingColours(names, new Map(categories.map((c) => [c.name, c.colour]))),
+    [names, categories]
+  );
 
   /**
    * The order on screen while it is being changed.
@@ -121,6 +137,15 @@ export function CategoryBar({
               </>
             )}
           </p>
+          {clashes.length > 0 && (
+            <p className="mt-2 rounded-xl bg-brand-600/10 px-3 py-2 text-xs font-semibold text-brand-700">
+              {clashes
+                .map((c) => `${c.names.join(" and ")} are both ${c.label}`)
+                .join("; ")}
+              . Tap the pencil on one and give it a colour of its own — a
+              colour code with a repeat in it is not a colour code.
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 gap-2">
           {categories.length > 1 && (

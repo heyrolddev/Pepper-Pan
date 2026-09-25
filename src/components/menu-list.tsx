@@ -10,7 +10,7 @@ import type { Product } from "@/lib/menu-products";
 import {
   categoriesUsed,
   cardTone,
-  colourOf,
+  CATEGORY_TONES,
   paletteFor,
   type CategoryTone,
   inCategory,
@@ -358,14 +358,14 @@ function CategoryPill({
   name,
   count,
   active,
-  colours,
+  palette,
   onPick,
   stacked = false,
 }: {
   name: string;
   count: number;
   active: boolean;
-  colours: Map<string, string>;
+  palette: Map<string, CategoryTone>;
   onPick: () => void;
   stacked?: boolean;
 }) {
@@ -374,7 +374,10 @@ function CategoryPill({
   // which is the whole point: the eye learns where Drinks is and stops
   // reading the words.
   const isAll = name === "All";
-  const tone = colourOf(name, colours);
+  // From the palette the whole screen shares, not worked out per name:
+  // `colourOf` could not see the other categories, so it could not know the
+  // colour it was handing out was already on one of them.
+  const tone = palette.get(name) ?? CATEGORY_TONES.ink;
   const empty = count === 0 && !active;
 
   return (
@@ -568,7 +571,7 @@ export function MenuList({
                     name={category}
                     count={counts[category] ?? 0}
                     active={activeCategory === category}
-                    colours={colours}
+                    palette={palette}
                     onPick={() => setActiveCategory(category)}
                   />
                 ))}
@@ -608,7 +611,7 @@ export function MenuList({
                     name={category}
                     count={counts[category] ?? 0}
                     active={activeCategory === category}
-                    colours={colours}
+                    palette={palette}
                     onPick={() => setActiveCategory(category)}
                     stacked
                   />
