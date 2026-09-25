@@ -64,6 +64,10 @@ export default async function AdminInventoryPage() {
     stock: Number(i.stock) || 0,
     reorder: Number(i.reorder) || 0,
     unitCost: Number(i.cost) || 0,
+    kcal: i.kcal_per_unit ?? null,
+    protein: i.protein_per_unit ?? null,
+    carbs: i.carbs_per_unit ?? null,
+    fat: i.fat_per_unit ?? null,
     value: stockValue(i),
     low: isLow(i),
     // What one purchase actually looks like — "₱230 per 1000 g" is how the

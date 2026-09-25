@@ -41,6 +41,11 @@ export type StockRow = {
   purchaseQty: number;
   /** How much the last delivery's price moved against the one before it. */
   priceMovePct: number | null;
+  /** Per one unit, as stored. The form shows these per 100 for g and ml. */
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
 };
 
 /** The shape the forms want, from the shape the list already has. */
@@ -55,6 +60,10 @@ function editable(s: StockRow): EditableIngredient {
     categories: s.categories,
     stock: s.stock,
     unitCost: s.unitCost,
+    kcal: s.kcal,
+    protein: s.protein,
+    carbs: s.carbs,
+    fat: s.fat,
   };
 }
 

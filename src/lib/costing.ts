@@ -29,6 +29,11 @@ export type Ingredient = {
   purchase_price: number;
   purchase_qty: number;
   categories: string[] | null;
+  /** Per ONE unit, same convention as `cost`. Null until somebody fills it in. */
+  kcal_per_unit?: number | null;
+  protein_per_unit?: number | null;
+  carbs_per_unit?: number | null;
+  fat_per_unit?: number | null;
 };
 
 export type Batch = {

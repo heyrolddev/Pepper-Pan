@@ -9,11 +9,15 @@ import { ProductDialog } from "@/components/product-dialog";
 import type { Product } from "@/lib/menu-products";
 import {
   categoriesUsed,
+  cardTone,
   colourOf,
+  paletteFor,
+  type CategoryTone,
   inCategory,
   orderForMenu,
   type MenuCategory,
 } from "@/lib/categories";
+import { isComplete, macroSplit, round } from "@/lib/nutrition";
 
 /**
  * The card is a door now.
@@ -53,14 +57,30 @@ function ProductCard({
   product,
   index,
   staff,
+  palette,
+  showNutrition,
   onOpen,
 }: {
   product: Product;
   index: number;
   staff: boolean;
+  palette: Map<string, CategoryTone>;
+  showNutrition: boolean;
   onOpen: () => void;
 }) {
   const only = product.variants.length === 1 ? product.variants[0] : null;
+  /**
+   * The card's colour, or none.
+   *
+   * One category paints the card; two or more leave it cream. The tint is
+   * deliberately slight and the rail under the photo carries the actual
+   * signal — seventy-three cards at full strength is a colour chart, not a
+   * menu, and the food in the photographs is the thing meant to be bright.
+   */
+  const tone = cardTone(product.categories, palette);
+  const facts =
+    showNutrition && isComplete(product.nutrition) ? round(product.nutrition!.per) : null;
+  const split = facts ? macroSplit(facts) : null;
   const soldOut = product.soldOut;
   // Only ever shown for a card with one dish behind it. "Only 2 left" over a
   // group is a promise about which of four things, and the card cannot say
@@ -188,11 +208,35 @@ function ProductCard({
         )}
       </div>
 
+      {/* The rail is where the colour coding actually lives. A full-strength
+          card seventy-three times over is a colour chart; four pixels under
+          the photo is legible down a scrolling grid and leaves the food the
+          brightest thing on the card. A dish in two categories has no single
+          answer, so it gets no rail — that gap is information too. */}
+      {tone && <div className={`h-1 w-full shrink-0 ${tone.dot}`} aria-hidden />}
+
       {/* Tighter on a phone. Two columns leaves about 160px of card, and at the
           old size one dish ran most of the screen — you scrolled a menu of 73
           items four at a time. The desktop sizes are unchanged. */}
-      <div className="flex flex-1 flex-col gap-1.5 p-3 sm:gap-2 sm:p-4">
+      <div
+        className={`flex flex-1 flex-col gap-1.5 p-3 sm:gap-2 sm:p-4 ${
+          tone ? tone.soft : ""
+        }`}
+      >
         <p className="line-clamp-2 font-display text-sm font-bold leading-tight text-ink-950 sm:text-base">
+          {/* The code leads the name, the way a counter says it. Only on a
+              card with one dish behind it: four ji pai have four codes, and
+              printing the first would send somebody to the till saying "C1"
+              for a dish that is C3. */}
+          {product.code && (
+            <span
+              className={`mr-1.5 inline-block rounded-md px-1.5 py-0.5 align-middle text-[11px] font-black tabular-nums tracking-wide ${
+                tone ? tone.chip : "bg-ink-950 text-cream-50"
+              }`}
+            >
+              {product.code}
+            </span>
+          )}
           {product.name}
         </p>
         {product.avgRating != null && product.reviewCount > 0 && (
@@ -215,6 +259,40 @@ function ProductCard({
         {/* Wraps rather than squeezing. Two columns on a phone leaves about
             120px of card, and a peso price beside a button doesn't fit that —
             they were overlapping, with the button sitting on the price. */}
+        {/* Only ever a complete figure. A dish whose recipe is half filled in
+            has a sum, and that sum is smaller than the truth — see
+            `isComplete`. Somebody counting calories would be handed a number
+            that is confidently too low and looks exactly like a right one. */}
+        {facts && split && (
+          <div className="mt-1 flex flex-col gap-1">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[11px] font-black tabular-nums text-ink-900 sm:text-xs">
+                {facts.kcal.toLocaleString("en-PH")}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-ink-800/45">
+                kcal
+              </span>
+              <span className="ml-auto text-[10px] font-semibold tabular-nums text-ink-800/50">
+                {facts.protein}P · {facts.carbs}C · {facts.fat}F
+              </span>
+            </div>
+            {/* Three segments that always fill the bar exactly — the split is
+                computed from the macros' own energy, so a rounded label can
+                never leave a gap. Colours are fixed across every dish: the
+                bar is only readable if protein is the same colour on all of
+                them, so it does NOT take the category's. */}
+            <span
+              className="flex h-1 w-full overflow-hidden rounded-full bg-ink-950/10"
+              role="img"
+              aria-label={`${facts.protein} grams protein, ${facts.carbs} carbs, ${facts.fat} fat`}
+            >
+              <span className="bg-ocean-600" style={{ width: `${split.protein}%` }} />
+              <span className="bg-gold-400" style={{ width: `${split.carbs}%` }} />
+              <span className="bg-chili-500" style={{ width: `${split.fat}%` }} />
+            </span>
+          </div>
+        )}
+
         <div className="mt-auto flex flex-wrap items-center justify-between gap-1.5 pt-2 sm:gap-2 sm:pt-3">
           <span className="font-display text-base font-black text-brand-600 sm:text-lg">
             {/* "from" only when the ways of having it cost different money.
@@ -361,11 +439,14 @@ export function MenuList({
   products,
   staff = false,
   known = [],
+  showNutrition = false,
 }: {
   products: Product[];
   staff?: boolean;
   /** The shop's categories and their colours. Empty is fine — see `colourOf`. */
   known?: MenuCategory[];
+  /** The owner's switch. Off until the ingredients are filled in. */
+  showNutrition?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
@@ -381,6 +462,18 @@ export function MenuList({
   // exactly why the same bug survived in two other screens.
   const order = useMemo(() => categoriesUsed(products, known), [products, known]);
   const categories = useMemo(() => ["All", ...order], [order]);
+
+  /**
+   * One colour per category, none of them repeated.
+   *
+   * Worked out from the whole list at once rather than one name at a time —
+   * `colourOf` cannot tell whether the colour it is about to hand out is
+   * already on another category, which is how two of them ended up the same.
+   * The pills keep using `colourOf`; the CARDS use this, because a repeat on
+   * a pill is a nuisance and a repeat across a grid of cards is a colour code
+   * that means nothing.
+   */
+  const palette = useMemo(() => paletteFor(order, colours), [order, colours]);
 
   // One category plus "All" is not a filter, it is a label — and a sidebar
   // holding a single choice is a column of whitespace charged to the food.
@@ -555,6 +648,8 @@ export function MenuList({
                 product={product}
                 index={i}
                 staff={staff}
+                palette={palette}
+                showNutrition={showNutrition}
                 onOpen={() => setOpen(product.id)}
               />
             ))}

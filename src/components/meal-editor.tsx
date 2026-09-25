@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useRef, useState, type FormEvent } from "react";
+import { CODE_MAX, cleanCode, codeProblem } from "@/lib/dish-code";
 import { useRouter } from "next/navigation";
 import { deleteMeal, saveMeal, uploadMealImage } from "@/app/admin/menu/actions";
 import { TrashIcon } from "@/components/icons";
@@ -17,6 +18,23 @@ export type AdminMeal = {
   image_url: string | null;
   is_public: boolean;
   is_available: boolean;
+  /** The short name the counter says — "C1". */
+  code: string | null;
+  /** The owner's override. All null means "work it out from the recipe". */
+  kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  /**
+   * What the recipe works out to, and what is stopping it. Read-only — the
+   * editor shows it so the owner can see whether an override is even needed.
+   */
+  worked?: { kcal: number; protein: number; carbs: number; fat: number } | null;
+  missing?: string[];
+  /** Every other dish's code, so a duplicate is caught before the save. */
+  codesInUse?: string[];
+  /** The next free code for this dish's category. */
+  suggestion?: string | null;
 };
 
 const fieldClass =
@@ -62,9 +80,20 @@ export function MealEditor({
   const [isPublic, setIsPublic] = useState(meal.is_public);
   const [isAvailable, setIsAvailable] = useState(meal.is_available);
   const [imageUrl, setImageUrl] = useState(meal.image_url);
+  const [code, setCode] = useState(meal.code ?? "");
+  const num = (v: number | null) => (v === null ? "" : String(v));
+  const [kcal, setKcal] = useState(num(meal.kcal));
+  const [protein, setProtein] = useState(num(meal.protein_g));
+  const [carbs, setCarbs] = useState(num(meal.carbs_g));
+  const [fat, setFat] = useState(num(meal.fat_g));
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Caught here as well as in the action. The database has a
+  // case-insensitive unique index, so a clash saved anyway comes back as a
+  // constraint error naming an index — which tells the owner nothing.
+  const codeNote = codeProblem(code, meal.codesInUse ?? []);
 
   /**
    * What the database holds, as far as this form knows.
@@ -89,6 +118,11 @@ export function MealEditor({
       chosen: meal.categories ?? [],
       isPublic: meal.is_public,
       isAvailable: meal.is_available,
+      code: meal.code ?? "",
+      kcal: num(meal.kcal),
+      protein: num(meal.protein_g),
+      carbs: num(meal.carbs_g),
+      fat: num(meal.fat_g),
     })
   );
 
@@ -99,6 +133,11 @@ export function MealEditor({
     chosen,
     isPublic,
     isAvailable,
+    code,
+    kcal,
+    protein,
+    carbs,
+    fat,
   });
   // Compared as JSON rather than field by field so that adding a field to the
   // form cannot quietly leave it out of the comparison. Category order is
@@ -138,6 +177,16 @@ export function MealEditor({
         categories: chosen,
         isPublic,
         isAvailable,
+        code,
+        nutrition: {
+          // Blank stays blank — `Number("")` is 0, and a zero here would be
+          // the form claiming the dish has no calories rather than deferring
+          // to the recipe.
+          kcal: kcal.trim() === "" ? null : Number(kcal),
+          protein: protein.trim() === "" ? null : Number(protein),
+          carbs: carbs.trim() === "" ? null : Number(carbs),
+          fat: fat.trim() === "" ? null : Number(fat),
+        },
       });
       if (res.error) return setError(res.error);
       // The form is now what the database holds, so the button goes quiet
@@ -223,7 +272,18 @@ export function MealEditor({
       </div>
 
       <div className="flex flex-1 flex-col gap-3">
-        <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
+        <div className="grid gap-3 sm:grid-cols-[auto_2fr_1fr_1fr]">
+          {/* The code first, because that is the order it is said in. Narrow
+              on purpose: it is four characters, and a full-width box invites
+              somebody to type the dish name into it. */}
+          <input
+            value={code}
+            onChange={(e) => setCode(cleanCode(e.target.value))}
+            placeholder="C1"
+            aria-label="Dish code"
+            maxLength={CODE_MAX}
+            className={`${fieldClass} w-full text-center font-black tabular-nums tracking-wide sm:w-24`}
+          />
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -251,6 +311,92 @@ export function MealEditor({
           placeholder="Short description shown on the menu (optional)"
           className={fieldClass}
         />
+
+        {codeNote && (
+          <p className="-mt-1 text-xs font-semibold text-brand-700">{codeNote}</p>
+        )}
+        {!code && meal.suggestion && (
+          <button
+            type="button"
+            onClick={() => setCode(meal.suggestion!)}
+            className="-mt-1 self-start text-xs font-bold text-ink-800/60 underline decoration-dotted underline-offset-2 hover:text-ink-950"
+          >
+            Use {meal.suggestion}
+          </button>
+        )}
+
+        {/* ------------------------------------------------------------
+            What is in it
+
+            Read-only until the owner wants to overrule it. The figure above
+            the boxes is what the recipe works out to, and what is stopping
+            it — which is nearly always the answer to "why is there no
+            calorie count on this dish": one ingredient nobody has filled in.
+            Typing here is for the dishes the recipe cannot answer for, like
+            a bought-in bottled drink with the numbers on the label.
+            ------------------------------------------------------------ */}
+        <details className="rounded-2xl bg-cream-100 p-3 ring-1 ring-ink-950/10">
+          <summary className="cursor-pointer text-sm font-bold text-ink-950">
+            What&apos;s in it{" "}
+            <span className="font-semibold text-ink-800/45">
+              {meal.worked
+                ? `— ${Math.round(meal.worked.kcal).toLocaleString("en-PH")} kcal from the recipe`
+                : meal.missing?.length
+                  ? `— nothing yet, ${meal.missing.length} to fill in`
+                  : "— calories and macros"}
+            </span>
+          </summary>
+
+          {meal.missing && meal.missing.length > 0 && (
+            <p className="mt-2 text-xs text-ink-800/55">
+              No figure yet because{" "}
+              <strong className="font-bold text-ink-900">
+                {meal.missing.slice(0, 4).join(", ")}
+                {meal.missing.length > 4 ? ` and ${meal.missing.length - 4} more` : ""}
+              </strong>{" "}
+              {meal.missing.length === 1 ? "has" : "have"} no nutrition filled
+              in. Fill {meal.missing.length === 1 ? "it" : "them"} in under
+              Inventory and this works itself out — and stays right when the
+              recipe changes.
+            </p>
+          )}
+
+          <p className="mt-2 text-xs text-ink-800/55">
+            Leave these blank unless the recipe can&apos;t answer for this
+            dish — a bought-in drink with the numbers printed on it. Anything
+            typed here overrules the recipe for good.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(
+              [
+                ["Calories", kcal, setKcal, "kcal", meal.worked?.kcal],
+                ["Protein", protein, setProtein, "g", meal.worked?.protein],
+                ["Carbs", carbs, setCarbs, "g", meal.worked?.carbs],
+                ["Fat", fat, setFat, "g", meal.worked?.fat],
+              ] as const
+            ).map(([label, value, set, suffix, fromRecipe]) => (
+              <label key={label} className="flex flex-col gap-1">
+                <span className="text-xs font-bold text-ink-800/70">
+                  {label} ({suffix})
+                </span>
+                <input
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  inputMode="decimal"
+                  placeholder={
+                    fromRecipe === undefined || fromRecipe === null
+                      ? "—"
+                      : String(Math.round(fromRecipe))
+                  }
+                  className={fieldClass}
+                />
+              </label>
+            ))}
+          </div>
+        </details>
 
         <div className="flex flex-wrap items-center gap-2">
           <Toggle checked={isPublic} onChange={setIsPublic} label="Shown on menu" />
