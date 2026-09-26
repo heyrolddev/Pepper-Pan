@@ -977,3 +977,44 @@ export function remainingFor(
   }
   return Number.isFinite(left) ? Math.max(0, left) : null;
 }
+
+/** What a till tile says about stock, and how loudly. */
+export type StockBadge = {
+  text: string;
+  /** How much attention it deserves. */
+  level: "none" | "plenty" | "low" | "out";
+};
+
+/** Below this, the cashier is about to promise what the kitchen cannot make. */
+export const LOW_STOCK = 5;
+
+/**
+ * The badge on a till tile.
+ *
+ * It used to appear only when stock was low, and that was a bad call I made:
+ * a tile with plenty and a tile the system knows nothing about looked
+ * identical, and the cashier could not tell "loads left" from "no idea"
+ * without tapping. The owner asked for the number on every tile, which is
+ * right — at a counter the question is "how many can I still sell", and it is
+ * asked whether the answer is 2 or 40.
+ *
+ * So the number is always there and the TONE carries the warning instead:
+ * quiet above five, loud at or below it, its own thing at zero. Capped at
+ * 999+ because four digits do not fit on a tile the size of a thumb and the
+ * difference between 1,200 and 1,400 sachets of sugar is not a counter
+ * decision.
+ */
+export function stockBadge(
+  left: number | null | undefined
+): StockBadge {
+  if (left === null || left === undefined || !Number.isFinite(left)) {
+    return { text: "no recipe", level: "none" };
+  }
+  const n = Math.floor(left);
+  if (n <= 0) return { text: "no stock", level: "out" };
+  if (n > 999) return { text: "999+ left", level: "plenty" };
+  return {
+    text: `${n.toLocaleString("en-PH")} left`,
+    level: n <= LOW_STOCK ? "low" : "plenty",
+  };
+}
