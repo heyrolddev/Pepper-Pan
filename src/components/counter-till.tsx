@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { remainingFor, ticketDraw, type Shortfall, type TicketLine as DrawLine } from "@/lib/costing";
+import {
+  remainingFor,
+  stockBadge,
+  ticketDraw,
+  type Shortfall,
+  type TicketLine as DrawLine,
+} from "@/lib/costing";
 import { peso } from "@/lib/peso";
 import { AdminDialog } from "@/components/admin-dialog";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
@@ -739,30 +745,17 @@ export function CounterTill({
                 const known = left !== null && left !== undefined;
                 const out = known && left <= 0;
                 /**
-                 * Nobody has said what goes in this one.
+                 * The number is on every tile now, not only when it is
+                 * nearly gone.
                  *
-                 * `makeableServings` returns Infinity for a dish with no
-                 * recipe — correctly, because the system cannot claim a thing
-                 * is out when it does not know what the thing takes — and
-                 * Infinity is dropped from the map, so `makeable` arrives
-                 * null.
-                 *
-                 * Which used to render as no badge at all, exactly like a
-                 * dish with plenty on the shelf. Two opposite facts, one
-                 * appearance: "we have loads" and "the system has no idea".
-                 * The owner asked why some tiles had no badge, which is the
-                 * question a silent difference always ends up producing.
-                 *
-                 * It matters beyond the tile. A dish with no recipe costs ₱0,
-                 * so it books no cost on every sale and reads as 100% margin
-                 * — which quietly inflates "Kept this month".
+                 * It used to appear below five and nowhere else, which meant
+                 * a tile with forty left and a tile whose recipe nobody had
+                 * written looked exactly the same: blank. At a counter the
+                 * question is "how many can I still sell", and it gets asked
+                 * whether the answer is 2 or 40. The tone carries the warning
+                 * instead — see `stockBadge`.
                  */
-                const noRecipe = !known;
-                // "A few left" is the warning worth having. Above this the
-                // number is noise on a tile the size of a thumb; below it the
-                // cashier is about to promise something the kitchen cannot
-                // deliver.
-                const low = known && left > 0 && left <= 5;
+                const badge = stockBadge(known ? left : null);
                 return (
                   <li key={m.id} className="relative">
                     <button
@@ -798,6 +791,15 @@ export function CounterTill({
                             +
                           </span>
                         )}
+                        {/* Moved up here from the corner, which the stock
+                            count now owns. Beside the name is where it
+                            belongs anyway: it is a fact about what the dish
+                            IS, not about how many are left. */}
+                        {!m.is_public && (
+                          <span className="ml-1.5 whitespace-nowrap align-middle text-[9px] font-black uppercase tracking-wide opacity-45">
+                            counter only
+                          </span>
+                        )}
                       </span>
                       <span className="font-display text-base font-black tabular-nums">
                         {peso(m.price, 0)}
@@ -807,23 +809,26 @@ export function CounterTill({
                           {qty}
                         </span>
                       )}
-                      {noRecipe ? (
-                        // Grey, and quiet: this is a gap in the books, not a
-                        // reason to stop selling. The till never blocks.
-                        <span className="absolute bottom-1.5 right-2 rounded-full bg-ink-950/15 px-1.5 text-[9px] font-black uppercase tracking-wide text-ink-800/60">
-                          no recipe
+                      {/* One slot, one badge, always filled when there is
+                          anything to say. `out` is left to the button below,
+                          which is a real control rather than a label. */}
+                      {badge.level !== "out" && (
+                        <span
+                          className={`absolute bottom-1.5 right-2 rounded-full px-1.5 text-[9px] font-black uppercase tracking-wide ${
+                            badge.level === "low"
+                              ? // Loud, and the same gold as the basket
+                                // count, because both mean "look at this".
+                                "bg-gold-400 text-ink-950"
+                              : qty > 0
+                                ? // The tile is black once it is on the
+                                  // ticket, so the quiet badge has to invert
+                                  // with it or it disappears into the tile.
+                                  "bg-cream-50/20 text-cream-50/85"
+                                : "bg-ink-950/10 text-ink-800/65"
+                          }`}
+                        >
+                          {badge.text}
                         </span>
-                      ) : low ? (
-                        <span className="absolute bottom-1.5 right-2 rounded-full bg-gold-400 px-1.5 text-[9px] font-black uppercase tracking-wide text-ink-950">
-                          {left} left
-                        </span>
-                      ) : (
-                        !out &&
-                        !m.is_public && (
-                          <span className="absolute bottom-1.5 right-2 text-[9px] font-black uppercase tracking-wide opacity-40">
-                            counter only
-                          </span>
-                        )
                       )}
                     </button>
 
