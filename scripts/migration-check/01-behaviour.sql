@@ -1515,3 +1515,115 @@ begin
 end $$;
 reset role;
 select act_as_service();
+
+\echo '=== 0059 the shop trades on Apalit time, not the server''s ==='
+select act_as_service();
+reset role;
+
+\echo '--- the eight hours the old default got wrong ---'
+-- Pinned as arithmetic rather than against the clock, so this holds whatever
+-- hour the check happens to run at. 23:00 UTC on the 26th is 07:00 on the
+-- 27th in Apalit: one instant, two different days, and the whole bug.
+do $$
+declare manila date; utc date;
+begin
+  manila := (timestamptz '2026-09-26 23:00:00+00' at time zone 'Asia/Manila')::date;
+  utc    := (timestamptz '2026-09-26 23:00:00+00' at time zone 'UTC')::date;
+  if manila <> date '2026-09-27' then
+    raise exception 'FAIL: 7am Sunday in Apalit came out as %', manila;
+  end if;
+  if utc <> date '2026-09-26' then
+    raise exception 'FAIL: the UTC reading came out as %, so this test proves nothing', utc;
+  end if;
+  raise notice 'one instant, two days — Apalit %, UTC %', manila, utc;
+end $$;
+
+\echo '--- shop_date() is the Apalit day ---'
+do $$
+declare got date; want date;
+begin
+  select shop_date() into got;
+  want := (now() at time zone 'Asia/Manila')::date;
+  if got <> want then
+    raise exception 'FAIL: shop_date() said % and Apalit says %', got, want;
+  end if;
+  raise notice 'shop_date() agrees with the calendar in Apalit';
+end $$;
+
+\echo '--- shop_date() is not frozen at plan time ---'
+-- STABLE and not IMMUTABLE. An immutable function whose whole job is to
+-- change once a day can be folded to a constant by the planner, which is a
+-- very quiet way to stop the shop's day ever rolling over.
+do $$
+declare vol char;
+begin
+  select provolatile into vol from pg_proc where proname = 'shop_date';
+  if vol <> 's' then
+    raise exception 'FAIL: shop_date() is volatility %, expected s (stable)', vol;
+  end if;
+  raise notice 'shop_date() is stable, so it is read and not folded';
+end $$;
+
+\echo '--- every date column files rows under the shop''s day ---'
+-- Listed by name rather than counted. The eleven columns each had
+-- `current_date` written out separately, which is exactly how they came to be
+-- wrong together — a table added later has to be argued about here.
+do $$
+declare
+  spec record;
+  expr text;
+  wrong text[] := '{}';
+begin
+  for spec in
+    select * from (values
+      ('orders','date'), ('purchase_log','date'), ('consumption_log','date'),
+      ('waste_log','date'), ('cash_ledger','date'), ('receivables','date'),
+      ('cycle_counts','date'), ('activity_log','date'),
+      ('marketing_campaigns','started_on'), ('supplier_debts','incurred_on'),
+      ('running_costs','spent_on')
+    ) as t(tbl, col)
+  loop
+    select pg_get_expr(d.adbin, d.adrelid) into expr
+      from pg_attrdef d
+      join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+     where d.adrelid = spec.tbl::regclass and a.attname = spec.col;
+    if expr is null or expr not like '%shop_date%' then
+      wrong := wrong || (spec.tbl || '.' || spec.col || ' = ' || coalesce(expr, 'no default'));
+    end if;
+  end loop;
+
+  if array_length(wrong, 1) > 0 then
+    raise exception 'FAIL: still filing rows under the server''s day: %', wrong;
+  end if;
+  raise notice 'all eleven date columns default to the shop''s own day';
+end $$;
+
+\echo '--- a sale written with no date lands on the shop''s day ---'
+do $$
+declare got date;
+begin
+  insert into orders (id, revenue, status) values ('tz-today', 120, 'completed');
+  select date into got from orders where id = 'tz-today';
+  if got <> shop_date() then
+    raise exception 'FAIL: the sale was filed under % and today is %', got, shop_date();
+  end if;
+  delete from orders where id = 'tz-today';
+  raise notice 'a sale with no date given lands on the day the shop is having';
+end $$;
+
+\echo '--- and so does a batch prepped before the sun is properly up ---'
+-- `produce_batch` passed `current_date` into `consume_ingredient` by hand, so
+-- the column default could never reach it. Batches get prepped early; the
+-- usage averages and the reorder list are built on this log.
+do $$
+declare bad int;
+begin
+  select count(*) into bad
+    from pg_proc
+   where proname = 'produce_batch'
+     and prosrc like '%current_date%';
+  if bad > 0 then
+    raise exception 'FAIL: produce_batch still writes the server''s day by hand';
+  end if;
+  raise notice 'produce_batch logs consumption on the shop''s day';
+end $$;

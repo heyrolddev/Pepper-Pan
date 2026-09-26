@@ -9,7 +9,7 @@ import { LOW_STOCK_SERVINGS } from "@/lib/costing";
 import { ColumnChart, type Bar } from "@/components/admin-charts";
 import { LiveOrdersBanner } from "@/components/live-orders-banner";
 import { DateRangePicker } from "@/components/date-range-picker";
-import { shopToday } from "@/lib/format-date";
+import { middayOf, shopDay, shopMonthStart, shopToday } from "@/lib/format-date";
 import { StatTile, Delta } from "@/components/stat-tile";
 import { Explain } from "@/components/explain";
 import { SectionHead } from "@/components/hq-kit";
@@ -78,9 +78,19 @@ export default async function AdminDashboard({
   const supabase = createAdminClient();
 
   const now = new Date();
+  /**
+   * Three days, all of them the shop's rather than the server's.
+   *
+   * Every one of these was worked out in UTC while the headings beside them
+   * were formatted in Manila, so for the first eight hours of every day the
+   * page compared a Manila date against a UTC one — which is how a Sunday
+   * morning came to read "₱2,061, 8 orders today" over Saturday's trade.
+   * `monthStart` was worse again: `getFullYear`/`getMonth` are the SERVER's
+   * local time, which on this deployment is UTC and on a laptop is not.
+   */
   const todayStr = shopToday(now);
-  const yesterdayStr = new Date(now.getTime() - 864e5).toISOString().slice(0, 10);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const yesterdayStr = shopDay(-1, now);
+  const monthStart = shopMonthStart(now);
 
   // The owner can look at any window they like; this month is only the
   // default because it's what they check most days.
@@ -167,13 +177,16 @@ export default async function AdminDashboard({
 
   // --- Sales, last 14 days -------------------------------------------------
   const salesByDay: Bar[] = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(now.getTime() - (13 - i) * 864e5);
-    const key = d.toISOString().slice(0, 10);
-    const value = sum(live.filter((o) => o.date === key));
+    const key = shopDay(i - 13, now);
+    // The label is formatted FROM the key rather than from its own Date, so
+    // a bar cannot be labelled one day and filled from another — which is
+    // exactly what it did: the key was UTC and the label was Manila, so
+    // every bar on the chart was mislabelled for eight hours a day.
+    const at = middayOf(key);
     return {
-      label: dayLabel.format(d),
-      caption: dayCaption.format(d),
-      value,
+      label: dayLabel.format(at),
+      caption: dayCaption.format(at),
+      value: sum(live.filter((o) => o.date === key)),
     };
   });
 
@@ -217,7 +230,10 @@ export default async function AdminDashboard({
           front of it, because "₱4,100" is a fact and "₱4,100, up a fifth on
           yesterday, and three orders still to cook" is a shift. */}
       <TodayBand
-        dateLabel={bandDate.format(now)}
+        // Formatted from `todayStr`, not from `now`. They agree today because
+        // both are Manila's — and formatting the label off a separate clock
+        // is precisely how they came apart in the first place.
+        dateLabel={bandDate.format(middayOf(todayStr))}
         takings={sum(todays)}
         yesterday={sum(yesterdays)}
         orderCount={todays.length}
