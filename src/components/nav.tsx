@@ -12,17 +12,18 @@ import { ChefHatIcon } from "@/components/icons";
 import { roleLabel } from "@/lib/permissions";
 
 /**
- * Only what someone is here to *do*.
+ * One link outside the menu, and it is the food.
  *
  * Story and Visit are worth reading once and never again, and they already sit
- * in the footer where that kind of thing belongs. Keeping them up here cost
- * two slots in a row that has to hold a cart, an order count, a name and a way
- * out — and it pushed the full row past the width of a laptop.
+ * in the footer where that kind of thing belongs. Reviews went the other way —
+ * into the account menu — because it is something a customer visits, and the
+ * header is for the two things they DO: look at the dishes, and pay for them.
+ *
+ * So Menu sits beside Cart, and the pair is the whole journey. It is also no
+ * longer hidden below 640px, which it was: on a phone, the header of a food
+ * shop offered a cart and no way to reach the food.
  */
-const links = [
-  { href: "/menu", label: "Menu" },
-  { href: "/reviews", label: "Reviews" },
-];
+const links = [{ href: "/menu", label: "Menu" }];
 
 /**
  * One shared shape for every count in the header.
@@ -83,7 +84,18 @@ export function Nav({
   const firstName = (name ?? "").trim().split(/\s+/)[0] || null;
   const { count } = useCart();
   const pathname = usePathname();
-  const onAccount = pathname.startsWith("/account");
+  /**
+   * The chip is "on" for everything behind it, not only /account.
+   *
+   * Three pages live in that menu now — the account, the orders and the
+   * reviews — so a chip that only lit up on one of them told you nothing
+   * about where you were on the other two, and they have no other marker in
+   * the header at all.
+   */
+  const onAccount =
+    pathname.startsWith("/account") ||
+    pathname.startsWith("/orders") ||
+    pathname.startsWith("/reviews");
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
 
@@ -115,6 +127,16 @@ export function Nav({
     ? "text-ink-800 hover:text-brand-600"
     : "text-cream-100/80 hover:text-gold-400";
 
+  /**
+   * The page you are on, in the type as well as under it.
+   *
+   * The gold rule alone is two pixels of colour at the bottom edge of a
+   * control, which is enough on a laptop and disappears on a phone held at
+   * arm's length over a hot pan. Darkening the label as well costs nothing and
+   * means the current page reads as current before you look for the underline.
+   */
+  const activeClass = solid ? "text-ink-950" : "text-cream-50";
+
   return (
     <header
       // An inset shadow rather than a border, so the nav's box is exactly
@@ -144,20 +166,23 @@ export function Nav({
             row ran about 860px beside the logo: "Sign out" broke onto two
             lines and the page picked up a sideways scroll. The order count
             still shows the whole way down, as its own pill. */}
-        <nav className="flex min-w-0 items-center gap-1.5 text-sm font-semibold sm:gap-2">
+        <nav className="flex min-w-0 items-center gap-1 text-sm font-semibold sm:gap-2">
           {/* Staff get a deliberately bare header: the owner signed in to run
               the shop, not to browse it, and the HQ badge is the way in. */}
           {!staff &&
             links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`relative hidden rounded-full px-3 py-2 transition-colors sm:block ${linkClass}`}
-            >
-              {link.label}
-              {pathname === link.href && <ActiveRule />}
-            </Link>
-          ))}
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={pathname === link.href ? "page" : undefined}
+                className={`relative shrink-0 rounded-full px-2.5 py-2 transition-colors sm:px-3 ${linkClass} ${
+                  pathname === link.href ? activeClass : ""
+                }`}
+              >
+                {link.label}
+                {pathname === link.href && <ActiveRule />}
+              </Link>
+            ))}
 
           {/* Owner/staff marker — deliberately a badge rather than another
               text link, so it's obvious at a glance which account you're in. */}
@@ -209,7 +234,10 @@ export function Nav({
           {!staff && (
           <Link
             href="/cart"
-            className={`relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 transition-colors ${linkClass}`}
+            aria-current={pathname === "/cart" ? "page" : undefined}
+            className={`relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-2 transition-colors sm:px-3 ${linkClass} ${
+              pathname === "/cart" ? activeClass : ""
+            }`}
           >
             Cart
             {count > 0 && (

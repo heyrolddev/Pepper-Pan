@@ -328,8 +328,22 @@ export async function addReceivable(input: {
 export async function collectReceivable(input: {
   id: string;
   amount: number;
-  /** Whether the collected cash went into the drawer. */
-  toDrawer: boolean;
+  /**
+   * Which pot the payment landed in, or "none" if it landed in no pot yet.
+   *
+   * This was a boolean — `toDrawer` — and the ledger line it wrote carried no
+   * `account` at all, so it took the column default and went into the drawer
+   * whatever actually happened. A customer settling their utang by GCash
+   * therefore added pesos to a drawer nobody had put anything in, and took
+   * nothing off the GCash balance that really had gone up. Two balances
+   * wrong, total right, and nothing on any screen saying so.
+   *
+   * "none" is kept as a real answer rather than dropped. Somebody paying in
+   * goods, or handing over cash that has not been counted into the drawer
+   * yet, is a settled utang and an untouched pot — and forcing a pot on it
+   * would put money in a balance that cannot be counted against anything.
+   */
+  account: Account | "none";
 }): Promise<Result> {
   const viewer = await getViewer();
   if (!can(viewer, "business")) return { error: "Only the owner can collect." };
@@ -376,11 +390,13 @@ export async function collectReceivable(input: {
     .eq("id", input.id);
   if (error) return { error: error.message };
 
-  if (input.toDrawer) {
+  const intoPot = isAccount(input.account) ? input.account : null;
+  if (intoPot) {
     await supabase.from("cash_ledger").insert({
       date: shopToday(),
       type: "in",
       amount: input.amount,
+      account: intoPot,
       category: "utang",
       note: `Collected from ${row.customer ?? "a customer"}`,
       logged_by: viewer!.profile?.full_name?.trim() || viewer!.email,
@@ -388,7 +404,8 @@ export async function collectReceivable(input: {
   }
 
   await log(
-    `Collected ₱${input.amount.toFixed(2)} from ${row.customer ?? "a customer"}`,
+    `Collected ₱${input.amount.toFixed(2)} from ${row.customer ?? "a customer"}` +
+      (intoPot ? ` into ${ACCOUNT_SHORT[intoPot]}` : " — not into any pot"),
     viewer!.profile?.id ?? null
   );
   done();

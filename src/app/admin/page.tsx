@@ -12,9 +12,10 @@ import { DateRangePicker } from "@/components/date-range-picker";
 import { shopToday } from "@/lib/format-date";
 import { StatTile, Delta } from "@/components/stat-tile";
 import { Explain } from "@/components/explain";
+import { SectionHead } from "@/components/hq-kit";
+import { TodayBand } from "@/components/today-band";
 import { RecentOrders } from "@/components/recent-orders";
 import { pesoRound } from "@/lib/peso";
-import { hqTitle } from "@/lib/hq-theme";
 import { ErrorLogPanel } from "@/components/error-log-panel";
 import { listErrors } from "@/lib/error-log";
 
@@ -28,6 +29,13 @@ const dayCaption = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
   month: "short",
   day: "numeric",
+});
+/** For the band at the top — the shop's own day, named. */
+const bandDate = new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
 });
 
 // Headline figures are whole pesos — see pesoRound. Exact amounts still show
@@ -197,40 +205,41 @@ export default async function AdminDashboard({
           at; a broken checkout is why the money is wrong. */}
       <ErrorLogPanel errors={errors} />
 
-      {/* KPI row */}
-      <section className="flex flex-col gap-4">
-        <DateRangePicker from={fromDate} to={toDate} isDefault={!customRange} />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Explain
-            title="Sales today"
-            what="Everything that came through the shop today, however it was paid for — website, Messenger and the counter alike."
-            lines={[
-              {
-                label: `${todays.length} order${todays.length === 1 ? "" : "s"} today`,
-                value: peso(sum(todays)),
-                note: "Every order dated today that wasn't cancelled.",
-              },
-              {
-                label: "Cancelled today, not counted",
-                value: String(
-                  orders.filter((o) => o.date === todayStr && o.status === "cancelled").length
-                ),
-                note: "A cancelled order earned nothing, so it is left out rather than counted at zero.",
-              },
-              { label: "Yesterday, for comparison", value: peso(sum(yesterdays)) },
-              { label: "= Today's takings", value: peso(sum(todays)), total: true },
-            ]}
-            why="This is money in, not money kept — the ingredients have not come out of it yet. The tile beside it does that. It also counts delivery fees separately, so a busy delivery day doesn't read as a good sales day."
-          >
-            <StatTile
-              label="Sales today"
-              value={peso(sum(todays))}
-              detail={`${todays.length} order${todays.length === 1 ? "" : "s"}`}
-            >
-              <Delta now={sum(todays)} before={sum(yesterdays)} label="yesterday" />
-            </StatTile>
-          </Explain>
+      {/* ---- the day itself ----
 
+          Today's takings used to be one tile in a grid of ten, all the same
+          size, all the same cream. The page is called Today and the first
+          thing on it was a date picker for a different window — so the one
+          figure the owner opens HQ for was the same weight as the count of
+          registered customers.
+
+          It is the band now, with the fortnight behind it and the work in
+          front of it, because "₱4,100" is a fact and "₱4,100, up a fifth on
+          yesterday, and three orders still to cook" is a shift. */}
+      <TodayBand
+        dateLabel={bandDate.format(now)}
+        takings={sum(todays)}
+        yesterday={sum(yesterdays)}
+        orderCount={todays.length}
+        cancelledToday={
+          orders.filter((o) => o.date === todayStr && o.status === "cancelled").length
+        }
+        spark={salesByDay.map((d) => d.value)}
+        toCook={needsAction.length}
+        ready={readyNow.length}
+        toCheck={awaitingPayment.length}
+        waitingLeads={waitingLeads}
+      />
+
+      {/* ---- the window ---- */}
+      <section className="flex flex-col gap-5">
+        <SectionHead
+          eyebrow="The window"
+          title={customRange ? "The range you picked" : "This month so far"}
+          hint="Every figure below follows the dates on the right, and each one is compared against the same number of days immediately before it."
+          action={<DateRangePicker from={fromDate} to={toDate} isDefault={!customRange} />}
+        />
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           <Explain
             title={customRange ? "Sales in range" : "Sales this month"}
             what={
@@ -326,25 +335,17 @@ export default async function AdminDashboard({
               />
             </StatTile>
           </Explain>
-          <StatTile
-            label="Needs action"
-            value={String(needsAction.length)}
-            detail="Pending / confirmed / cooking"
-            tone={needsAction.length > 0 ? "alert" : "plain"}
-          />
-        </div>
+          {/* One grid, not two.
 
-        <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+              "Needs action", "Ready to hand over" and "Payments to check" all
+              moved onto the band, where they are work rather than statistics.
+              What is left belongs to the window the dates above choose, and a
+              second grid under the first only ever meant "these six are less
+              important", which a heading says better than a gap does. */}
           <StatTile
             label="Average order"
             value={peso(avgOrder)}
             detail={`across ${completed.length} completed`}
-          />
-          <StatTile
-            label="Ready to hand over"
-            value={String(readyNow.length)}
-            detail="Waiting for the customer"
-            tone={readyNow.length > 0 ? "good" : "plain"}
           />
           <StatTile
             label="Customers"
@@ -361,46 +362,22 @@ export default async function AdminDashboard({
             }
           />
           <StatTile
-            label="Payments to check"
-            value={String(awaitingPayment.length)}
-            detail="GCash refs awaiting your confirmation"
-            tone={awaitingPayment.length > 0 ? "alert" : "plain"}
-          />
-          <StatTile
             label="Cancelled"
             value={`${cancelRate}%`}
             detail={`${cancelled.length} of ${orders.length} orders`}
           />
         </div>
 
-        {waitingLeads > 0 && (
-          <Link
-            href="/admin/inbox"
-            className="mt-4 mr-3 inline-block rounded-full bg-gold-400 px-6 py-3 text-sm font-bold text-ink-950 transition-transform hover:scale-105"
-          >
-            💬 {waitingLeads} customer{waitingLeads === 1 ? "" : "s"} waiting on a
-            reply →
-          </Link>
-        )}
-
-        {needsAction.length > 0 && (
-          <Link
-            href="/admin/orders"
-            className="mt-4 inline-block rounded-full bg-brand-600 px-6 py-3 text-sm font-bold text-cream-50 transition-transform hover:scale-105"
-          >
-            Process {needsAction.length} open order
-            {needsAction.length === 1 ? "" : "s"} →
-          </Link>
-        )}
       </section>
 
       {/* Sales trend */}
-      <section>
-        <h2 className={hqTitle}>Sales trend</h2>
-        <p className="mt-1 text-sm text-ink-800/60">
-          Revenue per day, last 14 days · hover a bar for the exact figure
-        </p>
-        <div className="mt-5 rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
+      <section className="flex flex-col gap-5">
+        <SectionHead
+          eyebrow="The shape of it"
+          title="Sales trend"
+          hint="Revenue per day, last 14 days — the same fortnight the band at the top draws small. This one has the figures on it."
+        />
+        <div className="rounded-2xl bg-cream-100 p-5 ring-1 ring-ink-950/10">
           <ColumnChart data={salesByDay} hue="money" format="peso" />
         </div>
       </section>
@@ -426,16 +403,20 @@ export default async function AdminDashboard({
       </Link>
 
       {/* Recent orders */}
-      <section>
-        <div className="flex items-center justify-between">
-          <h2 className={hqTitle}>Recent orders</h2>
-          <Link href="/admin/orders" className="text-sm font-bold text-brand-600 hover:underline">
-            View all →
-          </Link>
-        </div>
-
+      <section className="flex flex-col gap-5">
+        <SectionHead
+          eyebrow="Just happened"
+          title="Recent orders"
+          action={
+            <Link
+              href="/admin/orders"
+              className="rounded-full bg-ink-950/5 px-4 py-2 text-sm font-bold text-ink-950 ring-1 ring-ink-950/10 transition-colors hover:bg-ink-950 hover:text-cream-50"
+            >
+              View all →
+            </Link>
+          }
+        />
         <RecentOrders orders={orders.slice(0, 8)} />
-
       </section>
     </div>
   );
