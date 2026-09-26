@@ -313,7 +313,11 @@ function List({
                     tells the owner something a boolean never could. */}
                 {part && (
                   <span className="text-[11px] text-ink-800/50">
-                    {peso(d.paid, 0)} of {peso(d.amount, 0)} paid
+                    {/* Centavos only when there are some — see the same
+                        line on Pa-utang. Rounding both ends of "X of Y" makes
+                        a sum that visibly disagrees with the figure above. */}
+                    {peso(d.paid, d.paid % 1 === 0 ? 0 : 2)} of{" "}
+                    {peso(d.amount, d.amount % 1 === 0 ? 0 : 2)} paid
                   </span>
                 )}
               </span>

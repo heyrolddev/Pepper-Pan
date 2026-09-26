@@ -293,7 +293,15 @@ export function MoneyView({
   const [dialog, setDialog] = useState<
     "cost" | "cash-start" | "gcash-start" | "bank-start" | "cash-entry" | "utang" | "asset" | null
   >(null);
-  const [collecting, setCollecting] = useState<string | null>(null);
+  /**
+   * Which utang is being collected, and how much the box starts with.
+   *
+   * A preset of 0 means Custom — the box opens empty, because a figure
+   * already in it is a figure somebody has to delete before typing theirs.
+   */
+  const [collecting, setCollecting] = useState<{ id: string; preset: number } | null>(
+    null
+  );
   const { busy, error, run } = useAction();
 
   const gap =
@@ -760,21 +768,28 @@ export function MoneyView({
       </Panel>
 
 
-      {/* ---- utang ---- */}
+      {/* ---- pa-utang ---- */}
       <Panel
         fold
-        title="Utang"
+        /**
+         * "Pa-utang", not "Utang". Utang is what the shop OWES — which is a
+         * real section of this page, a few panels down, about suppliers. This
+         * one is the opposite direction: money lent out and still to come
+         * back. Two opposite things under one word is how somebody reads the
+         * wrong figure at the end of a long day.
+         */
+        title="Pa-utang"
         hint={
           money.owed > 0
-            ? `${peso(money.owed)} still owed across ${money.receivables.filter((r) => !r.settled).length} people.`
-            : "Nobody owes anything right now."
+            ? `${peso(money.owed)} still to come back from ${money.receivables.filter((r) => !r.settled).length} ${money.receivables.filter((r) => !r.settled).length === 1 ? "person" : "people"}.`
+            : "Nobody owes you anything right now."
         }
         action={
           <button
             onClick={() => setDialog("utang")}
             className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
           >
-            + Record utang
+            + Record pa-utang
           </button>
         }
       >
@@ -786,25 +801,65 @@ export function MoneyView({
             .map((r) => (
               <div
                 key={r.id}
-                className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-950/5 py-2.5 last:border-0"
+                className="border-b border-ink-950/5 py-3 last:border-0"
               >
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-ink-950">{r.customer}</p>
-                  <p className="text-xs text-ink-800/50">
-                    since {formatDate(r.date)}
-                    {r.collected > 0 && ` · ${peso(r.collected)} paid so far`}
-                    {r.phone && ` · ${r.phone}`}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="font-display font-black tabular-nums text-brand-600">
-                    {peso(r.amount - r.collected)}
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-ink-950">{r.customer}</p>
+                    <p className="text-xs text-ink-800/50">
+                      since {formatDate(r.date)}
+                      {r.phone && ` · ${r.phone}`}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-display text-lg font-black tabular-nums text-brand-600">
+                      {peso(r.amount - r.collected)}
+                    </span>
+                    {/* A part payment is a fact worth seeing, and it was
+                        buried in the grey line under the name. "₱200 of ₱689
+                        paid" is the thing somebody chasing an utang actually
+                        wants at a glance. */}
+                    {r.collected > 0 && (
+                      <span className="text-[11px] text-ink-800/50">
+                        {/* Centavos only when there are some. "₱100 of
+                            ₱146 paid" beside ₱45.50 outstanding is a figure
+                            that does not add up — 146 − 100 is 46. */}
+                        {peso(r.collected, r.collected % 1 === 0 ? 0 : 2)} of{" "}
+                        {peso(r.amount, r.amount % 1 === 0 ? 0 : 2)} paid
+                      </span>
+                    )}
                   </span>
+                </div>
+
+                {/* The same three the supplier debts offer, because it is the
+                    same errand in the other direction. A single "Collect"
+                    button opened a box already filled with the whole amount,
+                    so paying a hundred off a six-hundred-peso utang meant
+                    deleting a number before typing one — and nothing on the
+                    row suggested part payment was possible at all. */}
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <button
-                    onClick={() => setCollecting(r.id)}
-                    className="rounded-xl bg-jade-600 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-cream-50 hover:bg-jade-700"
+                    onClick={() => setCollecting({ id: r.id, preset: r.amount - r.collected })}
+                    className="rounded-lg bg-jade-600 px-4 py-1.5 text-xs font-black text-cream-50 hover:bg-jade-700"
                   >
-                    Collect
+                    Paid in full
+                  </button>
+                  <button
+                    onClick={() =>
+                      setCollecting({
+                        id: r.id,
+                        preset: Math.round((r.amount - r.collected) * 50) / 100,
+                      })
+                    }
+                    className="rounded-lg bg-ink-950/8 px-3 py-1.5 text-xs font-bold text-ink-800 hover:bg-ink-950/15"
+                  >
+                    Half — {peso(Math.round((r.amount - r.collected) * 50) / 100, 0)}
+                  </button>
+                  <button
+                    onClick={() => setCollecting({ id: r.id, preset: 0 })}
+                    className="rounded-lg bg-ink-950/8 px-3 py-1.5 text-xs font-bold text-ink-800 hover:bg-ink-950/15"
+                  >
+                    Custom
                   </button>
                 </div>
               </div>
@@ -893,7 +948,8 @@ export function MoneyView({
       )}
       {collecting && (
         <CollectDialog
-          receivable={money.receivables.find((r) => r.id === collecting)!}
+          receivable={money.receivables.find((r) => r.id === collecting.id)!}
+          preset={collecting.preset}
           onClose={() => setCollecting(null)}
         />
       )}
@@ -927,7 +983,7 @@ function MoneyDialog({
     "gcash-start": { title: "Start counting GCash", sub: "How much is in the e-wallet right now? Nothing before today is counted." },
     "bank-start": { title: "Start counting the bank", sub: "How much is in the account right now? Nothing before today is counted." },
     "cash-entry": { title: "Money in or out", sub: "Cash sales are counted already — this is everything else." },
-    utang: { title: "Record utang", sub: "Who owes, and how much." },
+    utang: { title: "Record pa-utang", sub: "Who owes you, and how much." },
     asset: { title: "Add what you put in", sub: "Equipment, the cart, the signage." },
   }[which];
 
@@ -1043,20 +1099,27 @@ function MoneyDialog({
 
 function CollectDialog({
   receivable,
+  preset,
   onClose,
 }: {
   receivable: { id: string; customer: string | null; amount: number; collected: number };
+  /** What the box starts with. Zero means Custom — it opens empty. */
+  preset: number;
   onClose: () => void;
 }) {
   const outstanding = receivable.amount - receivable.collected;
   const { busy, error, run } = useAction();
-  const [amount, setAmount] = useState(String(outstanding));
+  const [amount, setAmount] = useState(preset > 0 ? String(preset) : "");
   const [toDrawer, setToDrawer] = useState(true);
 
   return (
     <AdminDialog
       title={`Collect from ${receivable.customer ?? "customer"}`}
-      subtitle={`${peso(outstanding)} still owed.`}
+      subtitle={
+        receivable.collected > 0
+          ? `${peso(outstanding)} left of ${peso(receivable.amount)}.`
+          : `${peso(outstanding)} still owed.`
+      }
       onClose={onClose}
       busy={busy}
     >
