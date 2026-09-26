@@ -163,7 +163,9 @@ export function groupsFor(
     if (options.length > 0) out.push({ ...g, options });
   }
 
-  return out.sort(byOrder);
+  // The same comparison the admin's arrows make. One rule, in one place, so
+  // moving a group in HQ moves it here too — see `inGroupOrder`.
+  return inGroupOrder(out);
 }
 
 /* ------------------------------------------------------------------ */
@@ -526,4 +528,63 @@ export function resolveChoice(
   }
 
   return { extras: extrasOf(groups, choice), problem: null };
+}
+
+/* ------------------------------------------------------------------ */
+/* The order the customer meets the groups in                          */
+/* ------------------------------------------------------------------ */
+
+/** Enough of a group to put it in order. */
+export type Orderable = { id: string; sort: number; name: string };
+
+/**
+ * The groups in the order a dish asks them, by the same rule `byOrder` uses.
+ *
+ * Exported so the admin's arrows and the customer's dialog cannot drift
+ * apart. They were two separate comparisons for about an hour, and a control
+ * that moves a group somewhere the customer does not see it move is worse
+ * than having no control.
+ */
+export function inGroupOrder<T extends Orderable>(rows: readonly T[]): T[] {
+  return [...rows].sort(
+    (a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0) || a.name.localeCompare(b.name)
+  );
+}
+
+/**
+ * Where every group's `sort` should be after moving one of them a place.
+ *
+ * Returns ONLY the rows whose number actually changes, so a move writes two
+ * rows rather than all of them — and returns nothing at all when the group is
+ * already at the end, which is a button with nothing to do rather than an
+ * error.
+ *
+ * The renumbering is the point, not the swap. Every group in this shop is
+ * still on the column default of 0, so "find the row with the next highest
+ * number and trade" finds nothing and does nothing — silently. Ordering the
+ * list first and then numbering it 10, 20, 30 means the first click fixes a
+ * table full of zeroes on its own, with no migration guessing at an order
+ * nobody ever set.
+ *
+ * Tens, so a later insert has somewhere to land without touching its
+ * neighbours.
+ */
+export function renumberAfterMove<T extends Orderable>(
+  rows: readonly T[],
+  id: string,
+  direction: -1 | 1
+): { id: string; sort: number }[] {
+  const ordered = inGroupOrder(rows);
+  const at = ordered.findIndex((r) => r.id === id);
+  if (at < 0) return [];
+
+  const to = at + direction;
+  if (to < 0 || to >= ordered.length) return [];
+
+  [ordered[at], ordered[to]] = [ordered[to], ordered[at]];
+
+  return ordered
+    .map((row, i) => ({ id: row.id, sort: (i + 1) * 10, was: Number(row.sort) || 0 }))
+    .filter((r) => r.was !== r.sort)
+    .map(({ id: rowId, sort }) => ({ id: rowId, sort }));
 }

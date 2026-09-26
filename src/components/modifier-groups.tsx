@@ -21,6 +21,7 @@ import {
 import {
   deleteModifierGroup,
   saveModifierGroup,
+  reorderModifierGroup,
   setModifierGroupActive,
   type OptionInput,
 } from "@/app/admin/menu/modifier-actions";
@@ -296,6 +297,15 @@ export function ModifierGroups({
     });
   }
 
+  function move(g: ModifierGroupRow, direction: -1 | 1) {
+    setError(null);
+    startTransition(async () => {
+      const result = await reorderModifierGroup(g.id, direction);
+      if (result.error) return setError(result.error);
+      router.refresh();
+    });
+  }
+
   function toggleActive(g: ModifierGroupRow) {
     setError(null);
     startTransition(async () => {
@@ -380,7 +390,7 @@ export function ModifierGroups({
           </div>
         ) : (
           <ul className="flex flex-col gap-3">
-            {groups.map((g) => {
+            {groups.map((g, i) => {
               const tone = toneOf(g);
               const orphans = g.options.filter((o) => !o.option_meal_id);
               const where = [
@@ -422,6 +432,34 @@ export function ModifierGroups({
                       </div>
 
                       <div className="flex shrink-0 items-center gap-1">
+                        {/* The order the customer meets these in, on every
+                            dish that carries them. Worth having because the
+                            default was alphabetical by name — which put
+                            "Choose your drinks" above "Extra rice" on a rice
+                            combo, asking for the drink before the thing the
+                            customer came for.
+
+                            One order for all dishes: a group sits on a dozen
+                            of them, and a position per dish is a rule free to
+                            contradict itself. */}
+                        <button
+                          onClick={() => move(g, -1)}
+                          disabled={busy || i === 0}
+                          aria-label={`Show ${g.name} earlier`}
+                          title="Show this earlier on the dish"
+                          className="grid h-9 w-9 place-items-center rounded-full bg-ink-950/5 font-black text-ink-800/60 transition-colors hover:bg-ink-950/10 disabled:opacity-30"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => move(g, 1)}
+                          disabled={busy || i === groups.length - 1}
+                          aria-label={`Show ${g.name} later`}
+                          title="Show this later on the dish"
+                          className="grid h-9 w-9 place-items-center rounded-full bg-ink-950/5 font-black text-ink-800/60 transition-colors hover:bg-ink-950/10 disabled:opacity-30"
+                        >
+                          ↓
+                        </button>
                         <button
                           onClick={() => toggleActive(g)}
                           disabled={busy}
