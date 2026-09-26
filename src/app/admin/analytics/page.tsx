@@ -3,6 +3,9 @@ import { can, getViewer } from "@/lib/auth";
 import { ColumnChart, RankedBars, type Bar } from "@/components/admin-charts";
 import { AnalysisPanel } from "@/components/analysis-panel";
 import { SalesOutlook } from "@/components/sales-outlook";
+import { PastDaysPanel } from "@/components/past-days-panel";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { usualCostPct } from "@/lib/past-days";
 import { salesOutlook } from "@/lib/forecast-server";
 import { buildSnapshot } from "./snapshot";
 import { StatTile as Tile } from "@/components/stat-tile";
@@ -17,6 +20,44 @@ function hourCaption(h: number) {
   return `${label}${h < 12 ? "am" : "pm"}`;
 }
 
+/**
+ * What the "days before the till" panel needs to know.
+ *
+ * The shop's own running food cost, offered as the starting figure so the
+ * owner corrects a number rather than inventing one — and how many past days
+ * are already in, so the panel can say "12 entered so far" instead of
+ * pretending every visit is the first.
+ */
+async function loadPastDayContext(): Promise<{
+  costPct: number | null;
+  count: number;
+}> {
+  try {
+    const supabase = createAdminClient();
+    const since = new Date();
+    since.setDate(since.getDate() - 90);
+    const [{ data: recent }, { count }] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("revenue, cogs")
+        .eq("status", "completed")
+        .eq("is_backfill", false)
+        .gte("date", since.toISOString().slice(0, 10)),
+      supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("is_backfill", true),
+    ]);
+    const rows = (recent ?? []) as { revenue: number | null; cogs: number | null }[];
+    const revenue = rows.reduce((sum, r) => sum + (Number(r.revenue) || 0), 0);
+    const cogs = rows.reduce((sum, r) => sum + (Number(r.cogs) || 0), 0);
+    return { costPct: usualCostPct(revenue, cogs), count: count ?? 0 };
+  } catch {
+    // The panel works without either — the cost field simply starts empty.
+    return { costPct: null, count: 0 };
+  }
+}
+
 export default async function AdminAnalyticsPage() {
   const viewer = await getViewer();
   // Hidden from the sidebar too, but hiding a link is not a permission:
@@ -25,7 +66,11 @@ export default async function AdminAnalyticsPage() {
     return <NotAllowed>Analytics is the owner&apos;s. What needs doing this shift is on Today, and the order board has the queue.</NotAllowed>;
   }
 
-  const [snapshot, ahead] = await Promise.all([buildSnapshot(), salesOutlook()]);
+  const [snapshot, ahead, pastDays] = await Promise.all([
+    buildSnapshot(),
+    salesOutlook(),
+    loadPastDayContext(),
+  ]);
 
   const weekday: Bar[] = snapshot.byWeekday.map((d) => ({
     label: d.day,
@@ -110,6 +155,17 @@ export default async function AdminAnalyticsPage() {
             forecast={ahead.forecast}
             direction={ahead.direction}
           />
+
+          {/* Directly under the line it fills in. The forecast will not speak
+              until it has six completed weeks, and a shop that traded for
+              months before this till already HAS those weeks — in a
+              notebook. */}
+          <div className="mt-5">
+            <PastDaysPanel
+              suggestedCostPct={pastDays.costPct}
+              alreadyTyped={pastDays.count}
+            />
+          </div>
         </Panel>
       </section>
 
