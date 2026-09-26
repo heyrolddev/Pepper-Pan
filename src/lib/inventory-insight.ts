@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { COVER_DAYS, buyLineFor, orderBuyList } from "@/lib/buy-list";
 import { shopToday } from "@/lib/format-date";
 import type { Batch, BatchIngredient, Ingredient } from "@/lib/costing";
 
@@ -19,8 +20,15 @@ export type Suggestion = {
   stock: number;
   /** Average used per day over the lookback window. */
   dailyAvg: number;
-  /** How many days the current stock lasts at that rate. */
-  daysLeft: number;
+  /**
+   * How many days the current stock lasts at that rate, or null when the
+   * shop has never recorded using this one.
+   *
+   * Null rather than Infinity or zero. Infinity sorts to the end and reads as
+   * "fine forever"; zero reads as "out today". Neither is true — the honest
+   * answer is that nobody knows yet, and the row says so.
+   */
+  daysLeft: number | null;
   /** What to have on the shelf to cover `coverDays`. */
   parLevel: number;
   /** parLevel − stock, floored at zero. */
@@ -33,6 +41,16 @@ export type Suggestion = {
    * old app.
    */
   coveredBy: { name: string; qty: number; unit: string }[];
+  /**
+   * Why it is on the list.
+   *
+   * "running-out" is worked out from what the shop actually gets through.
+   * "below-level" is the line the owner drew themselves — and it used to be
+   * ignored here entirely, which is the bug this field exists to have fixed:
+   * an ingredient the owner had explicitly asked to be told about could sit
+   * under its own level and never appear on the buying list.
+   */
+  reason: "running-out" | "below-level";
 };
 
 export type ExpiringLot = {
@@ -57,7 +75,6 @@ export type Insight = {
 };
 
 const LOOKBACK_DAYS = 30;
-const COVER_DAYS = 7;
 const EXPIRY_WARNING_DAYS = 5;
 
 /** Midnight-to-midnight day difference, so "today" is 0 and not 0.4. */
@@ -131,26 +148,32 @@ export async function loadInsight(
     usesIngredient.set(bi.ref_id, list);
   }
 
-  const suggestions: Suggestion[] = [];
+  const buying: Suggestion[] = [];
   for (const ing of ingredients) {
-    const total = used.get(ing.id) ?? 0;
-    const dailyAvg = total / observedDays;
-    if (dailyAvg <= 0) continue; // nothing used, so nothing to say
-
-    const stock = Number(ing.stock) || 0;
-    const parLevel = dailyAvg * COVER_DAYS;
-    if (stock >= parLevel) continue;
-
-    suggestions.push({
-      id: ing.id,
-      name: ing.name,
-      unit: ing.unit,
-      stock,
+    const dailyAvg = (used.get(ing.id) ?? 0) / observedDays;
+    // The rule itself lives in `buy-list.ts`, where it can be tested without
+    // a database — this file imports the admin client, so nothing in it can.
+    const line = buyLineFor(
+      {
+        id: ing.id,
+        name: ing.name,
+        unit: ing.unit,
+        stock: Number(ing.stock) || 0,
+        reorder: Number(ing.reorder) || 0,
+        cost: Number(ing.cost) || 0,
+      },
       dailyAvg,
-      daysLeft: dailyAvg > 0 ? stock / dailyAvg : Infinity,
-      parLevel,
-      buy: Math.max(0, parLevel - stock),
-      cost: Math.max(0, parLevel - stock) * (Number(ing.cost) || 0),
+      COVER_DAYS
+    );
+    if (!line) continue;
+
+    buying.push({
+      ...line,
+      /**
+       * Batches already made from this ingredient that are still in stock.
+       * "Low, but you've got 2,125g of Black Pepper Sauce made" stops a panic
+       * buy for something already prepped.
+       */
       coveredBy: (usesIngredient.get(ing.id) ?? [])
         .filter((b) => Number(b.batch_stock) > Number(b.reorder_level || 0))
         .map((b) => ({
@@ -160,8 +183,11 @@ export async function loadInsight(
         })),
     });
   }
-  // Soonest to run out first — the order you would actually shop in.
-  suggestions.sort((a, b) => a.daysLeft - b.daysLeft);
+
+  // Soonest to run out first — the order you would actually shop in. Sorted
+  // by the shared helper so the list and the rule cannot disagree about
+  // where a line with no usage history belongs.
+  const suggestions = orderBuyList(buying);
 
   const ingById = new Map(ingredients.map((i) => [i.id, i]));
   const expiring: ExpiringLot[] = [];
