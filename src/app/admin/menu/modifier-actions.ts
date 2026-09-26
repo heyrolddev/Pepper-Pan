@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { renumberAfterMove } from "@/lib/modifiers";
 
 /**
  * Building an add-on group.
@@ -291,6 +292,66 @@ export async function setModifierGroupActive(
     .select("id");
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: "That group no longer exists." };
+
+  revalidateMenu();
+  return { error: null };
+}
+
+/**
+ * Move an add-on group up or down the order the customer meets it in.
+ *
+ * WHY THIS SWAPS POSITIONS AND NOT VALUES. The obvious version reads this
+ * group's `sort_order`, finds the neighbouring row with a greater or lesser
+ * one, and swaps the two numbers. That is how the promos strip does it, and
+ * copying it here would have produced two buttons that do nothing: every
+ * group in this shop is still sitting on the column default of 0, so there
+ * is no row with a greater or lesser value to find. The order the customer
+ * actually sees comes from `byOrder`'s tiebreak, which is the NAME — and
+ * alphabetically "Choose your drinks" comes before "Extra rice", which is
+ * exactly the complaint.
+ *
+ * So the list is ordered the way the dish dialog orders it, the group is
+ * moved one place within that list, and the whole list is then renumbered.
+ * The first click normalises a table full of zeroes on its own, and no
+ * migration has to guess at an order the owner never set.
+ *
+ * The order is global rather than per dish. A group is attached to many
+ * dishes — "Extra rice" sits on a dozen — and one position per group is the
+ * only arrangement that cannot contradict itself. Two groups that never
+ * appear on the same dish simply never compare.
+ */
+export async function reorderModifierGroup(
+  id: string,
+  direction: -1 | 1
+): Promise<Result> {
+  const viewer = await getViewer();
+  if (!can(viewer, "menu.edit")) return { error: DENIED };
+
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from("modifier_groups")
+    .select("id, name, sort_order");
+  if (error) return { error: error.message };
+
+  const writes = renumberAfterMove(
+    (data ?? []).map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      sort: Number(r.sort_order) || 0,
+    })),
+    id,
+    direction
+  );
+  // Already at the end, or gone. Neither is an error.
+  if (writes.length === 0) return { error: null };
+
+  for (const w of writes) {
+    const { error: wrote } = await db
+      .from("modifier_groups")
+      .update({ sort_order: w.sort })
+      .eq("id", w.id);
+    if (wrote) return { error: wrote.message };
+  }
 
   revalidateMenu();
   return { error: null };
