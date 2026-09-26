@@ -1312,3 +1312,91 @@ begin
   end loop;
   raise notice 'replacing the functions did not hand the anon key the keys to the shelf';
 end $$;
+
+-- ============================================================
+\echo '=== 0057 a day typed in from the notebook never moves stock ==='
+-- ============================================================
+-- Backfilled takings are real money and historical food. Applying them to
+-- stock would walk the recipe of a dish eaten in August and take its
+-- ingredients off a shelf that is full today — emptying the store room to
+-- record history. The app sets `stock_applied_at` at insert; this checks the
+-- database honours that as the claim it is.
+
+insert into ingredients (id, name, unit, cost, stock)
+  values ('bf-flour', 'Backfill Flour', 'g', 0.2, 5000)
+  on conflict (id) do update set stock = 5000;
+insert into meals (id, name, price) values ('bf-dish', 'Backfill Dish', 100)
+  on conflict (id) do update set price = 100;
+delete from meal_ingredients where meal_id = 'bf-dish';
+insert into meal_ingredients (meal_id, ref_type, ref_id, qty)
+  values ('bf-dish', 'inv', 'bf-flour', 100);
+
+\echo '--- an ordinary sale still moves the shelf ---'
+do $$
+declare before_qty numeric; after_qty numeric;
+begin
+  select stock into before_qty from ingredients where id = 'bf-flour';
+  insert into orders (id, date, revenue, status) values ('bf-live', current_date, 100, 'completed');
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+    values ('bf-live', 'bf-dish', 1, 100);
+  perform apply_order_stock('bf-live');
+  select stock into after_qty from ingredients where id = 'bf-flour';
+  if after_qty <> before_qty - 100 then
+    raise exception 'FAIL: a normal sale did not move stock — % to %', before_qty, after_qty;
+  end if;
+  raise notice 'a normal sale still takes its ingredients off the shelf';
+end $$;
+
+\echo '--- a backfilled day is refused by the stock engine, not applied ---'
+do $$
+declare before_qty numeric; after_qty numeric; result numeric;
+begin
+  select stock into before_qty from ingredients where id = 'bf-flour';
+
+  -- Exactly what the app writes: the claim already made.
+  insert into orders (id, date, revenue, cogs, gross_profit, status, is_backfill, stock_applied_at)
+    values ('bf-past', current_date - 40, 8500, 3230, 5270, 'completed', true, now());
+  -- A backfilled day carries no lines, but give it one anyway: if the guard
+  -- ever fails, this is what would come off the shelf.
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+    values ('bf-past', 'bf-dish', 10, 100);
+
+  result := apply_order_stock('bf-past');
+  if result is not null then
+    raise exception 'FAIL: the stock engine claimed a day that was already stamped';
+  end if;
+
+  select stock into after_qty from ingredients where id = 'bf-flour';
+  if after_qty <> before_qty then
+    raise exception 'FAIL: a typed-in past day emptied the shelf — % to %', before_qty, after_qty;
+  end if;
+  raise notice 'a past day leaves today''s shelf exactly where it was';
+end $$;
+
+\echo '--- and it is marked, so a screen can tell it from a ticket ---'
+do $$
+declare flagged boolean; money numeric;
+begin
+  select is_backfill, revenue into flagged, money from orders where id = 'bf-past';
+  if not flagged then
+    raise exception 'FAIL: a typed-in day is indistinguishable from a real ticket';
+  end if;
+  if money <> 8500 then
+    raise exception 'FAIL: the takings did not survive — %', money;
+  end if;
+  raise notice 'the money is real and the row says how it got here';
+end $$;
+
+\echo '--- a past day carries a cost, so it is never pure profit ---'
+do $$
+declare c numeric; g numeric;
+begin
+  select cogs, gross_profit into c, g from orders where id = 'bf-past';
+  if c <= 0 then
+    raise exception 'FAIL: cogs is %, so this day reads as a 100%% margin', c;
+  end if;
+  if g >= 8500 then
+    raise exception 'FAIL: gross profit is % on takings of 8500', g;
+  end if;
+  raise notice 'a typed-in day books a cost as well as takings';
+end $$;
