@@ -530,6 +530,19 @@ export async function resetShopData(input: {
       if (cash.error) throw new Error(`cash ledger: ${cash.error.message}`);
       deleted.push(`${cash.data?.length ?? 0} cash entries`);
 
+      /**
+       * The recorded months go before the bills they hang off.
+       *
+       * The foreign key cascades, so dropping `fixed_costs` alone would take
+       * these with it — and say nothing. That is the failure: the owner is
+       * told "5 monthly bills" and loses five bills AND every month ever
+       * recorded against them, which is the part that cannot be retyped from
+       * a drawer somewhere. Deleted by name so the report can count it.
+       */
+      const mb = await db.from("monthly_bills").delete().neq("id", all).select("id");
+      if (mb.error) throw new Error(`recorded bills: ${mb.error.message}`);
+      deleted.push(`${mb.data?.length ?? 0} recorded bill months`);
+
       const fc = await db.from("fixed_costs").delete().neq("id", all).select("id");
       if (fc.error) throw new Error(`monthly bills: ${fc.error.message}`);
       deleted.push(`${fc.data?.length ?? 0} monthly bills`);

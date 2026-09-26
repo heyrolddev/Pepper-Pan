@@ -42,7 +42,7 @@ export function SignOutButton({
 }: {
   solid?: boolean;
   /** How the trigger is styled. The dialog never changes. */
-  variant?: "nav" | "rail" | "block";
+  variant?: "nav" | "rail" | "block" | "menu";
 }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
@@ -68,7 +68,13 @@ export function SignOutButton({
   }
 
   const triggerClass =
-    variant === "rail"
+    variant === "menu"
+      ? // A row in the account dropdown, so it has to match the links above
+        // it exactly — same height, same padding, same left edge. It is the
+        // one destructive item in that menu, which is why it goes red on
+        // hover while they go grey.
+        "flex w-full items-center rounded-xl px-2 py-2.5 text-left text-sm font-bold text-ink-800 transition-colors hover:bg-brand-600 hover:text-cream-50"
+      : variant === "rail"
       ? "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-cream-100/70 transition-colors hover:bg-brand-600/20 hover:text-cream-50"
       : variant === "block"
         ? "rounded-full bg-ink-950/5 px-5 py-2.5 text-sm font-bold text-ink-800 ring-1 ring-ink-950/10 transition-colors hover:bg-brand-600 hover:text-cream-50"

@@ -5,6 +5,7 @@ import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shopToday } from "@/lib/format-date";
 import { ACCOUNT_SHORT, isAccount, type Account } from "@/lib/money-accounts";
+import { isBillKind, monthLabel, monthOf } from "@/lib/monthly-bills";
 
 type Result = { error: string | null };
 
@@ -37,23 +38,96 @@ export async function saveFixedCost(input: {
   id?: string;
   label: string;
   amount: number;
+  kind?: string;
 }): Promise<Result> {
   const owner = await requireOwner();
   if (!owner) return { error: "Only the owner can change the shop's bills." };
   const label = input.label.trim();
   if (!label) return { error: "What is it for?" };
   if (!(input.amount >= 0)) return { error: "How much a month?" };
+  const kind = isBillKind(input.kind) ? input.kind : "overhead";
 
   const supabase = createAdminClient();
   const { error } = input.id
     ? await supabase
         .from("fixed_costs")
-        .update({ label, amount: input.amount })
+        .update({ label, amount: input.amount, kind })
         .eq("id", input.id)
-    : await supabase.from("fixed_costs").insert({ label, amount: input.amount });
+    : await supabase.from("fixed_costs").insert({ label, amount: input.amount, kind });
   if (error) return { error: error.message };
 
   await log(`Set "${label}" at ₱${input.amount.toFixed(2)} a month`, owner.profile?.id ?? null);
+  done();
+  return { error: null };
+}
+
+/* ---------------- what a bill actually came to ---------------- */
+
+/**
+ * Record — or correct — one bill for one month.
+ *
+ * An upsert on (bill, month) rather than an insert, because the month a bill
+ * is entered twice is the month it silently doubles break-even. The database
+ * has a unique constraint saying the same thing (migration 0058); this is the
+ * half of it that turns a second entry into a CORRECTION instead of an error
+ * the owner has to understand.
+ */
+export async function saveMonthlyBill(input: {
+  billId: string;
+  /** Any date in the month. Normalised here so a picker can hand over a day. */
+  month: string;
+  amount: number;
+  note?: string;
+}): Promise<Result> {
+  const owner = await requireOwner();
+  if (!owner) return { error: "Only the owner can record the shop's bills." };
+  if (!input.billId) return { error: "Which bill is this?" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.month)) return { error: "Which month?" };
+  if (!Number.isFinite(input.amount) || input.amount < 0) {
+    return { error: "How much was it?" };
+  }
+  const month = monthOf(input.month);
+  // A bill cannot have arrived for a month that has not started. Typing 2027
+  // instead of 2026 is one keystroke, and it would sit at the top of the
+  // history as the newest figure — which is the one break-even averages.
+  if (month > monthOf(shopToday())) {
+    return { error: `${monthLabel(month)} has not happened yet.` };
+  }
+
+  const supabase = createAdminClient();
+  const { data: bill } = await supabase
+    .from("fixed_costs")
+    .select("label")
+    .eq("id", input.billId)
+    .maybeSingle();
+  if (!bill) return { error: "That bill is no longer on the list." };
+
+  const { error } = await supabase.from("monthly_bills").upsert(
+    {
+      fixed_cost_id: input.billId,
+      month,
+      amount: input.amount,
+      note: input.note?.trim() || null,
+      created_by: owner.profile?.id ?? null,
+    },
+    { onConflict: "fixed_cost_id,month" }
+  );
+  if (error) return { error: error.message };
+
+  await log(
+    `${bill.label} for ${monthLabel(month)}: ₱${input.amount.toFixed(2)}`,
+    owner.profile?.id ?? null
+  );
+  done();
+  return { error: null };
+}
+
+export async function deleteMonthlyBill(id: string): Promise<Result> {
+  const owner = await requireOwner();
+  if (!owner) return { error: "Only the owner can change the shop's bills." };
+  const supabase = createAdminClient();
+  const { error } = await supabase.from("monthly_bills").delete().eq("id", id);
+  if (error) return { error: error.message };
   done();
   return { error: null };
 }

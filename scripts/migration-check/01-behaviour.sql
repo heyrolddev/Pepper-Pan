@@ -1400,3 +1400,118 @@ begin
   end if;
   raise notice 'a typed-in day books a cost as well as takings';
 end $$;
+
+\echo '=== 0058 a bill is a list, and what it came to each month ==='
+select act_as_service();
+reset role;
+delete from monthly_bills;
+delete from fixed_costs where id like 'bill-%';
+insert into fixed_costs (id, label, amount, kind, active)
+  values ('bill-k', 'Kuryente', 2000, 'utility', true);
+
+\echo '--- a month is the first of the month, enforced rather than trusted ---'
+-- A bill filed on the 14th and the same bill filed on the 1st are two rows
+-- for one month, and the unique index below — the thing that stops a bill
+-- being counted twice — would not catch it.
+do $$
+declare took boolean := false;
+begin
+  begin
+    insert into monthly_bills (fixed_cost_id, month, amount)
+      values ('bill-k', date '2026-09-14', 2000);
+    took := true;
+  exception when check_violation then null;
+  end;
+  if took then
+    raise exception 'FAIL: a bill was filed against the middle of a month';
+  end if;
+  raise notice 'only the first of a month is accepted';
+end $$;
+
+\echo '--- the same bill cannot be entered twice for one month ---'
+-- Entering kuryente twice for September is a typo every time, and silently
+-- doubling break-even is what it would otherwise do.
+do $$
+declare took boolean := false;
+begin
+  insert into monthly_bills (fixed_cost_id, month, amount)
+    values ('bill-k', date '2026-09-01', 2000);
+  begin
+    insert into monthly_bills (fixed_cost_id, month, amount)
+      values ('bill-k', date '2026-09-01', 3100);
+    took := true;
+  exception when unique_violation then null;
+  end;
+  if took then
+    raise exception 'FAIL: September has two kuryente bills, so break-even counts it twice';
+  end if;
+  raise notice 'one bill, one month, one figure';
+end $$;
+
+\echo '--- correcting a month replaces the figure rather than adding one ---'
+do $$
+declare n int; amt numeric;
+begin
+  insert into monthly_bills (fixed_cost_id, month, amount)
+    values ('bill-k', date '2026-09-01', 2450)
+  on conflict (fixed_cost_id, month) do update set amount = excluded.amount;
+  select count(*), max(amount) into n, amt
+    from monthly_bills where fixed_cost_id = 'bill-k' and month = date '2026-09-01';
+  if n <> 1 then raise exception 'FAIL: correcting September left % rows', n; end if;
+  if amt <> 2450 then raise exception 'FAIL: the correction did not take — %', amt; end if;
+  raise notice 'a second entry for a month is a correction, not a duplicate';
+end $$;
+
+\echo '--- removing a bill takes its recorded months with it ---'
+-- The cascade is what makes the reset screen honest about what it destroys:
+-- deleting the bill deletes months of readings nobody can go back and
+-- observe again, so the reset counts them separately before it runs.
+do $$
+declare left_behind int;
+begin
+  delete from fixed_costs where id = 'bill-k';
+  select count(*) into left_behind from monthly_bills where fixed_cost_id = 'bill-k';
+  if left_behind <> 0 then
+    raise exception 'FAIL: % recorded months outlived the bill they belong to', left_behind;
+  end if;
+  raise notice 'no orphaned months behind a deleted bill';
+end $$;
+
+\echo '--- what the shop paid for electricity in July is the owner''s business ---'
+-- 0024 took the staff read off `fixed_costs` for exactly this reason. A
+-- per-month history is strictly MORE revealing than the flat figure was, so
+-- anything looser here would be a leak opened by a feature that improved a
+-- screen.
+select act_as_service();
+reset role;
+insert into fixed_costs (id, label, amount, kind, active)
+  values ('bill-r', 'Rent', 4500, 'rent', true) on conflict (id) do nothing;
+insert into monthly_bills (fixed_cost_id, month, amount)
+  values ('bill-r', date '2026-08-01', 4500) on conflict do nothing;
+
+select act_as('22222222-2222-2222-2222-222222222222');
+set role authenticated;
+do $$
+declare n int;
+begin
+  select count(*) into n from monthly_bills;
+  if n <> 0 then
+    raise exception 'FAIL: a member of staff can read the shop''s bills (% rows)', n;
+  end if;
+  raise notice 'staff cannot read what the shop pays its landlord, month by month';
+end $$;
+reset role;
+
+select act_as('11111111-1111-1111-1111-111111111111');
+set role authenticated;
+do $$
+declare n int;
+begin
+  select count(*) into n from monthly_bills;
+  if n < 1 then
+    raise exception 'FAIL: the owner cannot read their own bills';
+  end if;
+  raise notice 'the owner can';
+end $$;
+reset role;
+select act_as_service();

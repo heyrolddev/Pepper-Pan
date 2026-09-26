@@ -86,6 +86,11 @@ const TABLES = [
   // What the shop pays out whether it opens or not, and what it bought to
   // trade with — both are the break-even and payback numbers' only source.
   "fixed_costs",
+  // What each of those bills actually came to, month by month. Losing this
+  // does not lose a number that can be retyped from a drawer somewhere — it
+  // loses the only record the shop has of its own consumption trend, and
+  // every month of it is a month nobody can go back and observe again.
+  "monthly_bills",
   "assets",
   // Money owed and money spent. Three more tables that arrived after this
   // list was last read — and the most expensive three to lose, because

@@ -6,6 +6,7 @@ import { motion, useMotionValueEvent, useScroll } from "motion/react";
 import { useState } from "react";
 import { useCart } from "@/lib/cart-context";
 import { SignOutButton } from "@/components/sign-out-button";
+import { AccountMenu } from "@/components/account-menu";
 import { Logo } from "@/components/logo";
 import { ChefHatIcon } from "@/components/icons";
 import { roleLabel } from "@/lib/permissions";
@@ -183,47 +184,25 @@ export function Nav({
             </Link>
           )}
 
-          {signedIn && !staff && (
-            <Link
-              href="/orders"
-              title={`${activeOrders} order${activeOrders === 1 ? "" : "s"} in progress`}
-              className={`relative hidden items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 transition-colors min-[880px]:inline-flex ${linkClass}`}
-            >
-              My orders
-              {activeOrders > 0 && (
-                <motion.span
-                  key={activeOrders}
-                  initial={{ scale: 0.5 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                  className={`relative ${countClass("bg-jade-600")}`}
-                >
-                  {/* A number alone reads as a total — "3 orders", the way the
-                      cart badge does. The ring says these are happening *now*,
-                      which is the thing worth walking back to the phone for.
-                      Behind the digits, so it never obscures them. */}
-                  <span
-                    aria-hidden
-                    className="absolute inset-0 animate-ping rounded-full bg-jade-600 opacity-60"
-                  />
-                  <span className="relative">{countLabel(activeOrders)}</span>
-                </motion.span>
-              )}
-              {pathname.startsWith("/orders") && <ActiveRule />}
-            </Link>
-          )}
+          {/* An order in flight keeps its own pill, outside the menu.
 
-          {/* On a phone the "My orders" link is hidden for space — but an
-              order in progress is exactly what someone opens the site to
-              check, so it earns a spot of its own while it's live. */}
+              "My orders" as a text link moved INTO the account menu, where it
+              belongs — but a live order is not navigation, it is a countdown,
+              and it is the single thing somebody opens this site to check. A
+              live order one tap away is worth the width; the link to a list of
+              finished ones is not. */}
           {signedIn && !staff && activeOrders > 0 && (
             <Link
               href="/orders"
               title={`${activeOrders} order${activeOrders === 1 ? "" : "s"} in progress`}
-              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-jade-600 px-2.5 py-1.5 text-xs font-bold text-cream-50 min-[880px]:hidden"
+              className="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-jade-600 px-2.5 py-1.5 text-xs font-bold text-cream-50"
             >
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cream-50" />
               {countLabel(activeOrders)}
+              <span className="hidden min-[880px]:inline">
+                {activeOrders === 1 ? "order" : "orders"} cooking
+              </span>
+              {pathname.startsWith("/orders") && <ActiveRule />}
             </Link>
           )}
 
@@ -248,47 +227,32 @@ export function Nav({
           </Link>
           )}
 
-          {/* The account chip carries the customer's own name, so the header
-              reads as their account rather than a generic "Account" link.
-              Being a chip rather than a text link, it can't take the gold rule
-              the other tabs use — so on its own page the whole chip goes gold
-              instead. Same signal, in the shape this control actually has. */}
+          {/* The chip carries the customer's own name, so the header reads as
+              their account rather than a generic "Account" link — and it is
+              now the door to everything of theirs except the cart. See
+              `account-menu.tsx` for why the cart is deliberately left out. */}
           {signedIn && !staff && (
-            <Link
-              href="/account"
-              title="Your account"
-              aria-current={onAccount ? "page" : undefined}
-              className={`flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-1 font-bold transition-all hover:scale-105 min-[880px]:pr-3 ${
-                onAccount
-                  ? "bg-brand-600 text-cream-50 ring-2 ring-gold-400"
-                  : solid
-                    ? "bg-ink-950/5 text-ink-950 ring-1 ring-ink-950/10"
-                    : "bg-cream-50/10 text-cream-50 ring-1 ring-cream-50/20"
-              }`}
-            >
-              <span
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black ${
-                  onAccount ? "bg-ink-950 text-gold-400" : "bg-brand-600 text-cream-50"
-                }`}
-              >
-                {(firstName ?? "?").charAt(0).toUpperCase()}
-              </span>
-              <span className="hidden max-w-24 truncate text-xs min-[880px]:block">
-                {firstName ?? "Account"}
-              </span>
-            </Link>
+            <AccountMenu
+              firstName={firstName}
+              activeOrders={activeOrders}
+              solid={solid}
+              onAccountPage={onAccount}
+              countClass={countClass}
+              countLabel={countLabel}
+            />
           )}
 
-
-          {signedIn ? (
-            // Hidden on the compact row, where it wrapped to two lines and
-            // shoved everything else into the logo.
-            // It lives on the account page instead, which is where the
-            // account chip beside it already leads.
+          {/* Staff keep the plain button. HQ has its own sidebar with a sign
+              out in it, the header is not where they live, and an account
+              menu offering a customer's order history to the owner would be
+              two products in one control. */}
+          {signedIn && staff && (
             <span className="hidden min-[880px]:block">
               <SignOutButton solid={solid} />
             </span>
-          ) : (
+          )}
+
+          {!signedIn && (
             <Link
               href="/login"
               className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 font-bold transition-colors ${

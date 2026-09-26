@@ -689,33 +689,32 @@ export async function saveMealRecipe(input: {
 
 export type WasteCategory = "waste" | "internal";
 
-/**
- * Something didn't get sold.
- *
- * Two categories, kept apart on purpose. "Waste" is stock that spoiled, spilt
- * or burnt — money gone, and a number worth driving down. "Internal" is staff
- * meals and tasting portions — also money, but money spent deliberately.
- * Adding them together produces a figure that is either an unfair
- * indictment of the kitchen or a hiding place for real spoilage, depending on
- * which way the mix runs.
- *
- * It goes through the same movement engine as a sale, so the shelf ends up
- * right either way. It is logged to `consumption_log` under its own type
- * rather than as a sale: reorder suggestions are built on what the shop
- * actually sells, and quietly buying more to cover what keeps getting thrown
- * away is how a waste problem becomes permanent.
- */
-export async function recordWaste(input: {
+/** One thing that did not get sold, and why. */
+type WasteInput = {
   sourceType: "inv" | "batch";
   sourceId: string;
   qty: number;
   reason: string;
   category: WasteCategory;
   note?: string;
-}): Promise<Result & { cost?: number }> {
-  const viewer = await requireWaste();
-  if (!viewer) return { error: "Only shop staff can log waste." };
-  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
+};
+
+/**
+ * One line of waste, written.
+ *
+ * Split out of `recordWaste` so that logging four spoiled things in one go
+ * can reuse it exactly rather than approximately. Everything the two share —
+ * the movement engine, the priced `waste_log` row, the activity line — is in
+ * here; everything they do NOT share — who is allowed, whether the page
+ * refreshes, what a half-failed run says — stays with the callers.
+ *
+ * Takes the viewer rather than looking it up, so a run of ten lines is one
+ * permission check and not ten.
+ */
+async function writeWasteLine(
+  viewer: NonNullable<Awaited<ReturnType<typeof requireWaste>>>,
+  input: WasteInput
+): Promise<Result & { cost?: number }> {
   if (!(input.qty > 0)) return { error: "How much was it?" };
   if (!input.reason.trim()) return { error: "What happened to it?" };
 
@@ -761,7 +760,6 @@ export async function recordWaste(input: {
       `${input.category === "internal" ? "Internal use" : "Waste"}: ${input.qty} ${ing.unit} of "${ing.name}" — ₱${total.toFixed(2)} (${input.reason.trim()})`,
       viewer.profile?.id ?? null
     );
-    revalidate();
     return { error: null, cost: total };
   }
 
@@ -805,8 +803,98 @@ export async function recordWaste(input: {
     `${input.category === "internal" ? "Internal use" : "Waste"}: ${input.qty} ${batch.yield_unit} of "${batch.name}" — ₱${total.toFixed(2)} (${input.reason.trim()})`,
     viewer.profile?.id ?? null
   );
-  revalidate();
   return { error: null, cost: total };
+}
+
+/**
+ * Something didn't get sold — one line or a dozen.
+ *
+ * Two categories, kept apart on purpose. "Waste" is stock that spoiled, spilt
+ * or burnt — money gone, and a number worth driving down. "Internal" is staff
+ * meals and tasting portions — also money, but money spent deliberately.
+ * Adding them together produces a figure that is either an unfair indictment
+ * of the kitchen or a hiding place for real spoilage, depending on which way
+ * the mix runs.
+ *
+ * It goes through the same movement engine as a sale, so the shelf ends up
+ * right either way. It is logged to `consumption_log` under its own type
+ * rather than as a sale: reorder suggestions are built on what the shop
+ * actually sells, and quietly buying more to cover what keeps getting thrown
+ * away is how a waste problem becomes permanent.
+ *
+ * ── Why there is no single-line version any more ────────────────────────
+ *
+ * There was one, and this took its place rather than sitting beside it. Two
+ * entry points into stock movement is two places for the rules to drift, and
+ * the single-line one had nothing this cannot do with a list of length one.
+ *
+ * Waste does not arrive one ingredient at a time — a fridge left open
+ * overnight costs the pork, the beansprouts and half a batch of dumplings at
+ * the same moment. One dialog per item meant the shop logged the first thing,
+ * decided the point had been made, and the rest quietly became a stock
+ * discrepancy a fortnight later. An incomplete waste log does not look
+ * incomplete; it looks like a shop with less spoilage than it has.
+ *
+ * ── Why the lines are written one at a time, and what that costs ────────
+ *
+ * Each line moves stock through `consume_ingredient` or a batch update, and
+ * there is no one transaction wrapping all of them. So a failure on line
+ * three leaves lines one and two APPLIED. That is worth stating plainly
+ * rather than hiding, because both convenient lies are expensive: reporting
+ * the run as failed makes somebody log the first two a second time, and
+ * reporting it as done loses the third. The result says exactly how many went
+ * in and which did not, and `partialReport` in `lib/waste-lines.ts` is the
+ * sentence that says it.
+ *
+ * The lines still go in order, and the run does NOT stop at the first
+ * failure: a deleted ingredient on line two must not prevent line three, or
+ * one stale row in a list of eight silently discards six good ones.
+ */
+export async function recordWasteMany(input: {
+  lines: { sourceType: "inv" | "batch"; sourceId: string; qty: number; name: string }[];
+  reason: string;
+  category: WasteCategory;
+  note?: string;
+}): Promise<{ error: string | null; done: string[]; failed: { name: string; why: string }[]; cost: number }> {
+  const viewer = await requireWaste();
+  if (!viewer) {
+    return { error: "Only shop staff can log waste.", done: [], failed: [], cost: 0 };
+  }
+  if (await offShift(viewer)) {
+    return { error: NOT_ON_SHIFT, done: [], failed: [], cost: 0 };
+  }
+  if (input.lines.length === 0) {
+    return { error: "Nothing to log.", done: [], failed: [], cost: 0 };
+  }
+  if (!input.reason.trim()) {
+    return { error: "What happened to it?", done: [], failed: [], cost: 0 };
+  }
+
+  const done: string[] = [];
+  const failed: { name: string; why: string }[] = [];
+  let cost = 0;
+
+  for (const line of input.lines) {
+    const r = await writeWasteLine(viewer, {
+      sourceType: line.sourceType,
+      sourceId: line.sourceId,
+      qty: line.qty,
+      reason: input.reason,
+      category: input.category,
+      note: input.note,
+    });
+    if (r.error !== null) failed.push({ name: line.name, why: r.error });
+    else {
+      done.push(line.name);
+      cost += r.cost ?? 0;
+    }
+  }
+
+  // Once, not per line. Revalidating inside the loop re-renders the page
+  // under a run that is still writing to it.
+  if (done.length > 0) revalidate();
+
+  return { error: null, done, failed, cost };
 }
 
 /* ------------------------------------------------------------------ */

@@ -137,6 +137,10 @@ test("money records means every table that holds money", () => {
   for (const table of [
     "cash_ledger",
     "fixed_costs",
+    // The months recorded against those bills. The FK cascades, so leaving
+    // this out would still clear the rows — and report a count that covered
+    // none of them.
+    "monthly_bills",
     "assets",
     "receivables",
     "oe_templates",
