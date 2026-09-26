@@ -5,6 +5,7 @@ import {
   recommendation,
   type AnswerFacts,
 } from "@/lib/assistant-answers";
+import { shopToday } from "@/lib/format-date";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   openState,
@@ -149,7 +150,7 @@ async function readFacts(): Promise<Facts> {
     db
       .from("shop_closures")
       .select("closed_on, reason")
-      .gte("closed_on", new Date().toISOString().slice(0, 10))
+      .gte("closed_on", shopToday())
       .order("closed_on")
       .limit(30),
     db

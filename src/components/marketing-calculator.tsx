@@ -16,6 +16,7 @@ import {
   type CampaignResult,
   type ShopNormal,
 } from "@/lib/marketing";
+import { shopToday } from "@/lib/format-date";
 import {
   deleteCampaign,
   saveCampaign,
@@ -69,7 +70,7 @@ function blankDraft(normal: ShopNormal): Draft {
   return {
     name: "",
     kind: "ads",
-    startedOn: new Date().toISOString().slice(0, 10),
+    startedOn: shopToday(),
     days: "7",
     spend: "",
     giveawayCost: "",

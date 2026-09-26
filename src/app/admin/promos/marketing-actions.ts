@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CAMPAIGN_KINDS, type CampaignKind } from "@/lib/marketing";
+import { shopToday } from "@/lib/format-date";
 
 /**
  * Saving a campaign, and nothing else.
@@ -117,7 +118,7 @@ export async function saveCampaign(input: {
   const row = {
     name,
     kind: input.kind,
-    started_on: input.startedOn || new Date().toISOString().slice(0, 10),
+    started_on: input.startedOn || shopToday(),
     days,
     spend: num(input.spend),
     giveaway_cost: num(input.giveawayCost),

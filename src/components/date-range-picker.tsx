@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { shopToday } from "@/lib/format-date";
 
 /**
  * The window the dashboard's sales figure covers.
@@ -14,15 +15,11 @@ import { useState } from "react";
 const day = 864e5;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-/** Shop-timezone today, so a late-evening session doesn't jump a day. */
-function todayInManila(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
+/* This file had its own, correct, copy of "today in Manila" — written here
+   because the shared helper was UTC and wrong. The shared one is right now,
+   so the copy goes: two definitions of the shop's day is how they drift, and
+   the drift is the bug this whole change is about. */
+const todayInManila = shopToday;
 
 function monthStart(offsetMonths = 0): { from: string; to: string } {
   const now = new Date(todayInManila() + "T00:00:00Z");

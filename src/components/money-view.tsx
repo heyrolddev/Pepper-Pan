@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { HistoryList } from "@/components/history-list";
 import { peso } from "@/lib/peso";
-import { formatDate } from "@/lib/format-date";
+import { formatDate, shopToday } from "@/lib/format-date";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import type { MoneyPicture } from "@/lib/money-server";
 import {
@@ -1033,7 +1033,7 @@ export function MoneyView({
                 </div>
               ) : (
                 <button
-                  onClick={() => run(() => setPaybackFrom(new Date().toISOString().slice(0, 10)))}
+                  onClick={() => run(() => setPaybackFrom(shopToday()))}
                   disabled={busy}
                   className="mt-4 w-full rounded-2xl bg-ink-950/5 py-3 text-sm font-bold text-ink-800 ring-1 ring-ink-950/10 hover:bg-ink-950/10"
                 >

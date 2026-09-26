@@ -2,6 +2,7 @@ import "server-only";
 import { orderLabel } from "@/lib/tickets";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { newestFirst } from "@/lib/ledger-order";
+import { shopToday } from "@/lib/format-date";
 import {
   monthlyRunningRate,
   tankLife,
@@ -244,7 +245,13 @@ export async function loadMoney(): Promise<MoneyPicture> {
   const gasSince = new Date(Date.now() - GAS_WINDOW_DAYS * 86_400_000)
     .toISOString()
     .slice(0, 10);
-  const today = new Date().toISOString().slice(0, 10);
+  /* The shop's day, not the server's.
+
+     This one reaches further than it looks: `today` is what `tankLife` counts
+     days-to-go from, and what `billLines` calls the current month. Eight
+     hours out at a month boundary means the panel opens on the wrong month
+     and reports last month's bills as "not entered yet". */
+  const today = shopToday();
 
   const [
     { data: costs },

@@ -1,4 +1,5 @@
 import "server-only";
+import { shopToday } from "@/lib/format-date";
 import { createClient } from "@/lib/supabase/server";
 import { isConfigured } from "@/lib/auth";
 import {
@@ -45,7 +46,7 @@ export async function getSchedule(): Promise<ShopSchedule> {
 
   try {
     const supabase = await createClient();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = shopToday();
 
     const [hoursRes, closuresRes, settingsRes] = await Promise.all([
       supabase.from("shop_hours").select("weekday, is_open, opens, closes").order("weekday"),
