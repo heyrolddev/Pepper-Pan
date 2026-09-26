@@ -74,10 +74,13 @@ export type SuggestionRow = {
   unit: string;
   stock: number;
   dailyAvg: number;
-  daysLeft: number;
+  /** Null when the shop has never recorded using this one. */
+  daysLeft: number | null;
   buy: number;
   cost: number;
   coveredBy: { name: string; qty: number; unit: string }[];
+  /** Running out at the rate it is used, or under the owner's own level. */
+  reason: "running-out" | "below-level";
 };
 
 export type ExpiringRow = {
@@ -325,6 +328,12 @@ export function InventoryView({
     [stock, batches]
   );
 
+  /** How many are on the buying list only because of the owner's own level. */
+  const byLevel = useMemo(
+    () => suggestions.filter((s) => s.reason === "below-level").length,
+    [suggestions]
+  );
+
   const shownStock = useMemo(() => {
     const q = query.trim().toLowerCase();
     return stock
@@ -544,9 +553,12 @@ export function InventoryView({
       )}
 
       {/* The shopping list. Above the table, because at 5am nobody scrolls.
-          Built from what the shop actually gets through rather than from the
-          reorder number somebody guessed once — and it says how long each one
-          has left, which is the part a static level can never tell you. */}
+          Two reasons to be on it, and for a long time only one of them
+          counted: an ingredient running out at the rate it is used, OR one
+          under the level the owner set by hand. The second was ignored
+          entirely, and anything the shop had never recorded USING was skipped
+          before it was even considered — so most of a new store room could
+          never reach this list at all. */}
       {suggestions.length > 0 && (
         <section className="rounded-3xl bg-ink-950 p-6 text-cream-50">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -563,7 +575,28 @@ export function InventoryView({
             {thinHistory
               ? `Based on only ${usageDays} day${usageDays === 1 ? "" : "s"} of sales so far — treat it as a rough first guess.`
               : `Worked out from what you've actually used over the last ${usageDays} days.`}
+            {byLevel > 0 && (
+              <>
+                {" "}
+                {byLevel} more {byLevel === 1 ? "is" : "are"} here because{" "}
+                {byLevel === 1 ? "it is" : "they are"} under the level you set.
+              </>
+            )}
           </p>
+
+          {/* The whole list, not the five rows above the fold. A shopping
+              list that silently stops at five is how you get to the market
+              and find out about the sixth. */}
+          <a
+            href="/admin/inventory/buy-list"
+            download
+            className="mt-3 inline-flex items-center gap-2 rounded-full bg-cream-50/10 px-4 py-2 text-sm font-bold text-cream-50 ring-1 ring-cream-50/20 transition-colors hover:bg-cream-50/20"
+          >
+            ⤓ Download the list
+            <span className="font-normal text-cream-100/50">
+              all {suggestions.length}
+            </span>
+          </a>
           <ul className="mt-4 flex flex-col gap-2">
             {(showAllBuy ? suggestions : suggestions.slice(0, 5)).map((s) => (
               <li
@@ -574,22 +607,40 @@ export function InventoryView({
                   <span className="font-bold">
                     {s.name}
                     <span className="ml-2 text-sm font-normal text-cream-100/50">
-                      {s.stock.toLocaleString("en-PH")} {s.unit} left ·{" "}
-                      {s.dailyAvg.toLocaleString("en-PH", {
-                        maximumFractionDigits: 1,
-                      })}{" "}
-                      {s.unit}/day
+                      {s.stock.toLocaleString("en-PH")} {s.unit} left
+                      {/* No made-up rate for something never used. "0 g/day"
+                          reads as a measurement; it is the absence of one. */}
+                      {s.daysLeft !== null && (
+                        <>
+                          {" · "}
+                          {s.dailyAvg.toLocaleString("en-PH", {
+                            maximumFractionDigits: 1,
+                          })}{" "}
+                          {s.unit}/day
+                        </>
+                      )}
                     </span>
                   </span>
                   <span className="text-sm">
+                    {/* Three things it can say, and the third is the point of
+                        this whole change: an ingredient under the level the
+                        owner set, which the list used to leave out entirely
+                        because seven days' usage happened to be less than
+                        that level. */}
                     <span
                       className={`font-black tabular-nums ${
-                        s.daysLeft < 1 ? "text-brand-300" : "text-gold-400"
+                        s.daysLeft === null
+                          ? "text-cream-100/70"
+                          : s.daysLeft < 1
+                            ? "text-brand-300"
+                            : "text-gold-400"
                       }`}
                     >
-                      {s.daysLeft < 1
-                        ? "out now"
-                        : `${s.daysLeft.toFixed(1)} days left`}
+                      {s.daysLeft === null
+                        ? "below your level"
+                        : s.daysLeft < 1
+                          ? "out now"
+                          : `${s.daysLeft.toFixed(1)} days left`}
                     </span>
                     <span className="ml-3 text-cream-100/70">
                       buy ~{s.buy.toLocaleString("en-PH", { maximumFractionDigits: 0 })}{" "}
