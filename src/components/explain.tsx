@@ -34,12 +34,21 @@ export function Explain({
   lines,
   /** What moves it, and what to do when it looks wrong. */
   why,
+  /**
+   * Whether the thing being wrapped is dark.
+   *
+   * The "?" mark is ink on a 10% ink disc, which is exactly invisible on the
+   * charcoal band the Money page now opens with — an affordance that cannot
+   * be seen is an affordance that is not there.
+   */
+  onDark = false,
   children,
 }: {
   title: string;
   what: string;
   lines: ExplainLine[];
   why?: string;
+  onDark?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -58,7 +67,11 @@ export function Explain({
             reads as an object you can open without shouting about it. */}
         <span
           aria-hidden
-          className="pointer-events-none absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-ink-950/10 text-[11px] font-black text-ink-950/40 transition-colors group-hover:bg-ink-950 group-hover:text-cream-50"
+          className={`pointer-events-none absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full text-[11px] font-black transition-colors ${
+            onDark
+              ? "bg-cream-50/15 text-cream-50/70 group-hover:bg-gold-400 group-hover:text-ink-950"
+              : "bg-ink-950/10 text-ink-950/40 group-hover:bg-ink-950 group-hover:text-cream-50"
+          }`}
         >
           ?
         </span>

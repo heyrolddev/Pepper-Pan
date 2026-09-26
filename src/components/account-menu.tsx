@@ -109,8 +109,29 @@ export function AccountMenu({
     panel.current?.querySelector<HTMLElement>("a,button")?.focus();
   }, [open]);
 
+  /**
+   * Menu rows, and the one you are standing on.
+   *
+   * The header's own links say where you are with a gold rule under them. A
+   * rule cannot travel into a dropdown — there is nothing to underline once
+   * the panel is shut — so the current row carries the same fact in the shape
+   * this control has: the brand tint, the darker type, and a gold bar down
+   * the left edge where a rule would be if the row were a tab.
+   */
   const item =
-    "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-ink-800 transition-colors hover:bg-ink-950/[0.06] hover:text-ink-950";
+    "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition-colors";
+  const itemOff = `${item} text-ink-800 hover:bg-ink-950/[0.06] hover:text-ink-950`;
+  const itemOn = `${item} relative bg-brand-600/10 text-ink-950 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-full before:bg-gold-400`;
+
+  /** Reviews is a section; the others are exact pages. */
+  const here = (href: string) =>
+    href === "/account" ? pathname.startsWith("/account") : pathname.startsWith(href);
+
+  const rows = [
+    { href: "/orders", label: "My orders" },
+    { href: "/reviews", label: "Reviews" },
+    { href: "/account", label: "My account" },
+  ];
 
   return (
     <div ref={wrap} className="relative shrink-0">
@@ -182,25 +203,37 @@ export function AccountMenu({
             </p>
           )}
 
-          <Link href="/orders" role="menuitem" className={item}>
-            My orders
-            {activeOrders > 0 && (
-              <span className={`relative ${countClass("bg-jade-600")}`}>
-                <span
-                  aria-hidden
-                  className="absolute inset-0 animate-ping rounded-full bg-jade-600 opacity-60"
-                />
-                <span className="relative">{countLabel(activeOrders)}</span>
-              </span>
-            )}
-          </Link>
-
-          <Link href="/account" role="menuitem" className={item}>
-            My account
-            <span aria-hidden className="text-xs opacity-35">
-              ›
-            </span>
-          </Link>
+          {rows.map((row) => {
+            const on = here(row.href);
+            return (
+              <Link
+                key={row.href}
+                href={row.href}
+                role="menuitem"
+                aria-current={on ? "page" : undefined}
+                className={on ? itemOn : itemOff}
+              >
+                {row.label}
+                {row.href === "/orders" && activeOrders > 0 ? (
+                  <span className={`relative ${countClass("bg-jade-600")}`}>
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 animate-ping rounded-full bg-jade-600 opacity-60"
+                    />
+                    <span className="relative">{countLabel(activeOrders)}</span>
+                  </span>
+                ) : on ? (
+                  <span className="text-[10px] font-black uppercase tracking-wide text-brand-600">
+                    here
+                  </span>
+                ) : (
+                  <span aria-hidden className="text-xs opacity-35">
+                    ›
+                  </span>
+                )}
+              </Link>
+            );
+          })}
 
           <div className="my-1 h-px bg-ink-950/10" />
 

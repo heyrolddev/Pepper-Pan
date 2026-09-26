@@ -22,7 +22,8 @@ import {
 } from "@/app/admin/money/actions";
 import { hqTitle } from "@/lib/hq-theme";
 import { Explain } from "@/components/explain";
-import { ACCOUNT_SHORT, type Account } from "@/lib/money-accounts";
+import { HeroBand, HeroFact, Meter, SectionHead } from "@/components/hq-kit";
+import { ACCOUNT_LABELS, ACCOUNT_SHORT, type Account } from "@/lib/money-accounts";
 import { SupplierDebts } from "@/components/supplier-debts";
 import { PotHistory } from "@/components/pot-history";
 import { SpendPanel } from "@/components/spend-panel";
@@ -212,14 +213,14 @@ function Pot({
 
   if (!state.enabled) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-ink-950/[0.03] px-4 py-3 ring-1 ring-ink-950/5">
+      <div className="flex flex-col justify-between gap-3 rounded-2xl border-2 border-dashed border-ink-950/12 px-4 py-4">
         <div className="min-w-0">
           <p className="text-sm font-bold text-ink-800/45">{label}</p>
           <p className="mt-0.5 text-xs text-ink-800/35">Not counted yet</p>
         </div>
         <button
           onClick={onStart}
-          className="shrink-0 rounded-xl bg-ink-950/5 px-4 py-2 text-sm font-bold text-ink-800 ring-1 ring-ink-950/10 transition-colors hover:bg-ink-950 hover:text-cream-50"
+          className="w-full rounded-xl bg-ink-950/5 px-4 py-2 text-sm font-bold text-ink-800 ring-1 ring-ink-950/10 transition-colors hover:bg-ink-950 hover:text-cream-50"
         >
           Start counting
         </button>
@@ -235,28 +236,34 @@ function Pot({
      somebody wants the history is standing on the number, so the number is
      the control — and being a real <button> is what makes that true with a
      keyboard and a screen reader as well as a thumb. */
+  /* A tile, and a real button.
+
+     Three balances stacked as rows read as a list to scan, and nobody scans
+     this — they are looking for ONE of them. Side by side, each on its own
+     tinted ground with its colour along the top, the pot is found by colour
+     before the label is read. The figure is also the control: the balance is
+     the one number here an owner routinely disagrees with, and the place they
+     want its history is standing on it. */
   return (
     <button
       type="button"
       onClick={onOpen}
       aria-label={`${label} — ${peso(state.onHand)}. See its history.`}
-      className={`flex w-full items-center gap-3 overflow-hidden rounded-2xl ${skin.tint} py-3 pr-4 text-left ring-1 ${skin.ring} transition-shadow hover:ring-2 hover:ring-ink-950/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-950`}
+      className={`group flex w-full flex-col overflow-hidden rounded-2xl ${skin.tint} text-left ring-1 ${skin.ring} transition-all hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-14px] hover:shadow-ink-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-950`}
     >
-      <span aria-hidden className={`h-10 w-1.5 shrink-0 rounded-r-full ${skin.bar}`} />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold text-ink-950">{label}</p>
-        <p className="mt-0.5 text-xs text-ink-800/50">{note}</p>
-      </div>
-      <span className="shrink-0 text-right">
+      <span aria-hidden className={`h-1.5 w-full shrink-0 ${skin.bar}`} />
+      <span className="flex flex-1 flex-col gap-1 px-4 py-3.5">
+        <span className="text-sm font-bold text-ink-950">{label}</span>
         <span
-          className={`block font-display text-xl font-black tabular-nums ${skin.value}`}
+          className={`font-display text-2xl font-black leading-none tabular-nums ${skin.value}`}
         >
           {peso(state.onHand)}
         </span>
+        <span className="mt-auto pt-2 text-xs leading-snug text-ink-800/45">{note}</span>
         {/* Says the history is there, and how much of it. A balance that is
             merely clickable looks exactly like one that is not. */}
-        <span className="mt-0.5 block text-[11px] font-bold text-ink-800/40">
-          {moves > 0 ? `${moves} movements ›` : "History ›"}
+        <span className="text-[11px] font-black text-ink-800/45 transition-colors group-hover:text-ink-950">
+          {moves > 0 ? `${moves} movements` : "History"} <span aria-hidden>›</span>
         </span>
       </span>
     </button>
@@ -351,12 +358,12 @@ export function MoneyView({
   ];
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
       <div>
-        <h2 className={hqTitle}>Money</h2>
+        <h2 className={hqTitle}>Costs &amp; cash</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
-          The costs that arrive whether or not anyone buys anything — and what
-          the shop has to take in a day to cover them.
+          What arrives whether or not anyone buys anything — and what the shop
+          has to take in a day to cover it.
         </p>
       </div>
 
@@ -366,175 +373,12 @@ export function MoneyView({
         </p>
       )}
 
-      {/* ---- everything the shop holds ----
+      {/* ---- the headline, and it is the top of the page now ----
 
-          Above the drawer rather than replacing it. "How much does Pepper Pan
-          have" and "does the drawer balance" are two different questions, and
-          only the second one can be checked against a physical count — fold
-          an untouchable e-wallet balance into the drawer figure and that
-          check, the one self-correcting number on this screen, is gone. */}
-      <Panel
-        title="Pepper Pan Bank"
-        hint="Every pot the shop's money sits in, added up. Each one is counted on its own so the drawer can still be checked against what you physically count."
-        action={
-          anyPot ? (
-            <button
-              onClick={() => setDialog("cash-entry")}
-              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
-            >
-              + Money in or out
-            </button>
-          ) : undefined
-        }
-      >
-        {!anyPot ? (
-          <p className="text-sm text-ink-800/60">
-            Nothing is being counted yet. Start with whichever pot you know the
-            balance of right now — the others can wait.
-          </p>
-        ) : null}
-
-        <div className="flex flex-col gap-2">
-          {POTS.map((pot) => (
-            <Pot
-              key={pot.key}
-              tone={pot.tone}
-              label={pot.label}
-              note={pot.note}
-              state={money[pot.key]}
-              moves={money.ledger.filter((l) => l.account === pot.key).length}
-              onStart={() => setDialog(pot.start)}
-              onOpen={() => setPotOpen(pot.key)}
-            />
-          ))}
-        </div>
-
-        {anyPot && (
-          <>
-            <div className="mt-4 flex items-center justify-between border-t-2 border-ink-950/15 pt-3">
-              <span className="text-sm font-bold text-ink-800/70">
-                What Pepper Pan holds
-              </span>
-              <span className="font-display text-2xl font-black tabular-nums text-ink-950">
-                {peso(money.totalHeld)}
-              </span>
-            </div>
-            <p className="mt-3 text-xs leading-relaxed text-ink-800/50">
-              Money customers still owe you is not in here — that is{" "}
-              {peso(money.owed, 0)} under Utang below, and it is not yours
-              until it is collected.
-            </p>
-          </>
-        )}
-      </Panel>
-
-      {/* ---- what the shop owes ----
-
-          Directly under Pepper Pan Bank because it is the correction to it.
-          The pots hold what they say — that figure has to stay checkable
-          against a physical count — but some of it is already the supplier's,
-          and nothing on this screen used to say so. */}
-      <Panel
-        title="Utang sa supplier"
-        hint="Deliveries and purchases taken on credit. The cash is still in the drawer until you pay — recording the debt moves nothing, and paying it is what writes the line."
-      >
-        <SupplierDebts
-          debts={money.debts}
-          owedToSuppliers={money.owedToSuppliers}
-          totalHeld={money.totalHeld}
-          openPots={openPots.length > 0 ? openPots : ["cash"]}
-          suppliers={suppliers}
-        />
-      </Panel>
-
-      {/* ---- what gets used up ---- */}
-      <Panel
-        title="Gamit at gastos"
-        hint="Supplies, gas and repairs — used up, and nothing left to show for them. Not ingredients, not rent. Until now they were in no sum anywhere, which made break-even lower than the truth."
-      >
-        <SpendPanel
-          runningCosts={money.runningCosts}
-          runningForWindow={money.runningForWindow}
-          monthlyRate={money.monthlyRunningRate}
-          windowDays={money.windowDays}
-          tanks={money.tanks}
-          suppliers={suppliers}
-          openPots={openPots.length > 0 ? openPots : ["cash"]}
-        />
-      </Panel>
-
-      {/* ---- money history ----
-
-          It was "Cash in the drawer", and it listed the drawer's lines only.
-          That was correct and it was not enough: the shop takes GCash and
-          bank transfers, every one of those was counted in a balance above,
-          and not one of them appeared in any history anywhere. Asked where a
-          GCash payment went, the software's honest answer was that it knew
-          and would not say.
-
-          So this is every pot in one stream, each line saying which one it
-          moved. The per-pot view did not go away — it moved onto the pot
-          itself, up in Pepper Pan Bank, which is where somebody is standing
-          when they want it. This panel answers the other question: what has
-          the shop's money been doing, wherever it sits. */}
-      <Panel
-        title="Money history"
-        hint={
-          anyPot
-            ? "Everything in and out, across the drawer, GCash and the bank. Tap a pot above to see just that one, a day at a time."
-            : "Nothing is being counted yet. Start a pot above and everything it does from then on is listed here."
-        }
-      >
-        {anyPot && (
-          <>
-            <p className="font-display text-3xl font-black tabular-nums text-ink-950">
-              {peso(money.totalHeld)}
-            </p>
-            <p className="-mt-1 text-xs text-ink-800/45">
-              across every pot being counted
-            </p>
-            {/* Four, newest first, and the rest behind a dialog.
-
-                It was a hard `.slice(0, 8)` once — eight rows, and everything
-                before that simply gone with nothing on screen to say so. The
-                money not balancing is exactly when somebody needs to go back
-                further than the last eight entries. */}
-            <HistoryList
-              className="mt-4"
-              items={money.ledger}
-              keyOf={(l) => l.id}
-              dateOf={(l) => l.date}
-              initial={4}
-              noun="entries"
-              // Behind a dialog rather than expanding down the page. This is
-              // the longest list in HQ — every sale on every pot since
-              // counting started — and expanded in place it buried its own
-              // "Show fewer" under a hundred rows. The dates live in there
-              // too, where they are used.
-              modal
-              modalTitle="Money history"
-              empty="Nothing yet — no sales, and nothing put in or taken out."
-              render={(l) => (
-                <Row
-                  label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Money in" : "Money out")}`}
-                  value={`${l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
-                  tone={l.type === "in" ? "good" : "bad"}
-                  /* Which pot, on every line.
-
-                     One stream across three pots is only readable if each
-                     line says which one it was — otherwise a ₱200 in and a
-                     ₱200 out on the same day look like they cancel, and they
-                     do not if one was the drawer and the other was GCash.
-                     This badge is load-bearing, not decoration. */
-                  badge={`${ACCOUNT_SHORT[l.account]}${l.derived ? " · sale" : ""}`}
-                />
-              )}
-            />
-          </>
-        )}
-      </Panel>
-
-      {/* ---- the headline ---- */}
+          It used to be fifth, under the pots, the supplier utang, the
+          supplies and the whole money history. The number the page
+          exists to produce was four scrolls down, in a panel the same
+          shape as the list of things the shop owns. */}
       <Explain
         title="Break-even a day"
         what="What the shop has to take in on a trading day just to stand still — before a single peso is profit."
@@ -589,363 +433,617 @@ export function MoneyView({
                 },
               ]
         }
+        onDark
         why="Four things move this. Your bills move it the moment you edit them below. Spoilage moves it as you record waste. Supplies, gas and repairs move it as you record them — that line is new, and until it existed this figure was quietly lower than the truth every day. And your margin moves it as you sell, but only from new sales: every order keeps the ingredient cost it had on the day, so changing an ingredient price never rewrites what you already sold."
       >
-      <section
-        className={`overflow-hidden rounded-3xl p-6 sm:p-8 ${
-          money.breakEvenDaily === null
-            ? "bg-cream-100 text-ink-950 ring-1 ring-ink-950/10"
-            : gap !== null && gap >= 0
-              ? "bg-jade-600 text-cream-50"
-              : "bg-brand-600 text-cream-50"
-        }`}
-      >
+      <HeroBand eyebrow="To cover everything">
         {money.breakEvenDaily === null ? (
           <>
-            <h3 className="font-display text-2xl font-black">
+            <h3 className="mt-2 font-display text-3xl font-black">
               Break-even needs two things
             </h3>
-            <p className="mt-2 max-w-xl text-sm text-ink-800/70">
+            <p className="mt-2 max-w-xl text-sm text-cream-50/70">
               {money.monthlyFixed <= 0
-                ? "Add your monthly bills below — rent, kuryente, tubig, sweldo."
-                : "And some sales, so there's a margin to work from."}
+                ? "Your monthly bills — rent, kuryente, tubig, sweldo. Add them under “What it costs to open” below."
+                : "And some sales, so there is a margin to work from."}
             </p>
           </>
         ) : (
           <>
-            <p className="text-[11px] font-black uppercase tracking-widest opacity-70">
-              To cover everything
-            </p>
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-6 gap-y-1">
-              <span className="font-display text-4xl font-black tabular-nums">
-                {peso(money.breakEvenDaily, 0)}
-              </span>
-              <span className="text-sm opacity-80">a day</span>
-            </div>
-            <p className="mt-3 text-sm opacity-85">
-              You&apos;re averaging{" "}
-              <strong className="tabular-nums">{peso(money.avgDailyRevenue, 0)}</strong>{" "}
-              a day over your last {money.windowDays} trading day
-              {money.windowDays === 1 ? "" : "s"} —{" "}
-              {gap !== null && gap >= 0 ? (
-                <>
-                  <strong>{peso(gap, 0)} clear</strong> of break-even.
-                </>
-              ) : (
-                <>
-                  <strong>{peso(Math.abs(gap ?? 0), 0)} short</strong> of it.
-                </>
-              )}
-            </p>
-          </>
-        )}
-      </section>
-      </Explain>
+            {/* The figure in gold, the verdict in green or red.
 
-      {/* ---- the window ---- */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          {
-            label: "Taken",
-            value: peso(money.revenue, 0),
-            sub: `${money.windowDays} trading days`,
-            what: "Everything customers paid over the window — the top line, before any cost comes off it.",
-            lines: [
-              {
-                label: "Every order that went through",
-                value: peso(money.revenue, 0),
-                note: `Counted over ${money.windowDays} day${money.windowDays === 1 ? "" : "s"} the shop actually traded, not 30 calendar days.`,
-              },
-              { label: "Cancelled orders", value: "not counted" },
-              { label: "Taken", value: peso(money.revenue, 0), total: true },
-            ],
-            why: "Counter sales and website orders both land here. Days the shop was shut are left out entirely — averaging a week of sales across a month would make every day look four times worse than it was.",
-          },
-          {
-            label: "Ingredients",
-            value: peso(money.cogs, 0),
-            sub: "What the food cost",
-            what: "What the food in those orders cost to make, added up from the recipes.",
-            lines: [
-              {
-                label: "Cost of everything sold",
-                value: peso(money.cogs, 0),
-                note: "Each order carries the ingredient cost it had on the day it was sold.",
-              },
-              {
-                label: "As a share of what you took",
-                value: money.revenue > 0 ? `${((money.cogs / money.revenue) * 100).toFixed(0)}%` : "—",
-              },
-              { label: "Left after ingredients", value: peso(money.grossProfit, 0), total: true },
-            ],
-            why: "This is frozen per order, on purpose. Restocking at a new price changes what the next order costs, never what last week's did — otherwise last month's profit would quietly rewrite itself every time the market price moved.",
-          },
-          {
-            label: "Bills for those days",
-            value: peso(money.oeForWindow, 0),
-            sub: `${peso(money.dailyOE, 0)} a day`,
-            what: "The share of your monthly bills that belongs to the days in this window.",
-            lines: [
-              { label: "Monthly bills", value: peso(money.monthlyFixed, 0) },
-              { label: `÷ ${money.openDays} open days a month`, value: peso(money.dailyOE, 0) },
-              {
-                label: `× ${money.windowDays} trading day${money.windowDays === 1 ? "" : "s"}`,
-                value: peso(money.oeForWindow, 0),
-                total: true,
-              },
-            ],
-            why: "Rent arrives whether or not anybody buys anything, so it is spread across the days you open rather than charged to one. Edit the bills below and this moves straight away.",
-          },
-          {
-            label: "Actually earned",
-            value: peso(money.netProfit, 0),
-            sub: "After everything",
-            tone: money.netProfit >= 0 ? "good" : "bad",
-            what: "What is left once the food, the bills and the spoilage are all paid for.",
-            lines: [
-              { label: "Taken", value: peso(money.revenue, 0) },
-              { label: "− Ingredients", value: peso(money.cogs, 0) },
-              { label: "− Bills for those days", value: peso(money.oeForWindow, 0) },
-              { label: "− Thrown away", value: peso(money.wasteForWindow, 0) },
-              { label: "Actually earned", value: peso(money.netProfit, 0), total: true },
-            ],
-            why: "The honest number. It is not cash in your pocket — money customers still owe you is in the takings, and buying stock for next week comes out of the drawer without showing here.",
-          },
-        ].map((s) => (
-          <Explain key={s.label} title={s.label} what={s.what} lines={s.lines} why={s.why}>
-          <div
-            className={`h-full rounded-3xl p-4 ring-1 sm:p-5 ${
-              s.tone === "good"
-                ? "bg-jade-600 text-cream-50 ring-jade-700/30"
-                : s.tone === "bad"
-                  ? "bg-brand-600 text-cream-50 ring-brand-700/30"
-                  : "bg-cream-100 text-ink-950 ring-ink-950/10"
-            }`}
-          >
-            <p className="text-[10px] font-black uppercase tracking-widest opacity-60 sm:text-[11px]">
-              {s.label}
-            </p>
-            <p className="mt-1 font-display text-2xl font-black tabular-nums sm:text-3xl">
-              {s.value}
-            </p>
-            <p className="mt-1 text-[11px] leading-snug opacity-70">{s.sub}</p>
-          </div>
-          </Explain>
-        ))}
-      </div>
-
-      {/* ---- the bills, month by month ---- */}
-      <Panel
-        fold
-        title="Monthly bills"
-        hint={`What each one actually came to, month by month — ${peso(money.monthlyFixed, 0)} a month, ${peso(money.dailyOE)} a day across the ${money.openDays} days you open.`}
-        action={
-          <button
-            onClick={() => setDialog("cost")}
-            className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
-          >
-            + Add a bill
-          </button>
-        }
-      >
-        <MonthlyBills
-          bills={money.bills}
-          history={money.billHistory}
-          thisMonth={money.thisMonth}
-          monthlyFixed={money.monthlyFixed}
-          openDays={money.openDays}
-          dailyOE={money.dailyOE}
-          monthlyWasteRate={money.monthlyWasteRate}
-          onRemoveBill={(id) => run(() => deleteFixedCost(id))}
-        />
-        {money.bills.length > 0 && (
-          <label className="mt-4 flex flex-wrap items-center gap-2 text-sm text-ink-800/70">
-            Open
-            <input
-              type="number"
-              min="1"
-              max="31"
-              defaultValue={money.openDays}
-              onBlur={(e) => {
-                const v = Number(e.target.value);
-                if (v !== money.openDays) run(() => setOpenDays(v));
-              }}
-              className="w-20 rounded-xl border-2 border-ink-950/10 bg-cream-50 px-3 py-1.5 text-center tabular-nums"
-            />
-            days a month
-          </label>
-        )}
-      </Panel>
-
-
-      {/* ---- pa-utang ---- */}
-      <Panel
-        fold
-        /**
-         * "Pa-utang", not "Utang". Utang is what the shop OWES — which is a
-         * real section of this page, a few panels down, about suppliers. This
-         * one is the opposite direction: money lent out and still to come
-         * back. Two opposite things under one word is how somebody reads the
-         * wrong figure at the end of a long day.
-         */
-        title="Pa-utang"
-        hint={
-          money.owed > 0
-            ? `${peso(money.owed)} still to come back from ${money.receivables.filter((r) => !r.settled).length} ${money.receivables.filter((r) => !r.settled).length === 1 ? "person" : "people"}.`
-            : "Nobody owes you anything right now."
-        }
-        action={
-          <button
-            onClick={() => setDialog("utang")}
-            className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
-          >
-            + Record pa-utang
-          </button>
-        }
-      >
-        {money.receivables.filter((r) => !r.settled).length === 0 ? (
-          <p className="text-sm text-ink-800/50">Nothing outstanding.</p>
-        ) : (
-          money.receivables
-            .filter((r) => !r.settled)
-            .map((r) => (
-              <div
-                key={r.id}
-                className="border-b border-ink-950/5 py-3 last:border-0"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-ink-950">{r.customer}</p>
-                    <p className="text-xs text-ink-800/50">
-                      since {formatDate(r.date)}
-                      {r.phone && ` · ${r.phone}`}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-right">
-                    <span className="block font-display text-lg font-black tabular-nums text-brand-600">
-                      {peso(r.amount - r.collected)}
-                    </span>
-                    {/* A part payment is a fact worth seeing, and it was
-                        buried in the grey line under the name. "₱200 of ₱689
-                        paid" is the thing somebody chasing an utang actually
-                        wants at a glance. */}
-                    {r.collected > 0 && (
-                      <span className="text-[11px] text-ink-800/50">
-                        {/* Centavos only when there are some. "₱100 of
-                            ₱146 paid" beside ₱45.50 outstanding is a figure
-                            that does not add up — 146 − 100 is 46. */}
-                        {peso(r.collected, r.collected % 1 === 0 ? 0 : 2)} of{" "}
-                        {peso(r.amount, r.amount % 1 === 0 ? 0 : 2)} paid
-                      </span>
-                    )}
-                  </span>
-                </div>
-
-                {/* The same three the supplier debts offer, because it is the
-                    same errand in the other direction. A single "Collect"
-                    button opened a box already filled with the whole amount,
-                    so paying a hundred off a six-hundred-peso utang meant
-                    deleting a number before typing one — and nothing on the
-                    row suggested part payment was possible at all. */}
-                <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => setCollecting({ id: r.id, preset: r.amount - r.collected })}
-                    className="rounded-lg bg-jade-600 px-4 py-1.5 text-xs font-black text-cream-50 hover:bg-jade-700"
-                  >
-                    Paid in full
-                  </button>
-                  <button
-                    onClick={() =>
-                      setCollecting({
-                        id: r.id,
-                        preset: Math.round((r.amount - r.collected) * 50) / 100,
-                      })
-                    }
-                    className="rounded-lg bg-ink-950/8 px-3 py-1.5 text-xs font-bold text-ink-800 hover:bg-ink-950/15"
-                  >
-                    Half — {peso(Math.round((r.amount - r.collected) * 50) / 100, 0)}
-                  </button>
-                  <button
-                    onClick={() => setCollecting({ id: r.id, preset: 0 })}
-                    className="rounded-lg bg-ink-950/8 px-3 py-1.5 text-xs font-bold text-ink-800 hover:bg-ink-950/15"
-                  >
-                    Custom
-                  </button>
-                </div>
-              </div>
-            ))
-        )}
-      </Panel>
-
-      {/* ---- payback ---- */}
-      <Panel
-        fold
-        title="What you put in"
-        hint="The pans, the freezer, the cart. Not an expense — money that turned into things, and the question is how much has come back."
-        action={
-          <button
-            onClick={() => setDialog("asset")}
-            className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
-          >
-            + Add
-          </button>
-        }
-      >
-        {money.assets.length === 0 ? (
-          <p className="text-sm text-ink-800/50">Nothing listed yet.</p>
-        ) : (
-          <>
-            {money.assets.map((a) => (
-              <Row
-                key={a.id}
-                label={a.name + (a.boughtOn ? ` · ${formatDate(a.boughtOn)}` : "")}
-                value={peso(a.amount)}
-                onDelete={() => run(() => deleteAsset(a.id))}
-              />
-            ))}
-            <div className="mt-2 flex items-center justify-between border-t-2 border-ink-950/15 pt-2">
-              <span className="text-sm font-bold text-ink-800/70">Put in</span>
-              <span className="font-display text-xl font-black tabular-nums text-ink-950">
-                {peso(money.assetTotal)}
-              </span>
-            </div>
-
-            {money.payback ? (
-              <div className="mt-4 rounded-2xl bg-ink-950 p-5 text-cream-50">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="text-sm opacity-70">
-                    Earned back since {formatDate(money.payback.from!)}
-                  </span>
-                  <span className="font-display text-2xl font-black tabular-nums">
-                    {peso(money.payback.earned, 0)}
-                  </span>
-                </div>
-                <div className="mt-3 h-3 overflow-hidden rounded-full bg-cream-50/15">
-                  <div
-                    className={`h-full rounded-full ${
-                      money.payback.paidOff ? "bg-jade-400" : "bg-gold-400"
-                    }`}
-                    style={{ width: `${Math.min(100, money.payback.pct)}%` }}
-                  />
-                </div>
-                <p className="mt-2 text-sm opacity-80">
-                  {money.payback.paidOff
-                    ? "Paid off — everything from here is yours."
-                    : `${money.payback.pct.toFixed(0)}% of the way back.`}
+                The whole band used to turn jade or brand-red on the
+                verdict, which is loud and, over a slow fortnight, exhausting
+                — a screen that is red every day is a screen where red stops
+                meaning anything. The ground stays charcoal; the MEASUREMENT
+                carries the colour. The bar past its mark is the verdict
+                before a word of it is read. */}
+            <div className="mt-1 flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+              <div className="min-w-0">
+                <p className="font-display text-[clamp(2.25rem,9vw,3.25rem)] font-black leading-none tabular-nums text-gold-400">
+                  {peso(money.breakEvenDaily, 0)}
+                </p>
+                <p className="mt-1 text-sm text-cream-50/65">
+                  a day, every trading day
                 </p>
               </div>
-            ) : (
-              <button
-                onClick={() => run(() => setPaybackFrom(new Date().toISOString().slice(0, 10)))}
-                disabled={busy}
-                className="mt-4 w-full rounded-2xl bg-ink-950/5 py-3 text-sm font-bold text-ink-800 ring-1 ring-ink-950/10 hover:bg-ink-950/10"
+
+              <span
+                className={`shrink-0 rounded-full px-4 py-2 font-display text-sm font-black ${
+                  gap !== null && gap >= 0
+                    ? "bg-jade-500 text-ink-950"
+                    : "bg-brand-500 text-cream-50"
+                }`}
               >
-                Start counting payback from today
-              </button>
-            )}
+                {gap !== null && gap >= 0
+                  ? `${peso(gap, 0)} clear a day`
+                  : `${peso(Math.abs(gap ?? 0), 0)} short a day`}
+              </span>
+            </div>
+
+            <div className="mt-6">
+              <Meter
+                onDark
+                value={money.avgDailyRevenue}
+                target={money.breakEvenDaily}
+                tone={gap !== null && gap >= 0 ? "good" : "bad"}
+                label={
+                  <span>
+                    Averaging{" "}
+                    <strong className="text-cream-50">
+                      {peso(money.avgDailyRevenue, 0)}
+                    </strong>{" "}
+                    a day over {money.windowDays} trading day
+                    {money.windowDays === 1 ? "" : "s"}
+                  </span>
+                }
+                /* The glyph ties the label to the notch.
+
+                   "break-even ₱703" sitting at the right-hand end reads as
+                   the END of the track, which it only is while the shop is
+                   below it — past break-even the mark sits partway along and
+                   the label was pointing at nothing. */
+                right={
+                  <span className="flex items-center gap-1.5">
+                    <span aria-hidden className="text-cream-50/70">
+                      ▏
+                    </span>
+                    break-even {peso(money.breakEvenDaily, 0)}
+                  </span>
+                }
+              />
+            </div>
+
+            {/* Three facts that move the figure above, so the band answers
+                "why is it that much" without anybody opening anything. */}
+            <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-cream-50/10 pt-5 sm:grid-cols-4">
+              <HeroFact
+                label="Bills a month"
+                value={peso(money.monthlyFixed, 0)}
+                note={`${peso(money.dailyOE)} a day`}
+              />
+              <HeroFact
+                label="Kept per ₱100"
+                value={
+                  money.marginRatio === null
+                    ? "—"
+                    : `₱${(money.marginRatio * 100).toFixed(0)}`
+                }
+                note="after ingredients"
+              />
+              <HeroFact
+                label="Held right now"
+                value={peso(money.totalHeld, 0)}
+                note={anyPot ? "across every pot" : "nothing counted yet"}
+              />
+              <HeroFact
+                label="Owed to the shop"
+                value={peso(money.owed, 0)}
+                note="not yours until collected"
+                tone={money.owed > 0 ? "warn" : undefined}
+              />
+            </div>
+
+            <p className="mt-5 text-[11px] font-bold uppercase tracking-wider text-cream-50/40">
+              Tap for the whole sum →
+            </p>
           </>
         )}
-      </Panel>
+      </HeroBand>
+      </Explain>
+
+      <section className="flex flex-col gap-5">
+        <SectionHead eyebrow="The window" title="What the last 30 days did" hint="Measured over the days the shop actually traded, not calendar days — a week of sales spread over a month reads four times worse than it was." />
+        {/* ---- the window ---- */}
+        {/* Two up on a phone, not one.
+
+            Four full-width cards is four screens of scrolling to read four
+            numbers that belong to one sentence — taken, minus ingredients,
+            minus bills, equals earned. Side by side they read as the sum they
+            are. */}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {[
+            {
+              label: "Taken",
+              value: peso(money.revenue, 0),
+              sub: `${money.windowDays} trading days`,
+              what: "Everything customers paid over the window — the top line, before any cost comes off it.",
+              lines: [
+                {
+                  label: "Every order that went through",
+                  value: peso(money.revenue, 0),
+                  note: `Counted over ${money.windowDays} day${money.windowDays === 1 ? "" : "s"} the shop actually traded, not 30 calendar days.`,
+                },
+                { label: "Cancelled orders", value: "not counted" },
+                { label: "Taken", value: peso(money.revenue, 0), total: true },
+              ],
+              why: "Counter sales and website orders both land here. Days the shop was shut are left out entirely — averaging a week of sales across a month would make every day look four times worse than it was.",
+            },
+            {
+              label: "Ingredients",
+              value: peso(money.cogs, 0),
+              sub: "What the food cost",
+              what: "What the food in those orders cost to make, added up from the recipes.",
+              lines: [
+                {
+                  label: "Cost of everything sold",
+                  value: peso(money.cogs, 0),
+                  note: "Each order carries the ingredient cost it had on the day it was sold.",
+                },
+                {
+                  label: "As a share of what you took",
+                  value: money.revenue > 0 ? `${((money.cogs / money.revenue) * 100).toFixed(0)}%` : "—",
+                },
+                { label: "Left after ingredients", value: peso(money.grossProfit, 0), total: true },
+              ],
+              why: "This is frozen per order, on purpose. Restocking at a new price changes what the next order costs, never what last week's did — otherwise last month's profit would quietly rewrite itself every time the market price moved.",
+            },
+            {
+              label: "Bills for those days",
+              value: peso(money.oeForWindow, 0),
+              sub: `${peso(money.dailyOE, 0)} a day`,
+              what: "The share of your monthly bills that belongs to the days in this window.",
+              lines: [
+                { label: "Monthly bills", value: peso(money.monthlyFixed, 0) },
+                { label: `÷ ${money.openDays} open days a month`, value: peso(money.dailyOE, 0) },
+                {
+                  label: `× ${money.windowDays} trading day${money.windowDays === 1 ? "" : "s"}`,
+                  value: peso(money.oeForWindow, 0),
+                  total: true,
+                },
+              ],
+              why: "Rent arrives whether or not anybody buys anything, so it is spread across the days you open rather than charged to one. Edit the bills below and this moves straight away.",
+            },
+            {
+              label: "Actually earned",
+              value: peso(money.netProfit, 0),
+              sub: "After everything",
+              tone: money.netProfit >= 0 ? "good" : "bad",
+              what: "What is left once the food, the bills and the spoilage are all paid for.",
+              lines: [
+                { label: "Taken", value: peso(money.revenue, 0) },
+                { label: "− Ingredients", value: peso(money.cogs, 0) },
+                { label: "− Bills for those days", value: peso(money.oeForWindow, 0) },
+                { label: "− Thrown away", value: peso(money.wasteForWindow, 0) },
+                { label: "Actually earned", value: peso(money.netProfit, 0), total: true },
+              ],
+              why: "The honest number. It is not cash in your pocket — money customers still owe you is in the takings, and buying stock for next week comes out of the drawer without showing here.",
+            },
+          ].map((s) => (
+            <Explain key={s.label} title={s.label} what={s.what} lines={s.lines} why={s.why}>
+            <div
+              className={`h-full rounded-3xl p-4 ring-1 sm:p-5 ${
+                s.tone === "good"
+                  ? "bg-jade-600 text-cream-50 ring-jade-700/30"
+                  : s.tone === "bad"
+                    ? "bg-brand-600 text-cream-50 ring-brand-700/30"
+                    : "bg-cream-100 text-ink-950 ring-ink-950/10"
+              }`}
+            >
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-60 sm:text-[11px]">
+                {s.label}
+              </p>
+              <p className="mt-1 font-display text-2xl font-black tabular-nums sm:text-3xl">
+                {s.value}
+              </p>
+              <p className="mt-1 text-[11px] leading-snug opacity-70">{s.sub}</p>
+            </div>
+            </Explain>
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-5">
+        <SectionHead eyebrow="Where the money is" title="Pots, and everything that moved them" hint="Each pot is counted on its own so the drawer can still be checked against what you physically count." />
+        {/* ---- everything the shop holds ----
+
+            Above the drawer rather than replacing it. "How much does Pepper Pan
+            have" and "does the drawer balance" are two different questions, and
+            only the second one can be checked against a physical count — fold
+            an untouchable e-wallet balance into the drawer figure and that
+            check, the one self-correcting number on this screen, is gone. */}
+        <Panel
+          title="Pepper Pan Bank"
+          hint="Every pot the shop's money sits in, added up. Each one is counted on its own so the drawer can still be checked against what you physically count."
+          action={
+            anyPot ? (
+              <button
+                onClick={() => setDialog("cash-entry")}
+                className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
+              >
+                + Money in or out
+              </button>
+            ) : undefined
+          }
+        >
+          {!anyPot ? (
+            <p className="text-sm text-ink-800/60">
+              Nothing is being counted yet. Start with whichever pot you know the
+              balance of right now — the others can wait.
+            </p>
+          ) : null}
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {POTS.map((pot) => (
+              <Pot
+                key={pot.key}
+                tone={pot.tone}
+                label={pot.label}
+                note={pot.note}
+                state={money[pot.key]}
+                moves={money.ledger.filter((l) => l.account === pot.key).length}
+                onStart={() => setDialog(pot.start)}
+                onOpen={() => setPotOpen(pot.key)}
+              />
+            ))}
+          </div>
+
+          {anyPot && (
+            <>
+              <div className="mt-4 flex items-center justify-between border-t-2 border-ink-950/15 pt-3">
+                <span className="text-sm font-bold text-ink-800/70">
+                  What Pepper Pan holds
+                </span>
+                <span className="font-display text-2xl font-black tabular-nums text-ink-950">
+                  {peso(money.totalHeld)}
+                </span>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-ink-800/50">
+                Money customers still owe you is not in here — that is{" "}
+                {peso(money.owed, 0)} under Utang below, and it is not yours
+                until it is collected.
+              </p>
+            </>
+          )}
+        </Panel>
+
+        {/* ---- money history ----
+
+            It was "Cash in the drawer", and it listed the drawer's lines only.
+            That was correct and it was not enough: the shop takes GCash and
+            bank transfers, every one of those was counted in a balance above,
+            and not one of them appeared in any history anywhere. Asked where a
+            GCash payment went, the software's honest answer was that it knew
+            and would not say.
+
+            So this is every pot in one stream, each line saying which one it
+            moved. The per-pot view did not go away — it moved onto the pot
+            itself, up in Pepper Pan Bank, which is where somebody is standing
+            when they want it. This panel answers the other question: what has
+            the shop's money been doing, wherever it sits. */}
+        <Panel
+          title="Money history"
+          hint={
+            anyPot
+              ? "Everything in and out, across the drawer, GCash and the bank. Tap a pot above to see just that one, a day at a time."
+              : "Nothing is being counted yet. Start a pot above and everything it does from then on is listed here."
+          }
+        >
+          {anyPot && (
+            <>
+              <p className="font-display text-3xl font-black tabular-nums text-ink-950">
+                {peso(money.totalHeld)}
+              </p>
+              <p className="-mt-1 text-xs text-ink-800/45">
+                across every pot being counted
+              </p>
+              {/* Four, newest first, and the rest behind a dialog.
+
+                  It was a hard `.slice(0, 8)` once — eight rows, and everything
+                  before that simply gone with nothing on screen to say so. The
+                  money not balancing is exactly when somebody needs to go back
+                  further than the last eight entries. */}
+              <HistoryList
+                className="mt-4"
+                items={money.ledger}
+                keyOf={(l) => l.id}
+                dateOf={(l) => l.date}
+                initial={4}
+                noun="entries"
+                // Behind a dialog rather than expanding down the page. This is
+                // the longest list in HQ — every sale on every pot since
+                // counting started — and expanded in place it buried its own
+                // "Show fewer" under a hundred rows. The dates live in there
+                // too, where they are used.
+                modal
+                modalTitle="Money history"
+                empty="Nothing yet — no sales, and nothing put in or taken out."
+                render={(l) => (
+                  <Row
+                    label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Money in" : "Money out")}`}
+                    value={`${l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
+                    tone={l.type === "in" ? "good" : "bad"}
+                    /* Which pot, on every line.
+
+                       One stream across three pots is only readable if each
+                       line says which one it was — otherwise a ₱200 in and a
+                       ₱200 out on the same day look like they cancel, and they
+                       do not if one was the drawer and the other was GCash.
+                       This badge is load-bearing, not decoration. */
+                    badge={`${ACCOUNT_SHORT[l.account]}${l.derived ? " · sale" : ""}`}
+                  />
+                )}
+              />
+            </>
+          )}
+        </Panel>
+      </section>
+
+      <section className="flex flex-col gap-5">
+        <SectionHead eyebrow="Owed" title="Money owed, both directions" hint="One of these is money coming back to you and the other is money already spoken for. They are kept together so neither gets read as the other." />
+        {/* ---- pa-utang ---- */}
+        <Panel
+          fold
+          /**
+           * "Pa-utang", not "Utang". Utang is what the shop OWES — which is a
+           * real section of this page, a few panels down, about suppliers. This
+           * one is the opposite direction: money lent out and still to come
+           * back. Two opposite things under one word is how somebody reads the
+           * wrong figure at the end of a long day.
+           */
+          title="Pa-utang"
+          hint={
+            money.owed > 0
+              ? `${peso(money.owed)} still to come back from ${money.receivables.filter((r) => !r.settled).length} ${money.receivables.filter((r) => !r.settled).length === 1 ? "person" : "people"}.`
+              : "Nobody owes you anything right now."
+          }
+          action={
+            <button
+              onClick={() => setDialog("utang")}
+              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
+            >
+              + Record pa-utang
+            </button>
+          }
+        >
+          {money.receivables.filter((r) => !r.settled).length === 0 ? (
+            <p className="text-sm text-ink-800/50">Nothing outstanding.</p>
+          ) : (
+            money.receivables
+              .filter((r) => !r.settled)
+              .map((r) => (
+                <div
+                  key={r.id}
+                  className="border-b border-ink-950/5 py-3 last:border-0"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-ink-950">{r.customer}</p>
+                      <p className="text-xs text-ink-800/50">
+                        since {formatDate(r.date)}
+                        {r.phone && ` · ${r.phone}`}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-display text-lg font-black tabular-nums text-brand-600">
+                        {peso(r.amount - r.collected)}
+                      </span>
+                      {/* A part payment is a fact worth seeing, and it was
+                          buried in the grey line under the name. "₱200 of ₱689
+                          paid" is the thing somebody chasing an utang actually
+                          wants at a glance. */}
+                      {r.collected > 0 && (
+                        <span className="text-[11px] text-ink-800/50">
+                          {/* Centavos only when there are some. "₱100 of
+                              ₱146 paid" beside ₱45.50 outstanding is a figure
+                              that does not add up — 146 − 100 is 46. */}
+                          {peso(r.collected, r.collected % 1 === 0 ? 0 : 2)} of{" "}
+                          {peso(r.amount, r.amount % 1 === 0 ? 0 : 2)} paid
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  {/* The same three the supplier debts offer, because it is the
+                      same errand in the other direction. A single "Collect"
+                      button opened a box already filled with the whole amount,
+                      so paying a hundred off a six-hundred-peso utang meant
+                      deleting a number before typing one — and nothing on the
+                      row suggested part payment was possible at all. */}
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setCollecting({ id: r.id, preset: r.amount - r.collected })}
+                      className="rounded-lg bg-jade-600 px-4 py-1.5 text-xs font-black text-cream-50 hover:bg-jade-700"
+                    >
+                      Paid in full
+                    </button>
+                    <button
+                      onClick={() =>
+                        setCollecting({
+                          id: r.id,
+                          preset: Math.round((r.amount - r.collected) * 50) / 100,
+                        })
+                      }
+                      className="rounded-lg bg-ink-950/8 px-3 py-1.5 text-xs font-bold text-ink-800 hover:bg-ink-950/15"
+                    >
+                      Half — {peso(Math.round((r.amount - r.collected) * 50) / 100, 0)}
+                    </button>
+                    <button
+                      onClick={() => setCollecting({ id: r.id, preset: 0 })}
+                      className="rounded-lg bg-ink-950/8 px-3 py-1.5 text-xs font-bold text-ink-800 hover:bg-ink-950/15"
+                    >
+                      Custom
+                    </button>
+                  </div>
+                </div>
+              ))
+          )}
+        </Panel>
+
+        {/* ---- what the shop owes ----
+
+            Directly under Pepper Pan Bank because it is the correction to it.
+            The pots hold what they say — that figure has to stay checkable
+            against a physical count — but some of it is already the supplier's,
+            and nothing on this screen used to say so. */}
+        <Panel
+          title="Utang sa supplier"
+          hint="Deliveries and purchases taken on credit. The cash is still in the drawer until you pay — recording the debt moves nothing, and paying it is what writes the line."
+        >
+          <SupplierDebts
+            debts={money.debts}
+            owedToSuppliers={money.owedToSuppliers}
+            totalHeld={money.totalHeld}
+            openPots={openPots.length > 0 ? openPots : ["cash"]}
+            suppliers={suppliers}
+          />
+        </Panel>
+      </section>
+
+      <section className="flex flex-col gap-5">
+        <SectionHead eyebrow="What it costs to open" title="Bills, supplies and everything used up" hint="Everything in here feeds the daily figure at the top of the page." />
+        {/* ---- the bills, month by month ---- */}
+        <Panel
+          fold
+          title="Monthly bills"
+          hint={`What each one actually came to, month by month — ${peso(money.monthlyFixed, 0)} a month, ${peso(money.dailyOE)} a day across the ${money.openDays} days you open.`}
+          action={
+            <button
+              onClick={() => setDialog("cost")}
+              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
+            >
+              + Add a bill
+            </button>
+          }
+        >
+          <MonthlyBills
+            bills={money.bills}
+            history={money.billHistory}
+            thisMonth={money.thisMonth}
+            monthlyFixed={money.monthlyFixed}
+            openDays={money.openDays}
+            dailyOE={money.dailyOE}
+            monthlyWasteRate={money.monthlyWasteRate}
+            onRemoveBill={(id) => run(() => deleteFixedCost(id))}
+          />
+          {money.bills.length > 0 && (
+            <label className="mt-4 flex flex-wrap items-center gap-2 text-sm text-ink-800/70">
+              Open
+              <input
+                type="number"
+                min="1"
+                max="31"
+                defaultValue={money.openDays}
+                onBlur={(e) => {
+                  const v = Number(e.target.value);
+                  if (v !== money.openDays) run(() => setOpenDays(v));
+                }}
+                className="w-20 rounded-xl border-2 border-ink-950/10 bg-cream-50 px-3 py-1.5 text-center tabular-nums"
+              />
+              days a month
+            </label>
+          )}
+        </Panel>
+
+        {/* ---- what gets used up ---- */}
+        <Panel
+          title="Gamit at gastos"
+          hint="Supplies, gas and repairs — used up, and nothing left to show for them. Not ingredients, not rent. Until now they were in no sum anywhere, which made break-even lower than the truth."
+        >
+          <SpendPanel
+            runningCosts={money.runningCosts}
+            runningForWindow={money.runningForWindow}
+            monthlyRate={money.monthlyRunningRate}
+            windowDays={money.windowDays}
+            tanks={money.tanks}
+            suppliers={suppliers}
+            openPots={openPots.length > 0 ? openPots : ["cash"]}
+          />
+        </Panel>
+      </section>
+
+      <section className="flex flex-col gap-5">
+        <SectionHead eyebrow="Payback" title="What you put in, and what has come back" hint="Not a cost — money that turned into things. It answers a different question from everything above it." />
+        {/* ---- payback ---- */}
+        <Panel
+          fold
+          title="What you put in"
+          hint="The pans, the freezer, the cart. Not an expense — money that turned into things, and the question is how much has come back."
+          action={
+            <button
+              onClick={() => setDialog("asset")}
+              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
+            >
+              + Add
+            </button>
+          }
+        >
+          {money.assets.length === 0 ? (
+            <p className="text-sm text-ink-800/50">Nothing listed yet.</p>
+          ) : (
+            <>
+              {money.assets.map((a) => (
+                <Row
+                  key={a.id}
+                  label={a.name + (a.boughtOn ? ` · ${formatDate(a.boughtOn)}` : "")}
+                  value={peso(a.amount)}
+                  onDelete={() => run(() => deleteAsset(a.id))}
+                />
+              ))}
+              <div className="mt-2 flex items-center justify-between border-t-2 border-ink-950/15 pt-2">
+                <span className="text-sm font-bold text-ink-800/70">Put in</span>
+                <span className="font-display text-xl font-black tabular-nums text-ink-950">
+                  {peso(money.assetTotal)}
+                </span>
+              </div>
+
+              {money.payback ? (
+                <div className="mt-4 rounded-2xl bg-ink-950 p-5 text-cream-50">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="text-sm opacity-70">
+                      Earned back since {formatDate(money.payback.from!)}
+                    </span>
+                    <span className="font-display text-2xl font-black tabular-nums">
+                      {peso(money.payback.earned, 0)}
+                    </span>
+                  </div>
+                  <div className="mt-3 h-3 overflow-hidden rounded-full bg-cream-50/15">
+                    <div
+                      className={`h-full rounded-full ${
+                        money.payback.paidOff ? "bg-jade-400" : "bg-gold-400"
+                      }`}
+                      style={{ width: `${Math.min(100, money.payback.pct)}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm opacity-80">
+                    {money.payback.paidOff
+                      ? "Paid off — everything from here is yours."
+                      : `${money.payback.pct.toFixed(0)}% of the way back.`}
+                  </p>
+                </div>
+              ) : (
+                <button
+                  onClick={() => run(() => setPaybackFrom(new Date().toISOString().slice(0, 10)))}
+                  disabled={busy}
+                  className="mt-4 w-full rounded-2xl bg-ink-950/5 py-3 text-sm font-bold text-ink-800 ring-1 ring-ink-950/10 hover:bg-ink-950/10"
+                >
+                  Start counting payback from today
+                </button>
+              )}
+            </>
+          )}
+        </Panel>
+      </section>
 
       <p className="text-xs text-ink-800/45">
         Bills are spread across the days you&apos;re open rather than charged to
@@ -970,6 +1068,7 @@ export function MoneyView({
         <CollectDialog
           receivable={money.receivables.find((r) => r.id === collecting.id)!}
           preset={collecting.preset}
+          pots={openPots}
           onClose={() => setCollecting(null)}
         />
       )}
@@ -1159,17 +1258,28 @@ function MoneyDialog({
 function CollectDialog({
   receivable,
   preset,
+  pots,
   onClose,
 }: {
   receivable: { id: string; customer: string | null; amount: number; collected: number };
   /** What the box starts with. Zero means Custom — it opens empty. */
   preset: number;
+  /** The pots actually being counted, so money cannot land in a closed one. */
+  pots: Account[];
   onClose: () => void;
 }) {
   const outstanding = receivable.amount - receivable.collected;
   const { busy, error, run } = useAction();
   const [amount, setAmount] = useState(preset > 0 ? String(preset) : "");
-  const [toDrawer, setToDrawer] = useState(true);
+  /**
+   * Where the money went, not whether it went into the drawer.
+   *
+   * It was a checkbox, and the ledger line it wrote named no pot — so a
+   * customer settling by GCash put pesos into a drawer nobody had touched.
+   * Defaults to the first pot being counted, which is the drawer whenever it
+   * is on, so the common case is still one tap.
+   */
+  const [landedIn, setLandedIn] = useState<Account | "none">(pots[0] ?? "none");
 
   return (
     <AdminDialog
@@ -1190,7 +1300,7 @@ function CollectDialog({
               collectReceivable({
                 id: receivable.id,
                 amount: Number(amount) || 0,
-                toDrawer,
+                account: landedIn,
               }),
             onClose
           );
@@ -1201,14 +1311,52 @@ function CollectDialog({
           <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number"
             step="0.01" min="0" inputMode="decimal" autoFocus className={inputClass} />
         </Field>
-        <label className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-ink-950/[0.03] px-4 py-3">
-          <input type="checkbox" checked={toDrawer} onChange={(e) => setToDrawer(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-gold-400" />
-          <span className="text-xs text-ink-800/70">
-            <strong className="text-ink-950">It went into the drawer</strong>
-            <span className="block">Adds it to the cash count too.</span>
-          </span>
-        </label>
+        {/* Where it landed, asked as plainly as the amount.
+
+            Only pots being counted are offered, the same rule "Money in or
+            out" follows — money filed into a pot nobody is counting is a
+            balance that cannot be checked against anything. "Not yet" is
+            always there: somebody paying in goods, or handing over cash that
+            has not been counted in, has settled their utang and moved no
+            balance, and that is a real answer rather than a missing one. */}
+        <Field
+          label="Where did it go"
+          hint={
+            landedIn === "none"
+              ? "The utang is settled and no balance moves."
+              : `Adds ${peso(Number(amount) || 0)} to ${ACCOUNT_SHORT[landedIn]}.`
+          }
+        >
+          <div className="grid grid-cols-2 gap-2">
+            {pots.map((acc) => (
+              <button
+                key={acc}
+                type="button"
+                onClick={() => setLandedIn(acc)}
+                aria-pressed={landedIn === acc}
+                className={`rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                  landedIn === acc
+                    ? "bg-jade-600 text-cream-50"
+                    : "bg-ink-950/[0.05] text-ink-950 hover:bg-ink-950/10"
+                }`}
+              >
+                {ACCOUNT_LABELS[acc]}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setLandedIn("none")}
+              aria-pressed={landedIn === "none"}
+              className={`rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                landedIn === "none"
+                  ? "bg-ink-950 text-cream-50"
+                  : "bg-ink-950/[0.05] text-ink-800/70 hover:bg-ink-950/10"
+              }`}
+            >
+              Not into a pot
+            </button>
+          </div>
+        </Field>
         {error && (
           <p className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-cream-50">{error}</p>
         )}
