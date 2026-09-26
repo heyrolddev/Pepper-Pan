@@ -18,6 +18,11 @@ function done() {
   revalidatePath("/admin");
 }
 
+/** For an error message, where the shop's own sign reads better than a code. */
+function pesoPlain(n: number): string {
+  return `₱${n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 async function log(description: string, actor: string | null) {
   const supabase = createAdminClient();
   const { error } = await supabase
@@ -266,6 +271,26 @@ export async function collectReceivable(input: {
 
   const already = Number(row.amount_collected) || 0;
   const total = Number(row.amount) || 0;
+  const outstanding = total - already;
+
+  /**
+   * More than is owed is refused, not quietly clamped.
+   *
+   * The utang was capped with `Math.min` and the CASH LEDGER was not, so
+   * typing 1,000 against a 689 utang cleared the 689 and told the drawer
+   * 1,000 had come in — a 311 peso discrepancy, on the screen whose whole
+   * job is knowing where the money is. Nobody would find it.
+   *
+   * Refusing is right rather than clamping both: if a customer really handed
+   * over more, that is a sale or a deposit, and it belongs on its own line
+   * with its own reason.
+   */
+  if (input.amount > outstanding + 0.005) {
+    return {
+      error: `That is more than is owed — ${pesoPlain(outstanding)} left on this one.`,
+    };
+  }
+
   const collected = Math.min(total, already + input.amount);
 
   const { error } = await supabase
