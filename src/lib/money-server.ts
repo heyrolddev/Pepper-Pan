@@ -10,6 +10,18 @@ import {
   type TankLife,
 } from "@/lib/spending";
 import { isAccount, type Account } from "@/lib/money-accounts";
+import {
+  billLines,
+  isBillKind,
+  monthOf,
+  monthTotals,
+  monthlyTotal,
+  shiftMonth,
+  type Bill,
+  type BillLine,
+  type BillMonth,
+  type MonthAmount,
+} from "@/lib/monthly-bills";
 
 /**
  * What the shop actually earns.
@@ -26,7 +38,20 @@ import { isAccount, type Account } from "@/lib/money-accounts";
  * incurred in, so that is the level this works at.
  */
 
-export type FixedCost = { id: string; label: string; amount: number; active: boolean };
+/**
+ * A recurring bill, as the screen that manages the LIST sees it.
+ *
+ * `amount` is no longer what the bill is — migration 0058 turned it into the
+ * figure to assume until a real month is recorded against it. Everything that
+ * reports a bill reads `bills` below instead, which carries the months.
+ */
+export type FixedCost = {
+  id: string;
+  label: string;
+  amount: number;
+  active: boolean;
+  kind: string;
+};
 export type Asset = { id: string; name: string; amount: number; boughtOn: string | null; note: string | null };
 export type LedgerEntry = {
   id: string;
@@ -95,7 +120,28 @@ export type Receivable = {
 };
 
 export type MoneyPicture = {
-  fixedCosts: FixedCost[];
+  /** Every recurring bill, with its recorded months, its trend and its figure. */
+  bills: BillLine[];
+  /** What the bills came to each of the last `BILL_HISTORY_MONTHS` months. */
+  billHistory: MonthAmount[];
+  /** The month the screen opens on — the first of the current one. */
+  thisMonth: string;
+  /**
+   * The shop's today, as the database files a day.
+   *
+   * Sent from the server rather than read from the browser clock. The pot
+   * histories open on today, and a client that works it out itself opens on
+   * the wrong day for the first eight hours of every Manila morning — see
+   * `shopToday` for why the boundary is where it is.
+   */
+  today: string;
+  /**
+   * The bills as one monthly figure, for break-even.
+   *
+   * Since 0058 this is a sum of per-bill averages rather than a sum of typed
+   * figures — see `lib/monthly-bills.ts` for why it cannot be a calendar
+   * column without falling every time somebody does the bookkeeping.
+   */
   monthlyFixed: number;
   openDays: number;
   dailyOE: number;
@@ -181,6 +227,15 @@ const WINDOW_DAYS = 30;
  */
 const GAS_WINDOW_DAYS = 180;
 
+/**
+ * How many months of bill history the page draws.
+ *
+ * Twelve, because the thing an owner is actually looking for in a utility
+ * bill is the season — kuryente in April is not kuryente in November, and a
+ * six-month window makes a perfectly normal summer look like a crisis.
+ */
+export const BILL_HISTORY_MONTHS = 12;
+
 export async function loadMoney(): Promise<MoneyPicture> {
   const supabase = createAdminClient();
   const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000)
@@ -193,6 +248,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
 
   const [
     { data: costs },
+    { data: billRows },
     { data: assetRows },
     { data: ledgerRows },
     { data: receivableRows },
@@ -204,13 +260,25 @@ export async function loadMoney(): Promise<MoneyPicture> {
     { data: debtRows },
   ] = await Promise.all([
     supabase.from("fixed_costs").select("*").order("amount", { ascending: false }),
+    // Far enough back that a year-on-year comparison has something to stand
+    // on, and cheap: one row per bill per month is a few hundred rows for a
+    // stall that has been open a decade.
+    supabase
+      .from("monthly_bills")
+      .select("id, fixed_cost_id, month, amount, note")
+      .gte("month", shiftMonth(monthOf(today), -(BILL_HISTORY_MONTHS + 12)))
+      .order("month", { ascending: false }),
     supabase.from("assets").select("*").order("created_at", { ascending: false }),
+    // 250, not 100. Since the pots each got their own history this one list
+    // is sliced three ways, so a hundred rows could be a hundred drawer
+    // entries and nothing at all for GCash — a pot's history going empty
+    // because a DIFFERENT pot was busy.
     supabase
       .from("cash_ledger")
       .select("*")
       .order("date", { ascending: false })
       .order("created_at", { ascending: false })
-      .limit(100),
+      .limit(250),
     supabase.from("receivables").select("*").order("date", { ascending: false }).limit(100),
     supabase
       .from("settings")
@@ -247,13 +315,41 @@ export async function loadMoney(): Promise<MoneyPicture> {
       .limit(100),
   ]);
 
-  const fixedCosts: FixedCost[] = ((costs ?? []) as FixedCost[]).map((c) => ({
-    ...c,
-    amount: Number(c.amount) || 0,
+  /**
+   * The bills, and what each of them actually came to.
+   *
+   * `fixed_costs` is the list; `monthly_bills` is the history. Adding them up
+   * is not a `reduce` any more, because a bill with no entry this month must
+   * not contribute a zero — `billLines` in `lib/monthly-bills.ts` carries the
+   * whole argument and the tests that hold it in place.
+   */
+  const billList: Bill[] = ((costs ?? []) as FixedCost[]).map((c) => ({
+    id: c.id,
+    label: c.label,
+    // Rows written before 0058 have the column default, and `isBillKind`
+    // keeps a hand-edited value out of a Record lookup.
+    kind: isBillKind(c.kind) ? c.kind : "overhead",
+    estimate: Number(c.amount) || 0,
+    active: c.active,
   }));
-  const monthlyFixed = fixedCosts
-    .filter((c) => c.active)
-    .reduce((s, c) => s + c.amount, 0);
+  const billMonths: BillMonth[] = ((billRows ?? []) as {
+    id: string;
+    fixed_cost_id: string;
+    month: string;
+    amount: number;
+    note: string | null;
+  }[]).map((b) => ({
+    id: b.id,
+    billId: b.fixed_cost_id,
+    month: b.month,
+    amount: Number(b.amount) || 0,
+    note: b.note,
+  }));
+
+  const bills = billLines(billList, billMonths, today);
+  const monthlyFixed = monthlyTotal(bills);
+  const billHistory = monthTotals(billMonths, BILL_HISTORY_MONTHS, today);
+  const thisMonth = monthOf(today);
   const openDays = Number(settingsRow?.open_days_per_month) || 26;
   const dailyOE = openDays > 0 ? monthlyFixed / openDays : 0;
 
@@ -478,107 +574,146 @@ export async function loadMoney(): Promise<MoneyPicture> {
   }
 
   /**
-   * Every cash sale and every cancelled cash sale, as lines in the history.
+   * Every sale, and every cancelled sale, as lines in the history — on all
+   * three pots, not just the drawer.
    *
-   * This is display only — the arithmetic above is untouched — which is what
+   * This block used to hard-code `payment_method = "cod"` and `account:
+   * "cash"`. The balances had filtered by pot correctly since 0042, so the
+   * GCash figure counted every GCash sale — and the HISTORY listed none of
+   * them. The one screen whose job is to explain a balance could not name a
+   * single peso of it, and an owner reconciling GCash had nothing to
+   * reconcile against. That is the same bug the drawer had before sales were
+   * derived at all; it simply survived in the other two pots.
+   *
+   * Still display only — the arithmetic above is untouched — which is what
    * makes it safe: nothing is double-counted, nothing needs backfilling, and
    * orders from before today show up straight away.
    *
-   * A cancelled cash order gets an "out" line rather than being left off.
-   * Leaving it off is technically consistent — `onHand` excludes it because
-   * the query filters cancelled rows — but it means money appears in the
-   * drawer one day and is silently gone the next. An owner looking for a
-   * shortfall needs to see the reversal and whose till it was on.
+   * A cancelled sale gets an "out" line rather than being left off. Leaving
+   * it off is technically consistent — the balances exclude cancelled rows —
+   * but it means money appears in a pot one day and is silently gone the
+   * next. An owner looking for a shortfall needs to see the reversal and
+   * whose till it was on.
    */
   const derivedLines: LedgerEntry[] = [];
-  if (cashEnabled && startedOn) {
-    const { data: cashOrders } = await supabase
-      .from("orders")
-      .select(
-        "id, ticket, date, revenue, status, contact_name, logged_by, tag, cancelled_by, created_at"
-      )
-      .gte("date", startedOn)
-      .eq("payment_method", "cod")
-      .order("date", { ascending: false })
-      .limit(200);
 
-    const rows = (cashOrders ?? []) as {
-      id: string;
-      ticket: number | null;
-      date: string;
-      revenue: number;
-      status: string;
-      contact_name: string | null;
-      logged_by: string | null;
-      tag: string | null;
-      cancelled_by: string | null;
-      created_at: string;
-    }[];
+  /** Which sales land in which pot. `cod` is the word the database uses. */
+  const SALES_INTO: { account: Account; method: string; enabled: boolean; from: string | null }[] = [
+    { account: "cash", method: "cod", enabled: cashEnabled, from: startedOn },
+    { account: "gcash", method: "gcash", enabled: gcashEnabled, from: gcashStartedOn },
+    { account: "bank", method: "bank", enabled: bankEnabled, from: bankStartedOn },
+  ];
 
-    // Who cancelled, by name. `cancelled_by` is stamped at the moment of
-    // cancelling — unlike `logged_by`, which says who rang the sale up — so
-    // this is the one attribution a reversal can carry honestly.
-    const cancellerIds = [...new Set(rows.map((o) => o.cancelled_by).filter(Boolean))] as string[];
-    const cancellerName = new Map<string, string>();
-    if (cancellerIds.length > 0) {
-      const { data: people } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", cancellerIds);
-      for (const p of (people ?? []) as { id: string; full_name: string | null }[]) {
-        if (p.full_name?.trim()) cancellerName.set(p.id, p.full_name.trim());
-      }
+  /**
+   * Fetched per pot rather than in one query, and the limit is why.
+   *
+   * One `.in("payment_method", [...])` with `.limit(200)` gives 200 rows
+   * across all three — so a busy week of cash sales would push GCash out of
+   * its own history entirely, and the pot with the least activity would be
+   * the one that disappeared. A limit per pot is a limit per question asked.
+   */
+  const orderSets = await Promise.all(
+    SALES_INTO.map((pot) =>
+      pot.enabled && pot.from
+        ? supabase
+            .from("orders")
+            .select(
+              "id, ticket, date, revenue, status, contact_name, logged_by, tag, cancelled_by, created_at"
+            )
+            .gte("date", pot.from)
+            .eq("payment_method", pot.method)
+            .order("date", { ascending: false })
+            .limit(200)
+        : Promise.resolve({ data: [] as unknown[] })
+    )
+  );
+
+  type SaleRow = {
+    id: string;
+    ticket: number | null;
+    date: string;
+    revenue: number;
+    status: string;
+    contact_name: string | null;
+    logged_by: string | null;
+    tag: string | null;
+    cancelled_by: string | null;
+    created_at: string;
+  };
+
+  const saleRows: { account: Account; row: SaleRow }[] = [];
+  orderSets.forEach((set, i) => {
+    for (const row of ((set.data ?? []) as SaleRow[])) {
+      saleRows.push({ account: SALES_INTO[i].account, row });
     }
+  });
 
-    for (const o of rows) {
-      const amount = Number(o.revenue) || 0;
-      if (amount === 0) continue;
-      const who = o.logged_by?.trim() || null;
-      const what = `${o.tag === "walk-in" ? "Counter sale" : "Order"} ${orderLabel(o.ticket, o.contact_name)}`;
-      derivedLines.push(
-        o.status === "cancelled"
-          ? {
-              id: `order-void-${o.id}`,
-              date: o.date,
-              type: "out",
-              amount,
-              account: "cash",
-              category: "sale",
-              /**
-               * Named from `cancelled_by`, and only from `cancelled_by`.
-               *
-               * It briefly used `logged_by`, which is stamped when the sale is
-               * RUNG UP — so it put the cancellation on whoever was on the
-               * till at the time, very often not the person who cancelled it.
-               * A confident wrong name is worse than no name: it sends the
-               * owner to ask the wrong person about missing money. Orders
-               * cancelled before this column existed simply have no name, and
-               * say nothing rather than guessing.
-               */
-              note:
-                `${what} cancelled` +
-                (o.cancelled_by && cancellerName.has(o.cancelled_by)
-                  ? ` by ${cancellerName.get(o.cancelled_by)}`
-                  : ""),
-              derived: true,
-              by: o.cancelled_by ? (cancellerName.get(o.cancelled_by) ?? null) : null,
-              at: o.created_at,
-            }
-          : {
-              id: `order-${o.id}`,
-              date: o.date,
-              type: "in",
-              amount,
-              account: "cash",
-              category: "sale",
-              // Safe on the sale line: `logged_by` is exactly who took it.
-              note: `${what}${who ? ` · took by ${who}` : ""}`,
-              derived: true,
-              by: who,
-              at: o.created_at,
-            }
-      );
+  // Who cancelled, by name. `cancelled_by` is stamped at the moment of
+  // cancelling — unlike `logged_by`, which says who rang the sale up — so
+  // this is the one attribution a reversal can carry honestly. Looked up once
+  // for all three pots; the same person cancels on more than one of them.
+  const cancellerIds = [
+    ...new Set(saleRows.map((s) => s.row.cancelled_by).filter(Boolean)),
+  ] as string[];
+  const cancellerName = new Map<string, string>();
+  if (cancellerIds.length > 0) {
+    const { data: people } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", cancellerIds);
+    for (const p of (people ?? []) as { id: string; full_name: string | null }[]) {
+      if (p.full_name?.trim()) cancellerName.set(p.id, p.full_name.trim());
     }
+  }
+
+  for (const { account, row: o } of saleRows) {
+    const amount = Number(o.revenue) || 0;
+    if (amount === 0) continue;
+    const who = o.logged_by?.trim() || null;
+    const what = `${o.tag === "walk-in" ? "Counter sale" : "Order"} ${orderLabel(o.ticket, o.contact_name)}`;
+    derivedLines.push(
+      o.status === "cancelled"
+        ? {
+            id: `order-void-${o.id}`,
+            date: o.date,
+            type: "out",
+            amount,
+            account,
+            category: "sale",
+            /**
+             * Named from `cancelled_by`, and only from `cancelled_by`.
+             *
+             * It briefly used `logged_by`, which is stamped when the sale is
+             * RUNG UP — so it put the cancellation on whoever was on the till
+             * at the time, very often not the person who cancelled it. A
+             * confident wrong name is worse than no name: it sends the owner
+             * to ask the wrong person about missing money. Orders cancelled
+             * before this column existed simply have no name, and say nothing
+             * rather than guessing.
+             */
+            note:
+              `${what} cancelled` +
+              (o.cancelled_by && cancellerName.has(o.cancelled_by)
+                ? ` by ${cancellerName.get(o.cancelled_by)}`
+                : ""),
+            derived: true,
+            by: o.cancelled_by ? (cancellerName.get(o.cancelled_by) ?? null) : null,
+            at: o.created_at,
+          }
+        : {
+            id: `order-${o.id}`,
+            date: o.date,
+            type: "in",
+            amount,
+            account,
+            category: "sale",
+            // Safe on the sale line: `logged_by` is exactly who took it.
+            note: `${what}${who ? ` · took by ${who}` : ""}`,
+            derived: true,
+            by: who,
+            at: o.created_at,
+          }
+    );
   }
 
   /**
@@ -685,7 +820,10 @@ export async function loadMoney(): Promise<MoneyPicture> {
   }
 
   return {
-    fixedCosts,
+    bills,
+    billHistory,
+    thisMonth,
+    today,
     monthlyFixed,
     openDays,
     dailyOE,

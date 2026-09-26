@@ -66,6 +66,8 @@ export const RESTORE_ORDER = [
   "cycle_counts",
   "oe_templates",
   "fixed_costs",
+  // After `fixed_costs`, which every row points at.
+  "monthly_bills",
   "assets",
   // After `suppliers` and `profiles`, both of which they point at.
   "supplier_debts",

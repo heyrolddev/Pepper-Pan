@@ -24,7 +24,10 @@ import { hqTitle } from "@/lib/hq-theme";
 import { Explain } from "@/components/explain";
 import { ACCOUNT_SHORT, type Account } from "@/lib/money-accounts";
 import { SupplierDebts } from "@/components/supplier-debts";
+import { PotHistory } from "@/components/pot-history";
 import { SpendPanel } from "@/components/spend-panel";
+import { MonthlyBills } from "@/components/monthly-bills";
+import { BILL_KINDS, BILL_KIND_HINT, BILL_KIND_LABEL, type BillKindName } from "@/lib/monthly-bills";
 import type { Supplier } from "@/lib/suppliers";
 
 /**
@@ -191,14 +194,19 @@ function Pot({
   label,
   note,
   state,
+  moves,
   onStart,
+  onOpen,
 }: {
   tone: PotTone;
   label: string;
   /** What flows into it, in the owner's words. */
   note: string;
   state: { enabled: boolean; onHand: number };
+  /** How many lines this pot has, so the row can say the history exists. */
+  moves: number;
   onStart: () => void;
+  onOpen: () => void;
 }) {
   const skin = POT_TONES[tone];
 
@@ -219,21 +227,39 @@ function Pot({
     );
   }
 
+  /* A button, not a div.
+
+     The balance is the one figure on this page an owner routinely disagrees
+     with, and until now the only way to ask it why was to scroll to a panel
+     further down that answered for the drawer and nothing else. The place
+     somebody wants the history is standing on the number, so the number is
+     the control — and being a real <button> is what makes that true with a
+     keyboard and a screen reader as well as a thumb. */
   return (
-    <div
-      className={`flex items-center gap-3 overflow-hidden rounded-2xl ${skin.tint} py-3 pr-4 ring-1 ${skin.ring}`}
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${label} — ${peso(state.onHand)}. See its history.`}
+      className={`flex w-full items-center gap-3 overflow-hidden rounded-2xl ${skin.tint} py-3 pr-4 text-left ring-1 ${skin.ring} transition-shadow hover:ring-2 hover:ring-ink-950/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink-950`}
     >
       <span aria-hidden className={`h-10 w-1.5 shrink-0 rounded-r-full ${skin.bar}`} />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold text-ink-950">{label}</p>
         <p className="mt-0.5 text-xs text-ink-800/50">{note}</p>
       </div>
-      <span
-        className={`shrink-0 font-display text-xl font-black tabular-nums ${skin.value}`}
-      >
-        {peso(state.onHand)}
+      <span className="shrink-0 text-right">
+        <span
+          className={`block font-display text-xl font-black tabular-nums ${skin.value}`}
+        >
+          {peso(state.onHand)}
+        </span>
+        {/* Says the history is there, and how much of it. A balance that is
+            merely clickable looks exactly like one that is not. */}
+        <span className="mt-0.5 block text-[11px] font-bold text-ink-800/40">
+          {moves > 0 ? `${moves} movements ›` : "History ›"}
+        </span>
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -293,6 +319,8 @@ export function MoneyView({
   const [dialog, setDialog] = useState<
     "cost" | "cash-start" | "gcash-start" | "bank-start" | "cash-entry" | "utang" | "asset" | null
   >(null);
+  /** Which pot's own history is open, if any. */
+  const [potOpen, setPotOpen] = useState<Account | null>(null);
   /**
    * Which utang is being collected, and how much the box starts with.
    *
@@ -374,7 +402,9 @@ export function MoneyView({
               label={pot.label}
               note={pot.note}
               state={money[pot.key]}
+              moves={money.ledger.filter((l) => l.account === pot.key).length}
               onStart={() => setDialog(pot.start)}
+              onOpen={() => setPotOpen(pot.key)}
             />
           ))}
         </div>
@@ -433,71 +463,70 @@ export function MoneyView({
         />
       </Panel>
 
-      {/* ---- cash ---- */}
+      {/* ---- money history ----
+
+          It was "Cash in the drawer", and it listed the drawer's lines only.
+          That was correct and it was not enough: the shop takes GCash and
+          bank transfers, every one of those was counted in a balance above,
+          and not one of them appeared in any history anywhere. Asked where a
+          GCash payment went, the software's honest answer was that it knew
+          and would not say.
+
+          So this is every pot in one stream, each line saying which one it
+          moved. The per-pot view did not go away — it moved onto the pot
+          itself, up in Pepper Pan Bank, which is where somebody is standing
+          when they want it. This panel answers the other question: what has
+          the shop's money been doing, wherever it sits. */}
       <Panel
-        title="Cash in the drawer"
+        title="Money history"
         hint={
-          money.cash.enabled
-            ? `Counting from ${formatDate(money.cash.startedOn!)}, starting at ${peso(money.cash.startedWith, 0)}. Every cash sale, every cancellation, and anything put in or taken out — with whose till it was on.`
-            : "Start from what's in the drawer right now — nothing retroactive, because a balance rebuilt from guesses looks authoritative and drifts."
-        }
-        // No button of its own any more: "Money in or out" moved up to Pepper
-        // Pan Bank when it learned to ask which pot, and two buttons doing the
-        // same job is how one of them ends up writing to the wrong one.
-        action={
-          money.cash.enabled ? undefined : (
-            <button
-              onClick={() => setDialog("cash-start")}
-              className="rounded-xl bg-ink-950 px-4 py-2 text-sm font-black text-cream-50 hover:bg-ink-800"
-            >
-              Start counting
-            </button>
-          )
+          anyPot
+            ? "Everything in and out, across the drawer, GCash and the bank. Tap a pot above to see just that one, a day at a time."
+            : "Nothing is being counted yet. Start a pot above and everything it does from then on is listed here."
         }
       >
-        {money.cash.enabled && (
+        {anyPot && (
           <>
             <p className="font-display text-3xl font-black tabular-nums text-ink-950">
-              {peso(money.cash.onHand)}
+              {peso(money.totalHeld)}
             </p>
-            {/* Five, newest first, and the rest a button away.
-                
-                It was a hard `.slice(0, 8)` — eight rows, and everything
-                before that simply gone, with nothing on screen to say so.
-                The drawer not balancing is exactly when somebody needs to go
-                back further than the last eight entries. */}
+            <p className="-mt-1 text-xs text-ink-800/45">
+              across every pot being counted
+            </p>
+            {/* Four, newest first, and the rest behind a dialog.
+
+                It was a hard `.slice(0, 8)` once — eight rows, and everything
+                before that simply gone with nothing on screen to say so. The
+                money not balancing is exactly when somebody needs to go back
+                further than the last eight entries. */}
             <HistoryList
               className="mt-4"
-              // The drawer's lines only. Every pot shares one `cash_ledger`
-              // table and the balances have filtered on `account` since
-              // 0042, but this list never did — so a GCash transfer showed
-              // up in the drawer's own history while being correctly left
-              // out of the drawer's total. The one list whose whole job is
-              // to explain a figure was showing rows that figure excludes.
-              items={money.ledger.filter((l) => l.account === "cash")}
+              items={money.ledger}
               keyOf={(l) => l.id}
               dateOf={(l) => l.date}
               initial={4}
               noun="entries"
               // Behind a dialog rather than expanding down the page. This is
-              // the longest list in HQ — every cash sale since counting
-              // started — and expanded in place it buried its own "Show
-              // fewer" under a hundred rows. The dates live in there too,
-              // where they are used.
+              // the longest list in HQ — every sale on every pot since
+              // counting started — and expanded in place it buried its own
+              // "Show fewer" under a hundred rows. The dates live in there
+              // too, where they are used.
               modal
-              modalTitle="Cash in the drawer"
+              modalTitle="Money history"
               empty="Nothing yet — no sales, and nothing put in or taken out."
               render={(l) => (
                 <Row
-                  label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Cash in" : "Cash out")}`}
+                  label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Money in" : "Money out")}`}
                   value={`${l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
                   tone={l.type === "in" ? "good" : "bad"}
-                  /* Marked, because the two kinds behave differently: a sale
-                     line follows its order — cancel the order and the line
-                     turns into a reversal — while a typed entry stays exactly
-                     as it was entered. Somebody chasing a shortfall needs to
-                     know which they are looking at. */
-                  badge={l.derived ? "from a sale" : undefined}
+                  /* Which pot, on every line.
+
+                     One stream across three pots is only readable if each
+                     line says which one it was — otherwise a ₱200 in and a
+                     ₱200 out on the same day look like they cancel, and they
+                     do not if one was the drawer and the other was GCash.
+                     This badge is load-bearing, not decoration. */
+                  badge={`${ACCOUNT_SHORT[l.account]}${l.derived ? " · sale" : ""}`}
                 />
               )}
             />
@@ -705,11 +734,11 @@ export function MoneyView({
         ))}
       </div>
 
-      {/* ---- fixed costs ---- */}
+      {/* ---- the bills, month by month ---- */}
       <Panel
         fold
         title="Monthly bills"
-        hint={`Spread across the ${money.openDays} days a month you're open — ${peso(money.dailyOE)} a day.`}
+        hint={`What each one actually came to, month by month — ${peso(money.monthlyFixed, 0)} a month, ${peso(money.dailyOE)} a day across the ${money.openDays} days you open.`}
         action={
           <button
             onClick={() => setDialog("cost")}
@@ -719,51 +748,32 @@ export function MoneyView({
           </button>
         }
       >
-        {money.fixedCosts.length === 0 ? (
-          <p className="text-sm text-ink-800/50">
-            Nothing yet. Rent, kuryente, tubig, sweldo, internet — anything that
-            arrives every month.
-          </p>
-        ) : (
-          <>
-            {money.fixedCosts.map((c) => (
-              <Row
-                key={c.id}
-                label={c.label}
-                value={peso(c.amount)}
-                onDelete={() => run(() => deleteFixedCost(c.id))}
-              />
-            ))}
-            <div className="mt-2 flex items-center justify-between border-t-2 border-ink-950/15 pt-2">
-              <span className="text-sm font-bold text-ink-800/70">A month</span>
-              <span className="font-display text-xl font-black tabular-nums text-ink-950">
-                {peso(money.monthlyFixed)}
-              </span>
-            </div>
-            <label className="mt-4 flex flex-wrap items-center gap-2 text-sm text-ink-800/70">
-              Open
-              <input
-                type="number"
-                min="1"
-                max="31"
-                defaultValue={money.openDays}
-                onBlur={(e) => {
-                  const v = Number(e.target.value);
-                  if (v !== money.openDays) run(() => setOpenDays(v));
-                }}
-                className="w-20 rounded-xl border-2 border-ink-950/10 bg-cream-50 px-3 py-1.5 text-center tabular-nums"
-              />
-              days a month
-            </label>
-          </>
-        )}
-        {money.monthlyWasteRate > 0 && (
-          <p className="mt-4 rounded-xl bg-chili-500/15 px-4 py-3 text-sm text-ink-950">
-            Waste is running at about{" "}
-            <strong className="tabular-nums">{peso(money.monthlyWasteRate, 0)}</strong>{" "}
-            a month, and break-even counts it — it&apos;s as real a cost as the
-            rent.
-          </p>
+        <MonthlyBills
+          bills={money.bills}
+          history={money.billHistory}
+          thisMonth={money.thisMonth}
+          monthlyFixed={money.monthlyFixed}
+          openDays={money.openDays}
+          dailyOE={money.dailyOE}
+          monthlyWasteRate={money.monthlyWasteRate}
+          onRemoveBill={(id) => run(() => deleteFixedCost(id))}
+        />
+        {money.bills.length > 0 && (
+          <label className="mt-4 flex flex-wrap items-center gap-2 text-sm text-ink-800/70">
+            Open
+            <input
+              type="number"
+              min="1"
+              max="31"
+              defaultValue={money.openDays}
+              onBlur={(e) => {
+                const v = Number(e.target.value);
+                if (v !== money.openDays) run(() => setOpenDays(v));
+              }}
+              className="w-20 rounded-xl border-2 border-ink-950/10 bg-cream-50 px-3 py-1.5 text-center tabular-nums"
+            />
+            days a month
+          </label>
         )}
       </Panel>
 
@@ -946,6 +956,16 @@ export function MoneyView({
       {dialog && (
         <MoneyDialog which={dialog} pots={openPots} onClose={() => setDialog(null)} />
       )}
+      {potOpen && (
+        <PotHistory
+          account={potOpen}
+          entries={money.ledger.filter((l) => l.account === potOpen)}
+          balance={money[potOpen].onHand}
+          startedOn={money[potOpen].startedOn}
+          today={money.today}
+          onClose={() => setPotOpen(null)}
+        />
+      )}
       {collecting && (
         <CollectDialog
           receivable={money.receivables.find((r) => r.id === collecting.id)!}
@@ -974,11 +994,18 @@ function MoneyDialog({
   const [b, setB] = useState("");
   const [c, setC] = useState("");
   const [dir, setDir] = useState<"in" | "out">("out");
+  // Overhead, not utility: a bill only earns "utility" if it moves with
+  // consumption, and defaulting everything to the interesting kind makes the
+  // kind mean nothing.
+  const [billKind, setBillKind] = useState<BillKindName>("overhead");
   // Defaults to whichever pot is listed first — the drawer, whenever it is on.
   const [account, setAccount] = useState<Account>(pots[0] ?? "cash");
 
   const config = {
-    cost: { title: "Add a monthly bill", sub: "Anything that arrives every month whether you open or not." },
+    cost: {
+      title: "Add a monthly bill",
+      sub: "Anything that arrives every month whether you open or not. You record what it actually came to each month afterwards.",
+    },
     "cash-start": { title: "Start counting cash", sub: "How much is in the drawer right now?" },
     "gcash-start": { title: "Start counting GCash", sub: "How much is in the e-wallet right now? Nothing before today is counted." },
     "bank-start": { title: "Start counting the bank", sub: "How much is in the account right now? Nothing before today is counted." },
@@ -990,7 +1017,7 @@ function MoneyDialog({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const amount = Number(b) || 0;
-    if (which === "cost") run(() => saveFixedCost({ label: a, amount }), onClose);
+    if (which === "cost") run(() => saveFixedCost({ label: a, amount, kind: billKind }), onClose);
     else if (which === "cash-start") run(() => startCashTracking(Number(a) || 0), onClose);
     else if (which === "gcash-start") run(() => startGcashTracking(Number(a) || 0), onClose);
     else if (which === "bank-start") run(() => startBankTracking(Number(a) || 0), onClose);
@@ -1071,10 +1098,42 @@ function MoneyDialog({
                 placeholder={which === "cost" ? "e.g. Rent" : which === "utang" ? "e.g. Aling Nena" : "e.g. Chest freezer"}
                 className={inputClass} />
             </Field>
-            <Field label={which === "cost" ? "How much a month (₱)" : "How much (₱)"}>
+            <Field
+              label={which === "cost" ? "Roughly how much a month (₱)" : "How much (₱)"}
+              /* Named as a guess on purpose. This figure is only used until
+                 a real month is recorded against the bill — calling it "how
+                 much a month" is what made the old screen look authoritative
+                 about a number nobody had checked in a year. */
+              hint={
+                which === "cost"
+                  ? "Just to start break-even off. Once you record a real month, that takes over."
+                  : undefined
+              }
+            >
               <input value={b} onChange={(e) => setB(e.target.value)} type="number"
                 step="0.01" min="0" inputMode="decimal" className={inputClass} />
             </Field>
+            {which === "cost" && (
+              <Field label="What kind" hint={BILL_KIND_HINT[billKind]}>
+                <div className="flex flex-wrap gap-2">
+                  {BILL_KINDS.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setBillKind(k)}
+                      aria-pressed={billKind === k}
+                      className={`rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
+                        billKind === k
+                          ? "bg-ink-950 text-cream-50"
+                          : "bg-ink-950/[0.05] text-ink-950 hover:bg-ink-950/10"
+                      }`}
+                    >
+                      {BILL_KIND_LABEL[k]}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
             {which === "utang" && (
               <Field label="Number" hint="Optional.">
                 <input value={c} onChange={(e) => setC(e.target.value)} className={inputClass} />
