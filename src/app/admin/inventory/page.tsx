@@ -4,6 +4,9 @@ import { isLow, stockValue } from "@/lib/costing";
 import { InventoryView, type BatchRow, type StockRow } from "@/components/inventory-view";
 import { loadInsight, loadPriceMoves } from "@/lib/inventory-insight";
 import { listSuppliers } from "@/app/admin/suppliers/actions";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { loadNutrition } from "@/lib/nutrition-server";
+import { rolloutOf } from "@/lib/nutrition-rollout";
 
 // Stock moves every service. A cached shopping list is the wrong shopping list.
 export const dynamic = "force-dynamic";
@@ -37,6 +40,32 @@ export default async function AdminInventoryPage() {
 
   const { ingredients, batches, batchCosts, batchIngredients, failed } =
     await loadCostBook();
+
+  /**
+   * Whether the calories anybody fills in here ever reach a customer.
+   *
+   * Worked out on this screen because this is the screen where the filling
+   * happens. The owner filled 44 ingredients, went to look at the menu and
+   * found nothing — the master switch was off, two tabs away, and no screen
+   * put those two facts next to each other. Only for whoever can actually
+   * do the filling; for everyone else it is a status about work they cannot
+   * do.
+   */
+  const rollout = canManage
+    ? await (async () => {
+        const supabase = createAdminClient();
+        const [{ data: mealRows }, { data: setting }, nutrition] = await Promise.all([
+          supabase.from("meals").select("id, name").order("name"),
+          supabase.from("settings").select("show_nutrition").eq("id", 1).maybeSingle(),
+          loadNutrition(),
+        ]);
+        return rolloutOf(
+          (mealRows ?? []) as { id: string; name: string }[],
+          nutrition,
+          setting?.show_nutrition === true
+        );
+      })()
+    : null;
 
   // What to buy and what is about to go off. Needs the cost book first, since
   // both are worked out against the same ingredient and batch rows.
@@ -132,6 +161,7 @@ export default async function AdminInventoryPage() {
       thinHistory={insight.thin}
       canSeeCosts={canSeeCosts}
       canManage={canManage}
+      rollout={rollout}
       suppliers={suppliers}
       failed={failed}
     />

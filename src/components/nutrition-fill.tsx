@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { AdminDialog } from "@/components/admin-dialog";
 import {
   applyNutritionFill,
@@ -31,6 +32,7 @@ export function NutritionFill() {
   const [done, setDone] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
+  const router = useRouter();
 
   const open = () =>
     start(async () => {
@@ -49,6 +51,10 @@ export function NutritionFill() {
       }
       setDone(r.filled ?? 0);
       setPlan(null);
+      // So the status below this button re-reads. Without it the panel goes
+      // on saying what was true before the fill, which is the exact
+      // complaint this whole feature exists to answer.
+      router.refresh();
     });
   };
 
@@ -66,7 +72,7 @@ export function NutritionFill() {
         <p className="mt-2 rounded-xl bg-jade-600/15 px-4 py-2.5 text-sm font-bold text-jade-700">
           {done === 0
             ? "Nothing needed filling."
-            : `Filled ${done} ingredient${done === 1 ? "" : "s"}. Dishes whose whole recipe is now covered will show calories.`}
+            : `Filled ${done} ingredient${done === 1 ? "" : "s"}. What that changed for the menu is right below — filling the shelf is only one of the three things that have to be true.`}
         </p>
       )}
       {error && (

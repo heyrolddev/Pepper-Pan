@@ -26,6 +26,8 @@ import {
 import type { Supplier } from "@/lib/suppliers";
 import { hqTitle } from "@/lib/hq-theme";
 import { NutritionFill } from "@/components/nutrition-fill";
+import { NutritionStatus } from "@/components/nutrition-status";
+import type { Rollout } from "@/lib/nutrition-rollout";
 
 export type StockRow = {
   id: string;
@@ -197,6 +199,7 @@ export function InventoryView({
   thinHistory,
   canSeeCosts,
   canManage,
+  rollout = null,
   suppliers = [],
   failed,
 }: {
@@ -219,6 +222,8 @@ export function InventoryView({
    * what would force the owner to hand over the books to get a shelf counted.
    */
   canManage: boolean;
+  /** Whether the calories filled in here are reaching a customer. */
+  rollout?: Rollout | null;
   failed: string[];
 }) {
   const [tab, setTab] = useState<"stock" | "batches">("stock");
@@ -412,8 +417,15 @@ export function InventoryView({
           at once — and it lives here rather than on the menu because what it
           fills in is the SHELF, and the dishes get their figures from it. */}
       {canManage && (
-        <div>
-          <NutritionFill />
+        <div className="flex flex-col gap-3">
+          <div>
+            <NutritionFill />
+          </div>
+          {/* The answer to "I filled everything and the menu shows nothing".
+              Beside the button that does the filling, because that is where
+              the question gets asked — the switch that was actually in the
+              way lives two tabs from here. */}
+          {rollout && <NutritionStatus rollout={rollout} />}
         </div>
       )}
 
