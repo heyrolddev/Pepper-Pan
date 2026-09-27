@@ -17,7 +17,8 @@ import {
   orderForMenu,
   type MenuCategory,
 } from "@/lib/categories";
-import { isComplete, macroSplit, round } from "@/lib/nutrition";
+import { macroSplit } from "@/lib/nutrition";
+import { cardNutrition, kcalLabel } from "@/lib/card-nutrition";
 
 /**
  * The card is a door now.
@@ -78,9 +79,21 @@ function ProductCard({
    * menu, and the food in the photographs is the thing meant to be bright.
    */
   const tone = cardTone(product.categories, palette);
-  const facts =
-    showNutrition && isComplete(product.nutrition) ? round(product.nutrition!.per) : null;
-  const split = facts ? macroSplit(facts) : null;
+  /**
+   * What this card can honestly say.
+   *
+   * Read off the VARIANTS rather than the card's own `nutrition`, which is
+   * null the moment a card holds more than one dish. On a menu that is
+   * almost all two-flavour cards that meant the calories reached nobody —
+   * filled in everywhere, shown nowhere. A card where every flavour is
+   * known quotes the range; one flavour short and it says nothing at all.
+   */
+  const facts = showNutrition ? cardNutrition(product.variants) : null;
+  const one = facts?.kind === "one" ? facts.per : null;
+  // The bar is a single dish's split, so it is only drawn for a single
+  // figure. Two flavours have two splits and picking one to draw would be
+  // a claim about a dish the customer has not chosen yet.
+  const split = one ? macroSplit(one) : null;
   const soldOut = product.soldOut;
   // Only ever shown for a card with one dish behind it. "Only 2 left" over a
   // group is a promise about which of four things, and the card cannot say
@@ -263,33 +276,44 @@ function ProductCard({
             has a sum, and that sum is smaller than the truth — see
             `isComplete`. Somebody counting calories would be handed a number
             that is confidently too low and looks exactly like a right one. */}
-        {facts && split && (
+        {facts && (
           <div className="mt-1 flex flex-col gap-1">
             <div className="flex items-baseline gap-1.5">
               <span className="text-[11px] font-black tabular-nums text-ink-900 sm:text-xs">
-                {facts.kcal.toLocaleString("en-PH")}
+                {kcalLabel(facts)}
               </span>
               <span className="text-[10px] font-bold uppercase tracking-wide text-ink-800/45">
                 kcal
               </span>
-              <span className="ml-auto text-[10px] font-semibold tabular-nums text-ink-800/50">
-                {facts.protein}P · {facts.carbs}C · {facts.fat}F
-              </span>
+              {one ? (
+                <span className="ml-auto text-[10px] font-semibold tabular-nums text-ink-800/50">
+                  {one.protein}P · {one.carbs}C · {one.fat}F
+                </span>
+              ) : (
+                /* Where the exact figure is. A range with no way to resolve
+                   it is a tease; this says one tap gets you the number for
+                   the flavour you actually want. */
+                <span className="ml-auto text-[10px] font-semibold text-ink-800/45">
+                  per flavour
+                </span>
+              )}
             </div>
             {/* Three segments that always fill the bar exactly — the split is
                 computed from the macros' own energy, so a rounded label can
                 never leave a gap. Colours are fixed across every dish: the
                 bar is only readable if protein is the same colour on all of
                 them, so it does NOT take the category's. */}
-            <span
-              className="flex h-1 w-full overflow-hidden rounded-full bg-ink-950/10"
-              role="img"
-              aria-label={`${facts.protein} grams protein, ${facts.carbs} carbs, ${facts.fat} fat`}
-            >
-              <span className="bg-ocean-600" style={{ width: `${split.protein}%` }} />
-              <span className="bg-gold-400" style={{ width: `${split.carbs}%` }} />
-              <span className="bg-chili-500" style={{ width: `${split.fat}%` }} />
-            </span>
+            {one && split && (
+              <span
+                className="flex h-1 w-full overflow-hidden rounded-full bg-ink-950/10"
+                role="img"
+                aria-label={`${one.protein} grams protein, ${one.carbs} carbs, ${one.fat} fat`}
+              >
+                <span className="bg-ocean-600" style={{ width: `${split.protein}%` }} />
+                <span className="bg-gold-400" style={{ width: `${split.carbs}%` }} />
+                <span className="bg-chili-500" style={{ width: `${split.fat}%` }} />
+              </span>
+            )}
           </div>
         )}
 
@@ -667,6 +691,7 @@ export function MenuList({
         {open && (
           <ProductDialog
             key={open}
+            showNutrition={showNutrition}
             product={products.find((p) => p.id === open)!}
             staff={staff}
             onClose={() => setOpen(null)}

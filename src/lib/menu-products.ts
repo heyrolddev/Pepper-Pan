@@ -92,17 +92,22 @@ export type Product = {
   reviewCount: number;
   sortOrder: number;
   /**
-   * The code and the nutrition of the ONE dish on this card, or null when the
-   * card holds several.
+   * The code of the ONE dish on this card, or null when the card holds
+   * several.
    *
-   * Four ji pai behind one card have four codes and four calorie counts, and
-   * a card is not the place to pick between them — a range of calories is
-   * noise, and showing the first variant's code would send somebody to the
-   * counter saying "C1" for a dish that is actually C3. Cards that hold a
-   * choice carry these on the chips inside the dish instead.
+   * Four ji pai behind one card have four codes, and showing the first
+   * variant's would send somebody to the counter saying "C1" for a dish
+   * that is actually C3. The chips inside the dish carry them instead.
+   *
+   * Nutrition used to sit here on the same rule and was WRONG to. A code
+   * has no sensible answer across four dishes; calories do — the range
+   * across them — and blanking it meant that on a menu made almost
+   * entirely of two-flavour cards, every filled-in recipe reached nobody.
+   * The card reads it off the variants now (`cardNutrition`), and the
+   * dialog shows the chosen flavour's own figure, which is what the note
+   * here always claimed and never did.
    */
   code: string | null;
-  nutrition: DishNutrition | null;
 };
 
 export type ProductGroup = {
@@ -369,7 +374,6 @@ function productOf(
     reviewCount: count,
     sortOrder: group?.sort_order ?? 0,
     code: sorted.length === 1 ? (sorted[0].code ?? null) : null,
-    nutrition: sorted.length === 1 ? (sorted[0].nutrition ?? null) : null,
   };
 }
 
