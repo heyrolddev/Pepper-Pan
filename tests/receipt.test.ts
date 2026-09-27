@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COLUMNS, asPlainText, renderReceipt, type Receipt } from "../src/lib/receipt.ts";
+import {
+  COLUMNS,
+  asPlainText,
+  renderReceipt,
+  type Receipt,
+} from "../src/lib/receipt.ts";
 import { chunk, encodeReceipt } from "../src/lib/escpos.ts";
 
 /**
@@ -176,4 +181,157 @@ test("add-ons print under the dish, priced so the paper adds up", () => {
   // reads as a line that failed to print.
   assert.match(body, /\+ Coke\s+0\.00/);
   assert.match(body, /2 x Pork Solo Rice\s+240\.00/);
+});
+
+/* ------------------------------------------------------------------
+ * The code, and what's in it
+ *
+ * One piece of paper serving two readers. The cook runs down the left edge
+ * looking for the dish; the customer reads the right edge for the money and
+ * the block at the bottom for what they just ate. Both have to fit on a roll
+ * 32 characters wide, which is the constraint every decision here answers to.
+ * ------------------------------------------------------------------ */
+
+const KCAL = { kcal: 742, protein: 38, carbs: 61, fat: 37 };
+const DRINK = { kcal: 339, protein: 3, carbs: 68, fat: 6 };
+
+const withFacts: Receipt = {
+  ...sale,
+  showNutrition: true,
+  lines: [
+    {
+      name: "Black Pepper Chicken Noodles",
+      code: "C1",
+      qty: 2,
+      price: 179,
+      nutrition: KCAL,
+      extras: [{ label: "Extra Rice", price: 20 }],
+    },
+    { name: "Tiger Sugar Milktea", code: "M3", qty: 1, price: 99, nutrition: DRINK },
+  ],
+  total: 497,
+};
+
+test("the code is printed where a cook reads it — at the left, after the quantity", () => {
+  const text = textOf(withFacts);
+  // Not at the end of a name that wraps, and not on a line of its own: a
+  // cook's eye goes down the left edge of a ticket.
+  assert.match(text, /^2 x C1 Black Pepper/m);
+  assert.match(text, /^1 x M3 Tiger Sugar Milktea/m);
+});
+
+test("a dish with no code prints exactly as it always did", () => {
+  assert.match(textOf(sale), /^2 x Black Pepper Noodles/m);
+  assert.doesNotMatch(textOf(sale), /undefined|null/);
+});
+
+test("each line carries its own figure, for the LINE not for one of it", () => {
+  // The money above it is the line's total, and two numbers on one row of
+  // paper that count differently is exactly the confusion a receipt exists
+  // to prevent. Two noodles: 1,484 kcal, 76P 122C 74F.
+  assert.match(textOf(withFacts), /1,484 kcal {2}76P 122C 74F/);
+  assert.match(textOf(withFacts), /339 kcal {2}3P 68C 6F/);
+});
+
+test("the order's own total is under the money", () => {
+  const text = textOf(withFacts);
+  assert.match(text, /Total calories\s+1,823 kcal/);
+  assert.match(text, /Protein\/Carbs\/Fat\s+79P 190C 80F/);
+  // Under, not over: it belongs beside the money it is about.
+  assert.ok(text.indexOf("TOTAL (PHP)") < text.indexOf("Total calories"));
+});
+
+test("a line with no figure makes the total a floor, and says so", () => {
+  // A silent skip prints an authoritative number that is low by exactly the
+  // dish nobody has costed — worse than printing nothing, for the one person
+  // on the receipt who reads it.
+  const partial: Receipt = {
+    ...withFacts,
+    lines: [
+      { name: "Noodles", code: "C1", qty: 1, price: 179, nutrition: KCAL },
+      { name: "Mystery Special", code: "X9", qty: 1, price: 99 },
+    ],
+  };
+  const text = textOf(partial);
+  assert.match(text, /Calories \(at least\)\s+742 kcal/);
+  assert.match(text, /Some items are not counted/);
+  assert.doesNotMatch(text, /Total calories/);
+});
+
+test("nothing at all prints when the owner's switch is off", () => {
+  // A receipt is customer-facing too. A shop that keeps calories off the
+  // menu must not find them on the paper.
+  const off = textOf({ ...withFacts, showNutrition: false });
+  assert.doesNotMatch(off, /kcal/);
+  assert.doesNotMatch(off, /Protein/);
+  // The codes are not part of that switch — they are for the kitchen.
+  assert.match(off, /^2 x C1 /m);
+});
+
+test("off is the default, so a caller that forgot cannot leak it", () => {
+  const { showNutrition: _drop, ...noFlag } = withFacts;
+  void _drop;
+  assert.doesNotMatch(textOf(noFlag as Receipt), /kcal/);
+});
+
+test("the switch on with nothing known prints no empty block", () => {
+  const blank: Receipt = {
+    ...sale,
+    showNutrition: true,
+    lines: [{ name: "Noodles", qty: 1, price: 89 }],
+  };
+  const text = textOf(blank);
+  assert.doesNotMatch(text, /kcal/);
+  assert.doesNotMatch(text, /at least/);
+});
+
+test("every line still fits the paper with codes and figures on it", () => {
+  // The whole reason this is built to a column count. A 48-character line on
+  // a 32-character roll does not wrap — it is cut, silently, on the one
+  // piece of paper nobody can edit afterwards.
+  for (const width of ["narrow", "wide"] as const) {
+    for (const row of renderReceipt(withFacts, width)) {
+      assert.ok(
+        row.text.length <= COLUMNS[width],
+        `"${row.text}" is ${row.text.length} chars on ${width} paper`
+      );
+    }
+  }
+});
+
+test("a long name with a code still wraps rather than being cut", () => {
+  const long: Receipt = {
+    ...withFacts,
+    lines: [
+      {
+        name: "Extra Large Black Pepper Chicken Noodles with Egg",
+        code: "C12",
+        qty: 1,
+        price: 249,
+        nutrition: KCAL,
+      },
+    ],
+  };
+  const text = textOf(long);
+  assert.match(text, /1 x C12 Extra Large/);
+  assert.match(text, /with Egg\s+249\.00/);
+});
+
+test("the figures survive the fold to printer ASCII", () => {
+  // The peso sign is folded to P; the macro shorthand uses P too, and must
+  // not be mangled by the same pass.
+  const text = textOf(withFacts);
+  assert.match(text, /76P 122C 74F/);
+  assert.doesNotMatch(text, /[^\x00-\x7F]/);
+});
+
+test("zero quantities are not counted into the order total", () => {
+  const zero: Receipt = {
+    ...withFacts,
+    lines: [
+      { name: "Noodles", qty: 1, price: 179, nutrition: KCAL },
+      { name: "Ghost", qty: 0, price: 0, nutrition: DRINK },
+    ],
+  };
+  assert.match(textOf(zero), /Total calories\s+742 kcal/);
 });

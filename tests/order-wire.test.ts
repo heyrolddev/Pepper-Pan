@@ -160,3 +160,38 @@ test("every loop that indexes `keep` walks the filtered options", () => {
 test("the option filter keeps a sized option", () => {
   assert.match(MODIFIER_ACTION, /\.filter\(\(o\) => o\.mealId \|\| o\.productId\)/);
 });
+
+/**
+ * The check-this-order preview and the paper are the same lines.
+ *
+ * The till says, under the preview, "everything else is exactly what will
+ * print". That promise was kept by a second copy of the same mapping — and
+ * a second copy is a promise only until either side gains a field. The
+ * codes and the calories would have gone on the paper and not in the check,
+ * so the cashier would have confirmed one thing and handed over another.
+ *
+ * Mechanical because nothing else can see it: both produce `ReceiptLine[]`,
+ * so the types agree perfectly while the contents drift.
+ */
+const TILL = read("src/components/counter-till.tsx");
+
+test("the preview and the printed receipt are built by one function", () => {
+  const calls = [...TILL.matchAll(/receiptLines\(\)/g)].length;
+  assert.ok(calls >= 2, `expected the builder to serve both, saw ${calls} call(s)`);
+
+  // And no second mapping quietly rebuilding a line beside it.
+  const inlined = [...TILL.matchAll(/lines\.map\(\(l\) => \(\{\s*\n\s*name: l\.meal\.name/g)];
+  assert.equal(
+    inlined.length,
+    0,
+    "a receipt line is being built somewhere other than `receiptLines`"
+  );
+});
+
+test("both receipts carry the owner's calorie switch", () => {
+  // The paper obeying a switch the preview ignores is the same drift with a
+  // different field: the cashier checks a receipt with no figures on it and
+  // hands over one covered in them.
+  const flags = [...TILL.matchAll(/^\s*showNutrition,\s*$/gm)].length;
+  assert.ok(flags >= 2, `expected both receipts to pass it, saw ${flags}`);
+});
