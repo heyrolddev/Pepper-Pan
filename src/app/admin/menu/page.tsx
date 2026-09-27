@@ -5,6 +5,8 @@ import { loadNutrition } from "@/lib/nutrition-server";
 import { round } from "@/lib/nutrition";
 import { suggestCode } from "@/lib/dish-code";
 import { NutritionSwitch } from "@/components/nutrition-switch";
+import { NutritionStatus } from "@/components/nutrition-status";
+import { rolloutOf } from "@/lib/nutrition-rollout";
 import { MenuWorkspace } from "@/components/menu-workspace";
 import { MenuAvailability } from "@/components/menu-availability";
 import { NewMealForm } from "@/components/new-meal-form";
@@ -154,6 +156,20 @@ export default async function AdminMenuPage() {
     .maybeSingle();
   const nutritionOn = settingsRow?.show_nutrition === true;
 
+  /**
+   * Ready, blocked, and what to fill in next.
+   *
+   * Built from `rows` rather than `meals` because it only needs the id and
+   * the name, and `meals` is not assembled until below — and from the same
+   * `inside` map the editor's own per-dish figures come from, so the count
+   * beside the switch cannot disagree with the boxes underneath it.
+   */
+  const rollout = rolloutOf(
+    rows.map((m) => ({ id: m.id, name: m.name, isPublic: m.is_public })),
+    inside,
+    nutritionOn
+  );
+
   const codes = rows.map((m) => m.code ?? "").filter(Boolean);
   const meals: AdminMeal[] = rows.map((m) => {
     const worked = inside.get(m.id);
@@ -273,11 +289,21 @@ export default async function AdminMenuPage() {
       )}
 
       {canEdit && (
-        <NutritionSwitch
-          on={nutritionOn}
-          ready={meals.filter((m) => m.worked || m.kcal !== null).length}
-          total={meals.length}
-        />
+        <div className="flex flex-col gap-3">
+          <NutritionSwitch
+            on={nutritionOn}
+            ready={rollout.ready.length}
+            total={meals.length}
+            rollout={rollout}
+          />
+          {/* The same panel the Inventory tab shows, on purpose. That screen
+              is where the ingredients get filled in and this one is where
+              the switch lives; the owner filled 44 ingredients on one and
+              looked for the result on the other, and neither said what the
+              third screen was doing. One component, one set of figures, so
+              they cannot describe the same state two different ways. */}
+          <NutritionStatus rollout={rollout} showMenuLink={false} />
+        </div>
       )}
 
       {/* Only appears while there is something to collapse, and takes itself

@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setShowNutrition } from "@/app/admin/menu/actions";
+import { NutritionDishes } from "@/components/nutrition-dishes";
+import type { Rollout } from "@/lib/nutrition-rollout";
 
 /**
  * The master switch for calories on the customer menu.
@@ -17,12 +19,22 @@ export function NutritionSwitch({
   on,
   ready,
   total,
+  rollout,
 }: {
   on: boolean;
   /** Dishes with a complete figure. */
   ready: number;
   /** Dishes on the menu. */
   total: number;
+  /**
+   * Which dishes, by name.
+   *
+   * "1 of 55 dishes have a complete figure" is true and leaves the owner
+   * with nothing to do — which one, and which of the other fifty-four is
+   * one ingredient away? The count is the headline; this is the list
+   * behind it.
+   */
+  rollout?: Rollout;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -49,19 +61,24 @@ export function NutritionSwitch({
               : `${ready} of ${total} dishes have a complete figure. The rest stay blank rather than showing a total that's too low.`}
           </p>
         </div>
-        <button
-          onClick={flip}
-          disabled={pending}
-          role="switch"
-          aria-checked={on}
-          className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-colors disabled:opacity-50 ${
-            on ? "bg-jade-600 text-cream-50" : "bg-ink-950/10 text-ink-800"
-          }`}
-        >
-          {on ? "✓ Showing" : "Hidden"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {rollout && <NutritionDishes rollout={rollout} />}
+          <button
+            onClick={flip}
+            disabled={pending}
+            role="switch"
+            aria-checked={on}
+            className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition-colors disabled:opacity-50 ${
+              on ? "bg-jade-600 text-cream-50" : "bg-ink-950/10 text-ink-800"
+            }`}
+          >
+            {on ? "✓ Showing" : "Hidden"}
+          </button>
+        </div>
       </div>
-      {error && <p className="mt-2 text-xs font-semibold text-brand-700">{error}</p>}
+      {error && (
+        <p className="mt-2 text-xs font-semibold text-brand-700">{error}</p>
+      )}
     </div>
   );
 }
