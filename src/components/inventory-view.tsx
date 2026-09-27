@@ -25,6 +25,7 @@ import {
 } from "@/components/batch-forms";
 import type { Supplier } from "@/lib/suppliers";
 import { hqTitle } from "@/lib/hq-theme";
+import { NutritionFill } from "@/components/nutrition-fill";
 
 export type StockRow = {
   id: string;
@@ -404,6 +405,17 @@ export function InventoryView({
           )}
         </div>
       </div>
+
+      {/* Calories for the whole shelf, in one look and one tap.
+
+          Only the owner or a manager, because it writes to every ingredient
+          at once — and it lives here rather than on the menu because what it
+          fills in is the SHELF, and the dishes get their figures from it. */}
+      {canManage && (
+        <div>
+          <NutritionFill />
+        </div>
+      )}
 
       {failed.length > 0 && (
         <p className="rounded-2xl bg-brand-600 px-5 py-4 text-sm text-cream-50">

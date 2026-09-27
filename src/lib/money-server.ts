@@ -477,108 +477,102 @@ export async function loadMoney(): Promise<MoneyPicture> {
     // last within their day rather than wrongly first.
     at: l.created_at ?? null,
   }));
-  const cashEnabled = Boolean(settingsRow?.cash_balance_enabled);
-  const startedOn = settingsRow?.cash_balance_start_date ?? null;
-  const startedWith = Number(settingsRow?.cash_balance_starting_amount) || 0;
-
-  let onHand = 0;
-  if (cashEnabled && startedOn) {
-    // Cash sales only. GCash never touched the drawer, so counting it here
-    // would make the drawer look permanently over.
-    const { data: cashSales } = await supabase
-      .from("orders")
-      .select("revenue")
-      .gte("date", startedOn)
-      .eq("payment_method", "cod")
-      .neq("status", "cancelled");
-    const takings = ((cashSales ?? []) as { revenue: number }[]).reduce(
-      (s, o) => s + (Number(o.revenue) || 0),
-      0
-    );
-    // `.eq("account", "cash")` is load-bearing, not tidiness. Since migration
-    // 0042 a ledger line says which pot it moved, and restocking paid by
-    // GCash writes one — unfiltered, that spend would come straight out of
-    // the drawer figure, which is money that never left the drawer.
-    const { data: allLedger } = await supabase
-      .from("cash_ledger")
-      .select("type, amount")
-      .eq("account", "cash")
-      .gte("date", startedOn);
-    const moved = ((allLedger ?? []) as { type: string; amount: number }[]).reduce(
-      (s, l) => s + (l.type === "in" ? 1 : -1) * (Number(l.amount) || 0),
-      0
-    );
-    onHand = startedWith + takings + moved;
-  }
-
-  // ---- the e-wallet ----------------------------------------------------
   /**
-   * The same arithmetic as the drawer, on the other pot.
+   * The three pot balances, in one round trip instead of six.
    *
-   * Off until the owner says what was in it and from when, for the same
-   * reason the drawer is: without a starting point this would be every GCash
-   * sale since the shop opened, which is not a balance — it is a total, and
-   * it would only ever climb.
+   * This was six `await`s in a row — sales then ledger, for the drawer, then
+   * for GCash, then for the bank — each waiting on the one before it for no
+   * reason at all: a pot's arithmetic needs nothing from any other pot. On a
+   * page the owner opens every day that is five round trips of pure waiting.
+   *
+   * The arithmetic itself is untouched, and the two rules that were written
+   * out three times each still hold, now in one place:
+   *
+   *   A POT COUNTS ONLY ITS OWN SALES. Cash counts `cod`, GCash counts
+   *   `gcash`, the bank counts `bank`. Count them together and the drawer
+   *   reads permanently over by every GCash sale the shop ever took.
+   *
+   *   A POT COUNTS ONLY ITS OWN LEDGER LINES. `.eq("account", …)` is
+   *   load-bearing, not tidiness: restocking paid by GCash writes a line, and
+   *   unfiltered that spend would come out of the DRAWER — money that never
+   *   left it.
    */
-  const gcashEnabled = Boolean(settingsRow?.gcash_balance_enabled);
-  const gcashStartedOn = settingsRow?.gcash_balance_start_date ?? null;
-  const gcashStartedWith = Number(settingsRow?.gcash_balance_starting_amount) || 0;
+  const POTS_TO_COUNT = [
+    {
+      key: "cash" as const,
+      method: "cod",
+      enabled: Boolean(settingsRow?.cash_balance_enabled),
+      from: settingsRow?.cash_balance_start_date ?? null,
+      opening: Number(settingsRow?.cash_balance_starting_amount) || 0,
+    },
+    {
+      key: "gcash" as const,
+      method: "gcash",
+      /**
+       * Off until the owner says what was in it and from when, for the same
+       * reason the drawer is: without a starting point this would be every
+       * GCash sale since the shop opened, which is not a balance — it is a
+       * total, and it would only ever climb.
+       */
+      enabled: Boolean(settingsRow?.gcash_balance_enabled),
+      from: settingsRow?.gcash_balance_start_date ?? null,
+      opening: Number(settingsRow?.gcash_balance_starting_amount) || 0,
+    },
+    {
+      key: "bank" as const,
+      method: "bank",
+      // Bank transfers ARE a thing now — the till takes them — so this counts
+      // sales the same way the other two pots do. It did not when the pot was
+      // added, because there was no way to record one.
+      enabled: Boolean(settingsRow?.bank_balance_enabled),
+      from: settingsRow?.bank_balance_start_date ?? null,
+      opening: Number(settingsRow?.bank_balance_starting_amount) || 0,
+    },
+  ];
 
-  let gcashOnHand = 0;
-  if (gcashEnabled && gcashStartedOn) {
-    const { data: gcashSales } = await supabase
-      .from("orders")
-      .select("revenue")
-      .gte("date", gcashStartedOn)
-      .eq("payment_method", "gcash")
-      .neq("status", "cancelled");
-    const takings = ((gcashSales ?? []) as { revenue: number }[]).reduce(
-      (s, o) => s + (Number(o.revenue) || 0),
-      0
-    );
-    const { data: gcashLedger } = await supabase
-      .from("cash_ledger")
-      .select("type, amount")
-      .eq("account", "gcash")
-      .gte("date", gcashStartedOn);
-    const moved = ((gcashLedger ?? []) as { type: string; amount: number }[]).reduce(
-      (s, l) => s + (l.type === "in" ? 1 : -1) * (Number(l.amount) || 0),
-      0
-    );
-    gcashOnHand = gcashStartedWith + takings + moved;
-  }
+  const potBalances = await Promise.all(
+    POTS_TO_COUNT.map(async (pot) => {
+      if (!pot.enabled || !pot.from) return 0;
+      const [{ data: sales }, { data: ledger }] = await Promise.all([
+        supabase
+          .from("orders")
+          .select("revenue")
+          .gte("date", pot.from)
+          .eq("payment_method", pot.method)
+          .neq("status", "cancelled"),
+        supabase
+          .from("cash_ledger")
+          .select("type, amount")
+          .eq("account", pot.key)
+          .gte("date", pot.from),
+      ]);
+      const takings = ((sales ?? []) as { revenue: number }[]).reduce(
+        (s, o) => s + (Number(o.revenue) || 0),
+        0
+      );
+      const moved = ((ledger ?? []) as { type: string; amount: number }[]).reduce(
+        (s, l) => s + (l.type === "in" ? 1 : -1) * (Number(l.amount) || 0),
+        0
+      );
+      return pot.opening + takings + moved;
+    })
+  );
 
-  // ---- the bank --------------------------------------------------------
-  const bankEnabled = Boolean(settingsRow?.bank_balance_enabled);
-  const bankStartedOn = settingsRow?.bank_balance_start_date ?? null;
-  const bankStartedWith = Number(settingsRow?.bank_balance_starting_amount) || 0;
+  const [cashPot, gcashPot, bankPot] = POTS_TO_COUNT;
+  const cashEnabled = cashPot.enabled;
+  const startedOn = cashPot.from;
+  const startedWith = cashPot.opening;
+  const onHand = potBalances[0];
 
-  let bankOnHand = 0;
-  if (bankEnabled && bankStartedOn) {
-    // Bank transfers ARE a thing now — the till takes them — so this counts
-    // sales the same way the other two pots do. It did not when the pot was
-    // added, because there was no way to record one.
-    const { data: bankSales } = await supabase
-      .from("orders")
-      .select("revenue")
-      .gte("date", bankStartedOn)
-      .eq("payment_method", "bank")
-      .neq("status", "cancelled");
-    const takings = ((bankSales ?? []) as { revenue: number }[]).reduce(
-      (s, o) => s + (Number(o.revenue) || 0),
-      0
-    );
-    const { data: bankLedger } = await supabase
-      .from("cash_ledger")
-      .select("type, amount")
-      .eq("account", "bank")
-      .gte("date", bankStartedOn);
-    const moved = ((bankLedger ?? []) as { type: string; amount: number }[]).reduce(
-      (s, l) => s + (l.type === "in" ? 1 : -1) * (Number(l.amount) || 0),
-      0
-    );
-    bankOnHand = bankStartedWith + takings + moved;
-  }
+  const gcashEnabled = gcashPot.enabled;
+  const gcashStartedOn = gcashPot.from;
+  const gcashStartedWith = gcashPot.opening;
+  const gcashOnHand = potBalances[1];
+
+  const bankEnabled = bankPot.enabled;
+  const bankStartedOn = bankPot.from;
+  const bankStartedWith = bankPot.opening;
+  const bankOnHand = potBalances[2];
 
   /**
    * Every sale, and every cancelled sale, as lines in the history — on all

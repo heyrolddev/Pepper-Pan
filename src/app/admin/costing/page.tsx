@@ -28,6 +28,27 @@ export default async function AdminCostingPage() {
     );
   }
 
+  /**
+   * Three reads that do not need each other, run together.
+   *
+   * They were three `await`s in a row — the cost book, then the sales volume,
+   * then the categories — so the page waited for each round trip to finish
+   * before starting the next. None of them uses the previous one's answer, so
+   * the waiting bought nothing: the page took the SUM of three trips where it
+   * could take the longest of them.
+   */
+  const supabase = createAdminClient();
+  const [costBook, soldByMeal, { data: catRows }] = await Promise.all([
+    loadCostBook(),
+    // Menu engineering needs popularity as well as margin.
+    loadSalesVolume(),
+    supabase
+      .from("menu_categories")
+      .select("name, colour, sort_order")
+      .order("sort_order")
+      .order("name"),
+  ]);
+
   const {
     mealCosts,
     batchCosts,
@@ -38,7 +59,7 @@ export default async function AdminCostingPage() {
     orderPackaging,
     orderPackagingCost,
     failed,
-  } = await loadCostBook();
+  } = costBook;
 
   const packagingByMeal = new Map<string, typeof mealPackaging>();
   for (const mp of mealPackaging) {
@@ -46,16 +67,6 @@ export default async function AdminCostingPage() {
     list.push(mp);
     packagingByMeal.set(mp.meal_id, list);
   }
-
-  // Menu engineering needs popularity as well as margin.
-  const soldByMeal = await loadSalesVolume();
-
-  const supabase = createAdminClient();
-  const { data: catRows } = await supabase
-    .from("menu_categories")
-    .select("name, colour, sort_order")
-    .order("sort_order")
-    .order("name");
 
   // What a recipe line may point at: every ingredient, and every batch at its
   // cost per unit of yield — the same number the costing engine multiplies by.

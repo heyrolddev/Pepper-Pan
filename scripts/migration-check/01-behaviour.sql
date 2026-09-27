@@ -1627,3 +1627,86 @@ begin
   end if;
   raise notice 'produce_batch logs consumption on the shop''s day';
 end $$;
+
+\echo '=== 0060 a sale that moved nothing says so ==='
+select act_as_service();
+reset role;
+
+insert into ingredients (id, name, unit, cost, stock)
+  values ('b-pork', 'B Pork', 'g', 0.45, 1000)
+  on conflict (id) do update set stock = 1000;
+insert into meals (id, name, price) values
+  ('b-good', 'Pork Ramen', 180),
+  ('b-bad',  'Iced Tea', 35),
+  ('b-bad2', 'Extra Egg', 15),
+  ('b-combo','Combo Meal', 200),
+  ('b-part', 'Combo Inner', 0)
+on conflict (id) do update set price = excluded.price;
+
+delete from meal_ingredients where meal_id like 'b-%';
+delete from meal_components where meal_id like 'b-%';
+insert into meal_ingredients (meal_id, ref_type, ref_id, qty)
+  values ('b-good', 'inv', 'b-pork', 100), ('b-part', 'inv', 'b-pork', 50);
+-- A combo that carries no ingredients of its own but is built from one that does.
+insert into meal_components (meal_id, component_meal_id, qty) values ('b-combo', 'b-part', 1);
+
+delete from activity_log;
+
+\echo '--- an order with two dishes that have no recipe, plus one that does ---'
+insert into orders (id, ticket, contact_name, revenue, status, fulfillment)
+  values ('b-order', 23, 'Aling Nena', 230, 'pending', 'pickup');
+with l as (
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+  values ('b-order', 'b-good', 1, 180) returning id
+)
+insert into order_line_extras (order_line_id, meal_id, label, qty, price_at_sale)
+  select id, 'b-bad', 'Iced tea', 1, 35 from l;
+insert into order_lines (order_id, meal_id, qty, price_at_sale)
+  values ('b-order', 'b-bad2', 1, 15);
+
+do $$
+declare cost numeric; said text;
+begin
+  cost := apply_order_stock('b-order');
+  select description into said from activity_log where category = 'movement' limit 1;
+  raise notice 'cogs %', cost;
+  raise notice '%', said;
+  if said is null then raise exception 'FAIL: the sale moved nothing and said nothing'; end if;
+  if said not like '%Iced Tea%' or said not like '%Extra Egg%' then
+    raise exception 'FAIL: it did not name both blind dishes — %', said;
+  end if;
+  if said like '%Pork Ramen%' then
+    raise exception 'FAIL: it named a dish that DOES have a recipe';
+  end if;
+end $$;
+
+\echo '--- a combo costed through its components is not accused ---'
+delete from activity_log;
+insert into orders (id, ticket, revenue, status, fulfillment)
+  values ('b-order2', 24, 200, 'pending', 'pickup');
+insert into order_lines (order_id, meal_id, qty, price_at_sale)
+  values ('b-order2', 'b-combo', 1, 200);
+do $$
+declare n int; cost numeric;
+begin
+  cost := apply_order_stock('b-order2');
+  select count(*) into n from activity_log where category = 'movement';
+  raise notice 'combo cogs % | complaints %', cost, n;
+  if n <> 0 then raise exception 'FAIL: a combo costed through its components was named as blind'; end if;
+  if cost <= 0 then raise exception 'FAIL: the combo booked no cost at all'; end if;
+end $$;
+
+\echo '--- a fully costed order stays quiet ---'
+delete from activity_log;
+insert into orders (id, ticket, revenue, status, fulfillment)
+  values ('b-order3', 25, 180, 'pending', 'pickup');
+insert into order_lines (order_id, meal_id, qty, price_at_sale)
+  values ('b-order3', 'b-good', 1, 180);
+do $$
+declare n int;
+begin
+  perform apply_order_stock('b-order3');
+  select count(*) into n from activity_log where category = 'movement';
+  if n <> 0 then raise exception 'FAIL: a good sale was complained about'; end if;
+  raise notice 'a fully costed sale says nothing, as it should';
+end $$;

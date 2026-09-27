@@ -75,5 +75,12 @@ echo "▸ asserting what they do"
 psql -h "$SOCK" -p "$PORT" -U postgres -d pepperpan -v ON_ERROR_STOP=1 \
   -f "$HERE/migration-check/01-behaviour.sql" 2>&1 | grep -Ev '^\s*$|^(INSERT|UPDATE|DO|CREATE|SELECT) '
 
+# A one-off probe against the real schema, for answering a question that is
+# not yet a permanent check: EXTRA_SQL=/tmp/thing.sql ./scripts/verify-migrations.sh
+if [ -n "${EXTRA_SQL:-}" ]; then
+  echo "▸ extra probe: $EXTRA_SQL"
+  psql -h "$SOCK" -p "$PORT" -U postgres -d pepperpan -v ON_ERROR_STOP=1 -f "$EXTRA_SQL" 2>&1 | grep -Ev '^\s*$'
+fi
+
 echo
 echo "✓ all migrations ran and every behaviour check held"

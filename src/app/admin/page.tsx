@@ -17,6 +17,8 @@ import { TodayBand } from "@/components/today-band";
 import { RecentOrders } from "@/components/recent-orders";
 import { pesoRound } from "@/lib/peso";
 import { ErrorLogPanel } from "@/components/error-log-panel";
+import { BlindDishesPanel } from "@/components/blind-dishes-panel";
+import { dishesWithoutRecipe, type Component, type MenuDish } from "@/lib/menu-health";
 import { listErrors } from "@/lib/error-log";
 
 // Shop-timezone day labels, so a bar is filed under the day the shop had,
@@ -102,13 +104,64 @@ export default async function AdminDashboard({
     rangeFrom <= rangeTo ? [rangeFrom, rangeTo] : [rangeTo, rangeFrom];
   const customRange = fromDate !== monthStart || toDate !== todayStr;
 
-  const [ordersRes, customersRes, leadsRes] = await Promise.all([
+  // The same length of window immediately before it, so the range carries a
+  // comparison rather than a bare number.
+  const spanDays =
+    Math.round(
+      (new Date(toDate + "T00:00:00Z").getTime() -
+        new Date(fromDate + "T00:00:00Z").getTime()) /
+        864e5
+    ) + 1;
+  const prevTo = new Date(new Date(fromDate + "T00:00:00Z").getTime() - 864e5)
+    .toISOString()
+    .slice(0, 10);
+  const prevFrom = new Date(
+    new Date(prevTo + "T00:00:00Z").getTime() - (spanDays - 1) * 864e5
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  /**
+   * How far back this page actually has to read.
+   *
+   * It used to read the WHOLE orders table — no limit, no date bound — and
+   * then filter it in JavaScript. That works beautifully on the day the shop
+   * opens and gets slower every single day it trades, because the cost of
+   * loading Today grows with the shop's entire history. It is the reason HQ
+   * feels heavier now than it did a month ago, and it would have gone on
+   * feeling heavier forever.
+   *
+   * Everything row-level on this page lives inside one of four windows: the
+   * range the owner picked, the equal-length window before it (for the
+   * comparison), the fortnight the chart draws, and yesterday. The earliest
+   * of those is the only date this query needs.
+   */
+  const earliest = [fromDate, prevFrom, shopDay(-13, now), yesterdayStr].sort()[0];
+
+  const [ordersRes, openRes, customersRes, leadsRes] = await Promise.all([
     supabase
       .from("orders")
       .select(
         "id, created_at, date, status, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
       )
+      .gte("date", earliest)
       .order("created_at", { ascending: false }),
+    /**
+     * Open orders, whatever day they are from.
+     *
+     * Deliberately outside the window above. An order left `pending` three
+     * weeks ago is still work — it is on the board, it is in "to cook now" —
+     * and a date bound would drop it off the one screen whose job is to say
+     * what needs doing. Small by definition: if this list is ever long, that
+     * is itself the thing to look at.
+     */
+    supabase
+      .from("orders")
+      .select(
+        "id, created_at, date, status, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
+      )
+      .in("status", ["pending", "confirmed", "preparing", "ready"])
+      .lt("date", earliest),
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer"),
     // Chat leads waiting on a person. Errors (before migration 0011) count
     // as zero — a missing inbox shouldn't take the dashboard down with it.
@@ -121,7 +174,18 @@ export default async function AdminDashboard({
 
   const waitingLeads = leadsRes.error ? 0 : (leadsRes.count ?? 0);
 
-  const orders = (ordersRes.data ?? []) as OrderRow[];
+  /**
+   * The window's orders, plus any older one still open.
+   *
+   * Merged rather than concatenated blindly: the two queries cannot overlap —
+   * one is `date >= earliest` and the other `date < earliest` — so a plain
+   * concat is right, and the sort keeps the newest-first order the second
+   * query would otherwise break.
+   */
+  const orders = ([
+    ...((ordersRes.data ?? []) as OrderRow[]),
+    ...((openRes.data ?? []) as OrderRow[]),
+  ] as OrderRow[]).sort((a, z) => (a.created_at < z.created_at ? 1 : -1));
   // Cancelled orders are excluded from every money figure — they earned nothing.
   const live = orders.filter((o) => o.status !== "cancelled");
 
@@ -146,34 +210,29 @@ export default async function AdminDashboard({
   const monthly = live.filter((o) => o.date >= monthStart);
   const inRange = live.filter((o) => o.date >= fromDate && o.date <= toDate);
 
-  // The same length of window immediately before it, so the range carries a
-  // comparison rather than a bare number.
-  const spanDays =
-    Math.round(
-      (new Date(toDate + "T00:00:00Z").getTime() -
-        new Date(fromDate + "T00:00:00Z").getTime()) /
-        864e5
-    ) + 1;
-  const prevTo = new Date(new Date(fromDate + "T00:00:00Z").getTime() - 864e5)
-    .toISOString()
-    .slice(0, 10);
-  const prevFrom = new Date(
-    new Date(prevTo + "T00:00:00Z").getTime() - (spanDays - 1) * 864e5
-  )
-    .toISOString()
-    .slice(0, 10);
   const inPrevRange = live.filter((o) => o.date >= prevFrom && o.date <= prevTo);
   const needsAction = orders.filter((o) =>
     ["pending", "confirmed", "preparing"].includes(o.status)
   );
   const readyNow = orders.filter((o) => o.status === "ready");
 
-  const completed = live.filter((o) => o.status === "completed");
+  /**
+   * Three figures that used to say "all time" and no longer can.
+   *
+   * They were computed over every order the shop had ever taken, which is
+   * what forced this page to download its whole history. They now follow the
+   * dates at the top — which is not a compromise but the better reading:
+   * every one of them sits under a date picker, and "average order since the
+   * shop opened" answers a question nobody standing at that picker is asking.
+   * The tiles say which window they mean.
+   */
+  const completed = inRange.filter((o) => o.status === "completed");
   const avgOrder = completed.length > 0 ? sum(completed) / completed.length : 0;
 
-  const cancelled = orders.filter((o) => o.status === "cancelled");
+  const rangeAll = orders.filter((o) => o.date >= fromDate && o.date <= toDate);
+  const cancelled = rangeAll.filter((o) => o.status === "cancelled");
   const cancelRate =
-    orders.length > 0 ? Math.round((cancelled.length / orders.length) * 100) : 0;
+    rangeAll.length > 0 ? Math.round((cancelled.length / rangeAll.length) * 100) : 0;
 
   // --- Sales, last 14 days -------------------------------------------------
   const salesByDay: Bar[] = Array.from({ length: 14 }, (_, i) => {
@@ -190,10 +249,10 @@ export default async function AdminDashboard({
     };
   });
 
-  const delivery = live.filter((o) => o.fulfillment === "delivery").length;
-  const dineIn = live.filter((o) => o.fulfillment === "dine_in").length;
+  const delivery = inRange.filter((o) => o.fulfillment === "delivery").length;
+  const dineIn = inRange.filter((o) => o.fulfillment === "dine_in").length;
   // Everything that isn't delivered or eaten here is collected at the stall.
-  const pickup = live.length - delivery - dineIn;
+  const pickup = inRange.length - delivery - dineIn;
   // Delivery fees are tracked apart from food sales, so "sales" never
   // silently includes money that goes straight back out to the rider.
   const deliveryFeesMonth = monthly.reduce((s, o) => s + Number(o.delivery_fee || 0), 0);
@@ -210,6 +269,31 @@ export default async function AdminDashboard({
   // broken error log cannot break the page about broken things.
   const errors = await listErrors();
 
+  /**
+   * Dishes that sell for money and cost nothing.
+   *
+   * Three small reads, run together, and they answer the question the owner
+   * actually arrived with: "why is my stock not going down". A dish with no
+   * recipe takes nothing off the shelf and books ₱0 — silently, which is what
+   * makes it a mystery rather than a to-do. Migration 0060 makes the SALE say
+   * it; this says it before the sale, which is the half that can still be
+   * acted on.
+   */
+  const [mealsRes, recipeRes, componentRes] = await Promise.all([
+    supabase.from("meals").select("id, name, is_public"),
+    supabase.from("meal_ingredients").select("meal_id"),
+    supabase.from("meal_components").select("meal_id, component_meal_id"),
+  ]);
+  const blindDishes = dishesWithoutRecipe(
+    ((mealsRes.data ?? []) as { id: string; name: string; is_public: boolean }[]).map(
+      (m): MenuDish => ({ id: m.id, name: m.name, isPublic: m.is_public })
+    ),
+    new Set(((recipeRes.data ?? []) as { meal_id: string }[]).map((r) => r.meal_id)),
+    ((componentRes.data ?? []) as { meal_id: string; component_meal_id: string }[]).map(
+      (c): Component => ({ mealId: c.meal_id, componentMealId: c.component_meal_id })
+    )
+  );
+
   return (
     <div className="flex flex-col gap-10">
       <LiveOrdersBanner />
@@ -217,6 +301,11 @@ export default async function AdminDashboard({
       {/* Above the takings on purpose. Money is what the owner came to look
           at; a broken checkout is why the money is wrong. */}
       <ErrorLogPanel errors={errors} />
+
+      {/* Under the errors and above the money, in that order on purpose: a
+          broken checkout is why there is no money, and this is why the money
+          there is reads too high. */}
+      <BlindDishesPanel dishes={blindDishes} />
 
       {/* ---- the day itself ----
 
@@ -374,13 +463,13 @@ export default async function AdminDashboard({
             detail={
               deliveryFeesMonth > 0
                 ? `${peso(deliveryFeesMonth)} in fees this month`
-                : "All time, excluding cancelled"
+                : "In this window, excluding cancelled"
             }
           />
           <StatTile
             label="Cancelled"
             value={`${cancelRate}%`}
-            detail={`${cancelled.length} of ${orders.length} orders`}
+            detail={`${cancelled.length} of ${rangeAll.length} in this window`}
           />
         </div>
 

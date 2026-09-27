@@ -6,6 +6,7 @@ import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { toPerUnit } from "@/lib/nutrition";
 import { shopToday } from "@/lib/format-date";
+import { suggestFor } from "@/lib/nutrition-reference";
 import { PAID_FROM_LABELS, isPaidFrom, type PaidFrom } from "@/lib/money-accounts";
 import { recordDebt } from "@/lib/debts-server";
 import { loadActivity, type Activity } from "@/lib/activity-server";
@@ -1313,4 +1314,168 @@ export async function adjustBatchStock(input: {
   );
   revalidate();
   return { error: null };
+}
+
+/* ------------------------------------------------------------------ */
+/* Nutrition, filled from the reference table                          */
+/* ------------------------------------------------------------------ */
+
+export type NutritionPlanRow = {
+  id: string;
+  name: string;
+  unit: string;
+  /** What the reference thinks it is. */
+  food: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  note: string | null;
+};
+
+export type NutritionPlan = {
+  /** Matched, unit agrees, and nothing is filled in yet — safe to write. */
+  ready: NutritionPlanRow[];
+  /** Matched, but the reference is per 100 g and this is counted in pieces. */
+  needsYou: { id: string; name: string; unit: string; food: string }[];
+  /** Nothing in the table answers to this name. */
+  unknown: { id: string; name: string }[];
+  /** Already has figures — left completely alone. */
+  alreadyDone: number;
+};
+
+/**
+ * What filling nutrition from the reference WOULD do.
+ *
+ * Read-only, and separate from the write on purpose. Eighty ingredients is
+ * exactly the number at which a one-tap "fill everything" stops being a
+ * convenience and starts being a thing that happened to the shop's data
+ * without anybody seeing it. The owner reads the list, then decides.
+ *
+ * Anything that already has a figure is untouched and only counted. A number
+ * somebody typed off an actual packet beats a published average for a generic
+ * ingredient every time, and silently overwriting it would be the worst thing
+ * this feature could do.
+ */
+export async function planNutritionFill(): Promise<NutritionPlan> {
+  const viewer = await requireStock();
+  const empty: NutritionPlan = { ready: [], needsYou: [], unknown: [], alreadyDone: 0 };
+  if (!viewer) return empty;
+
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("ingredients")
+    .select("id, name, unit, kcal_per_unit, protein_per_unit, carbs_per_unit, fat_per_unit")
+    .order("name");
+
+  const plan: NutritionPlan = { ready: [], needsYou: [], unknown: [], alreadyDone: 0 };
+  for (const row of (data ?? []) as {
+    id: string;
+    name: string;
+    unit: string | null;
+    kcal_per_unit: number | null;
+    protein_per_unit: number | null;
+    carbs_per_unit: number | null;
+    fat_per_unit: number | null;
+  }[]) {
+    const filled =
+      row.kcal_per_unit !== null ||
+      row.protein_per_unit !== null ||
+      row.carbs_per_unit !== null ||
+      row.fat_per_unit !== null;
+    if (filled) {
+      plan.alreadyDone += 1;
+      continue;
+    }
+
+    const unit = (row.unit ?? "").trim();
+    const hit = suggestFor(row.name, unit);
+    if (!hit) {
+      plan.unknown.push({ id: row.id, name: row.name });
+    } else if (!hit.fits) {
+      plan.needsYou.push({ id: row.id, name: row.name, unit, food: hit.food.label });
+    } else {
+      plan.ready.push({
+        id: row.id,
+        name: row.name,
+        unit,
+        food: hit.food.label,
+        kcal: hit.typed.kcal,
+        protein: hit.typed.protein,
+        carbs: hit.typed.carbs,
+        fat: hit.typed.fat,
+        note: hit.food.note ?? null,
+      });
+    }
+  }
+  return plan;
+}
+
+/**
+ * Write the figures for the ingredients named.
+ *
+ * Takes the ids rather than recomputing the plan, so what the owner read is
+ * what gets written — a name edited between the preview and the tap cannot
+ * silently change which food a row is costed as. Each row is re-matched
+ * against its CURRENT name and re-checked for being empty, because the ids
+ * arrive from a browser and a stale list is not a licence to overwrite.
+ */
+export async function applyNutritionFill(ids: string[]): Promise<Result & { filled?: number }> {
+  const viewer = await requireStock();
+  if (!viewer) return { error: "Only shop staff can change ingredients." };
+  if (await offShift(viewer)) return { error: NOT_ON_SHIFT };
+  if (ids.length === 0) return { error: "Nothing selected." };
+
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("ingredients")
+    .select("id, name, unit, kcal_per_unit, protein_per_unit, carbs_per_unit, fat_per_unit")
+    .in("id", ids.slice(0, 500));
+
+  let filled = 0;
+  for (const row of (data ?? []) as {
+    id: string;
+    name: string;
+    unit: string | null;
+    kcal_per_unit: number | null;
+    protein_per_unit: number | null;
+    carbs_per_unit: number | null;
+    fat_per_unit: number | null;
+  }[]) {
+    // Never overwrite. Checked again here and not only in the plan: between
+    // the two, somebody may have typed a figure off the actual packet, and
+    // that beats a published average for a generic ingredient.
+    if (
+      row.kcal_per_unit !== null ||
+      row.protein_per_unit !== null ||
+      row.carbs_per_unit !== null ||
+      row.fat_per_unit !== null
+    ) {
+      continue;
+    }
+    const unit = (row.unit ?? "").trim();
+    const hit = suggestFor(row.name, unit);
+    if (!hit || !hit.fits) continue;
+
+    const { error } = await supabase
+      .from("ingredients")
+      .update({
+        kcal_per_unit: toPerUnit(hit.typed.kcal, unit),
+        protein_per_unit: toPerUnit(hit.typed.protein, unit),
+        carbs_per_unit: toPerUnit(hit.typed.carbs, unit),
+        fat_per_unit: toPerUnit(hit.typed.fat, unit),
+      })
+      .eq("id", row.id);
+    if (!error) filled += 1;
+  }
+
+  if (filled > 0) {
+    await log(
+      "inventory",
+      `Filled nutrition for ${filled} ingredient${filled === 1 ? "" : "s"} from the reference table`,
+      viewer.profile?.id ?? null
+    );
+    revalidate();
+  }
+  return { error: null, filled };
 }
