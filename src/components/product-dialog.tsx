@@ -9,6 +9,9 @@ import { Stars } from "@/components/stars";
 import { LOW_STOCK_SERVINGS } from "@/lib/costing";
 import { usePrefersReducedMotion } from "@/lib/reduced-motion";
 import { useDialog } from "@/lib/dialog";
+import { isComplete, round, type Nutrition } from "@/lib/nutrition";
+import { orderNutrition } from "@/lib/order-nutrition";
+import { NutritionPanel } from "@/components/nutrition-panel";
 import {
   chipState,
   isSoldOut,
@@ -81,11 +84,17 @@ import {
 export function ProductDialog({
   product,
   staff,
+  showNutrition = false,
+  nutritionByMeal = {},
   onClose,
 }: {
   product: Product;
   /** Staff cannot check out, so the button would fill a cart that refuses. */
   staff: boolean;
+  /** The owner's master switch. Off means no figure reaches a customer. */
+  showNutrition?: boolean;
+  /** Every dish's figure by id, so the add-ons can be added in. */
+  nutritionByMeal?: Record<string, Nutrition>;
   onClose: () => void;
 }) {
   const { addItem } = useCart();
@@ -108,6 +117,23 @@ export function ProductDialog({
   );
   const gone = isSoldOut(chosen);
 
+  /**
+   * What is actually going in the basket — the chosen flavour plus
+   * everything ticked under it.
+   *
+   * Only ever built on a COMPLETE figure for the dish: one whose recipe is
+   * half filled in has a sum, and that sum is smaller than the truth.
+   * Somebody counting calories would be handed a number that is confidently
+   * too low and looks exactly like a right one.
+   *
+   * Declared below `extras` because it reads them — this is the line that
+   * makes the panel live rather than a label.
+   */
+  const dishFacts =
+    showNutrition && isComplete(chosen.nutrition)
+      ? round(chosen.nutrition!.per)
+      : null;
+
   const groups = useMemo(() => chosen.groups ?? [], [chosen]);
   // Derived on every render rather than corrected in an effect. Changing the
   // size swaps the dish and can swap its add-ons with it; an effect would let
@@ -115,6 +141,12 @@ export function ProductDialog({
   // ticked and charged for.
   const choice = useMemo(() => reconcile(groups, ticked), [groups, ticked]);
   const extras = useMemo(() => extrasOf(groups, choice), [groups, choice]);
+
+  /** The dish plus what is ticked under it, redrawn on every tap. */
+  const facts = useMemo(
+    () => orderNutrition(dishFacts, extras, nutritionByMeal),
+    [dishFacts, extras, nutritionByMeal]
+  );
   const unanswered = choiceProblem(groups, choice);
   const unit = Number(chosen.price) + extrasTotal(extras);
   const low =
@@ -262,6 +294,22 @@ export function ProductDialog({
                 <p className="mt-1 text-xs font-bold text-ink-800/45">
                   {chosen.name}
                 </p>
+              )}
+
+              {/* ── what is in the one they picked ──────────────────────
+                  Under the photograph, where the owner asked for it and
+                  where it belongs: this is a fact about the dish on the
+                  left, and it changes when the chips on the right do.
+
+                  The card can only quote a range across the flavours. This
+                  is the exact figure for the dish about to go in the
+                  basket, with the extra rice and the drink counted in — and
+                  the reader of a calorie count is exactly the person that
+                  difference matters to. */}
+              {facts && (
+                <div className="mt-3">
+                  <NutritionPanel n={facts} />
+                </div>
               )}
             </div>
           </div>

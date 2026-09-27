@@ -412,10 +412,10 @@ test("cards are alphabetical unless the owner placed one", () => {
 });
 
 /* ------------------------------------------------------------------
- * The code and the calorie count on a card
+ * The code on a card, and where the calorie count went
  * ------------------------------------------------------------------ */
 
-test("a card with one dish behind it carries that dish's code and figures", () => {
+test("a card with one dish behind it carries that dish's code", () => {
   const solo = [
     v({
       id: "s1",
@@ -430,18 +430,28 @@ test("a card with one dish behind it carries that dish's code and figures", () =
   ];
   const [p] = buildProducts(solo, [], () => null);
   assert.equal(p.code, "C1");
-  assert.equal(p.nutrition?.per.kcal, 430);
+  // The figures stay on the VARIANT. The card used to copy them up and the
+  // copy is gone — `cardNutrition` reads them off the variants instead, so
+  // there is one place they live and no second one to fall out of step.
+  assert.equal(p.variants[0].nutrition?.per.kcal, 430);
 });
 
-test("a card holding a choice carries neither", () => {
+test("a card holding a choice carries no code, but keeps every figure", () => {
   /**
-   * Four ji pai behind one card have four codes and four calorie counts, and
-   * a card is not the place to pick between them. Showing the first variant's
-   * code sends somebody to the counter saying "C1" for a dish that is C3, and
-   * a range of calories is noise. The chips inside the dish carry both.
+   * Four ji pai behind one card have four codes, and showing the first
+   * variant's sends somebody to the counter saying "C1" for a dish that is
+   * C3. So the code is dropped — that part was always right.
    *
-   * The screenshot pass could not prove this — the scratch page built the
-   * Product by hand and skipped this function entirely — so it is pinned here.
+   * The calorie count used to be dropped with it, on the reasoning that a
+   * range is noise, and that was WRONG. On a menu made almost entirely of
+   * two-flavour cards it meant every filled-in recipe reached nobody: the
+   * owner's Menu tab showed the figures, the customer's menu showed
+   * nothing, and the comment claiming the dialog carried them described a
+   * thing that had never been built.
+   *
+   * So the variants keep theirs, and the card works out what it can
+   * honestly say from them — see `cardNutrition`, which refuses a range
+   * unless EVERY flavour is known.
    */
   const many = [
     v({ id: "a", code: "C1", nutrition: { per: { kcal: 430, protein: 24, carbs: 33, fat: 21 }, missing: 0, missingNames: [], manual: false } }),
@@ -450,13 +460,16 @@ test("a card holding a choice carries neither", () => {
   const [p] = buildProducts(many, [group()], inGroup({ a: "g1", b: "g1" }));
   assert.equal(p.variants.length, 2, "the fixture did not actually group them");
   assert.equal(p.code, null);
-  assert.equal(p.nutrition, null);
+  assert.deepEqual(
+    p.variants.map((x) => x.nutrition?.per.kcal),
+    [430, 742],
+    "the card dropped the figures the customer's menu now reads"
+  );
 });
 
-test("a dish with no code and no figures is null rather than undefined", () => {
+test("a dish with no code is null rather than undefined", () => {
   // The card checks `product.code &&` — an undefined would work by accident
   // and then stop working the day somebody writes `code !== null`.
   const [p] = buildProducts([v({ id: "plain" })], [], () => null);
   assert.equal(p.code, null);
-  assert.equal(p.nutrition, null);
 });

@@ -17,7 +17,8 @@ import {
   orderForMenu,
   type MenuCategory,
 } from "@/lib/categories";
-import { isComplete, macroSplit, round } from "@/lib/nutrition";
+import { macroSplit, type Nutrition } from "@/lib/nutrition";
+import { cardNutrition, kcalLabel } from "@/lib/card-nutrition";
 
 /**
  * The card is a door now.
@@ -78,9 +79,21 @@ function ProductCard({
    * menu, and the food in the photographs is the thing meant to be bright.
    */
   const tone = cardTone(product.categories, palette);
-  const facts =
-    showNutrition && isComplete(product.nutrition) ? round(product.nutrition!.per) : null;
-  const split = facts ? macroSplit(facts) : null;
+  /**
+   * What this card can honestly say.
+   *
+   * Read off the VARIANTS rather than the card's own `nutrition`, which is
+   * null the moment a card holds more than one dish. On a menu that is
+   * almost all two-flavour cards that meant the calories reached nobody —
+   * filled in everywhere, shown nowhere. A card where every flavour is
+   * known quotes the range; one flavour short and it says nothing at all.
+   */
+  const facts = showNutrition ? cardNutrition(product.variants) : null;
+  const one = facts?.kind === "one" ? facts.per : null;
+  // The bar is a single dish's split, so it is only drawn for a single
+  // figure. Two flavours have two splits and picking one to draw would be
+  // a claim about a dish the customer has not chosen yet.
+  const split = one ? macroSplit(one) : null;
   const soldOut = product.soldOut;
   // Only ever shown for a card with one dish behind it. "Only 2 left" over a
   // group is a promise about which of four things, and the card cannot say
@@ -263,33 +276,66 @@ function ProductCard({
             has a sum, and that sum is smaller than the truth — see
             `isComplete`. Somebody counting calories would be handed a number
             that is confidently too low and looks exactly like a right one. */}
-        {facts && split && (
-          <div className="mt-1 flex flex-col gap-1">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[11px] font-black tabular-nums text-ink-900 sm:text-xs">
-                {facts.kcal.toLocaleString("en-PH")}
+        {/* ── what's in it ────────────────────────────────────────────
+            The same three colours and the same bar the dish dialog uses,
+            so a customer who opens one recognises the other as the same
+            thing rather than as a second opinion.
+
+            A card holding several flavours quotes the RANGE and says where
+            the exact figure is. A range with no way to resolve it is a
+            tease; "per flavour" is the one word that turns it into an
+            instruction. */}
+        {facts && (
+          <div className="mt-1.5 flex flex-col gap-1">
+            <div className="flex items-baseline gap-1">
+              <span className="font-display text-sm font-black tabular-nums leading-none text-ink-950">
+                {kcalLabel(facts)}
               </span>
               <span className="text-[10px] font-bold uppercase tracking-wide text-ink-800/45">
                 kcal
               </span>
-              <span className="ml-auto text-[10px] font-semibold tabular-nums text-ink-800/50">
-                {facts.protein}P · {facts.carbs}C · {facts.fat}F
-              </span>
+              {one ? (
+                <span className="ml-auto flex items-center gap-1.5 text-[10px] font-bold tabular-nums text-ink-800/55">
+                  <span className="flex items-center gap-0.5">
+                    <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-ocean-600" />
+                    {one.protein}
+                  </span>
+                  <span className="flex items-center gap-0.5">
+                    <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-gold-400" />
+                    {one.carbs}
+                  </span>
+                  <span className="flex items-center gap-0.5">
+                    <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-chili-500" />
+                    {one.fat}
+                  </span>
+                </span>
+              ) : (
+                <span className="ml-auto rounded-full bg-ink-950/[0.06] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-ink-800/50">
+                  per flavour
+                </span>
+              )}
             </div>
-            {/* Three segments that always fill the bar exactly — the split is
-                computed from the macros' own energy, so a rounded label can
-                never leave a gap. Colours are fixed across every dish: the
-                bar is only readable if protein is the same colour on all of
-                them, so it does NOT take the category's. */}
-            <span
-              className="flex h-1 w-full overflow-hidden rounded-full bg-ink-950/10"
-              role="img"
-              aria-label={`${facts.protein} grams protein, ${facts.carbs} carbs, ${facts.fat} fat`}
-            >
-              <span className="bg-ocean-600" style={{ width: `${split.protein}%` }} />
-              <span className="bg-gold-400" style={{ width: `${split.carbs}%` }} />
-              <span className="bg-chili-500" style={{ width: `${split.fat}%` }} />
-            </span>
+            {one && split ? (
+              <span
+                className="flex h-1 w-full overflow-hidden rounded-full bg-ink-950/10"
+                role="img"
+                aria-label={`${one.protein} grams protein, ${one.carbs} carbs, ${one.fat} fat`}
+              >
+                <span className="bg-ocean-600" style={{ width: `${split.protein}%` }} />
+                <span className="bg-gold-400" style={{ width: `${split.carbs}%` }} />
+                <span className="bg-chili-500" style={{ width: `${split.fat}%` }} />
+              </span>
+            ) : (
+              /* A striped rail rather than a drawn split: the flavours have
+                 two different splits and picking one to paint would be a
+                 claim about a dish nobody has chosen yet. It holds the
+                 card's height steady either way, so a grid of mixed cards
+                 does not sit at ragged heights. */
+              <span
+                aria-hidden
+                className="h-1 w-full rounded-full bg-[repeating-linear-gradient(115deg,rgba(12,10,9,0.13)_0_5px,transparent_5px_10px)]"
+              />
+            )}
           </div>
         )}
 
@@ -443,6 +489,7 @@ export function MenuList({
   staff = false,
   known = [],
   showNutrition = false,
+  nutritionByMeal = {},
 }: {
   products: Product[];
   staff?: boolean;
@@ -450,6 +497,15 @@ export function MenuList({
   known?: MenuCategory[];
   /** The owner's switch. Off until the ingredients are filled in. */
   showNutrition?: boolean;
+  /**
+   * Every dish's figure by id, for the add-ons.
+   *
+   * An add-on's dish is usually hidden from the menu and never becomes a
+   * `Variant`, so the dialog has no other way to reach its calories — and
+   * without them the total under a meal with a drink in it is wrong by the
+   * drink.
+   */
+  nutritionByMeal?: Record<string, Nutrition>;
 }) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
@@ -667,6 +723,8 @@ export function MenuList({
         {open && (
           <ProductDialog
             key={open}
+            showNutrition={showNutrition}
+            nutritionByMeal={nutritionByMeal}
             product={products.find((p) => p.id === open)!}
             staff={staff}
             onClose={() => setOpen(null)}
