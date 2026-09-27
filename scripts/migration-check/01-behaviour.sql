@@ -1824,3 +1824,97 @@ begin
   end if;
   raise notice 'the option survives with its label and stops being offered';
 end $$;
+
+
+\echo '=== 0062 the customer menu may read its own switch ==='
+-- The bug this fixes was invisible in every way that matters: the owner saw
+-- the calories because the owner is staff, and the customer saw nothing
+-- because `settings` has never had a public read policy. So both directions
+-- are pinned here — the flag must come through, and the money must not.
+select act_as_service();
+reset role;
+update settings set
+  show_nutrition = true,
+  cash_reserve = 50000,
+  gcash_balance_starting_amount = 12345
+where id = 1;
+
+\echo '--- the table itself stays shut ---'
+do $$
+declare seen int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000aa', true);
+  select count(*) into seen from settings;
+  reset role;
+  if seen <> 0 then
+    raise exception 'FAIL: a customer can read settings — the shop''s cash is public';
+  end if;
+  raise notice 'a signed-in customer still sees 0 rows of settings';
+end $$;
+
+\echo '--- but the switch comes through ---'
+do $$
+declare flag boolean;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  select show_nutrition into flag from public_settings;
+  reset role;
+  if flag is not true then
+    raise exception 'FAIL: the menu still cannot read its own switch — got %', flag;
+  end if;
+  raise notice 'a signed-in customer reads show_nutrition = true';
+end $$;
+
+\echo '--- and for somebody not signed in at all ---'
+do $$
+declare flag boolean; seen int;
+begin
+  set local role anon;
+  perform set_config('request.jwt.claim.role', 'anon', true);
+  select show_nutrition into flag from public_settings;
+  select count(*) into seen from settings;
+  reset role;
+  if flag is not true then
+    raise exception 'FAIL: a visitor cannot read the switch — got %', flag;
+  end if;
+  if seen <> 0 then
+    raise exception 'FAIL: a visitor can read settings';
+  end if;
+  raise notice 'a visitor reads the switch and none of the table';
+end $$;
+
+\echo '--- the view carries the switch and nothing else ---'
+do $$
+declare cols text[];
+begin
+  -- Named, not counted. The whole safety of this rests on what is IN the
+  -- view, and "one column" would still pass if somebody swapped it for
+  -- cash_reserve.
+  select array_agg(column_name::text order by column_name) into cols
+    from information_schema.columns
+   where table_schema = 'public' and table_name = 'public_settings';
+  if cols is distinct from array['show_nutrition'] then
+    raise exception 'FAIL: public_settings publishes % — settings holds the shop''s money', cols;
+  end if;
+  raise notice 'public_settings publishes show_nutrition and nothing else';
+end $$;
+
+\echo '--- turning it off turns it off ---'
+select act_as_service();
+reset role;
+update settings set show_nutrition = false where id = 1;
+do $$
+declare flag boolean;
+begin
+  set local role anon;
+  perform set_config('request.jwt.claim.role', 'anon', true);
+  select show_nutrition into flag from public_settings;
+  reset role;
+  if flag is not false then
+    raise exception 'FAIL: the switch is stuck on — got %', flag;
+  end if;
+  raise notice 'the owner''s switch still decides';
+end $$;

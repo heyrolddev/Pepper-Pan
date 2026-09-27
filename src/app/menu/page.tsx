@@ -11,6 +11,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { loadAvailability } from "@/lib/costing-server";
 import { loadNutrition } from "@/lib/nutrition-server";
+import { isComplete, round, type Nutrition } from "@/lib/nutrition";
 import { loadModifiers } from "@/lib/modifiers-server";
 import { groupsFor } from "@/lib/modifiers";
 import type { MenuCategory } from "@/lib/categories";
@@ -23,9 +24,10 @@ async function getMenu(): Promise<{
   categories: MenuCategory[];
   configured: boolean;
   showNutrition: boolean;
+  nutritionByMeal: Record<string, Nutrition>;
 }> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return { menu: null, categories: [], configured: false, showNutrition: false };
+    return { menu: null, categories: [], configured: false, showNutrition: false, nutritionByMeal: {} };
   }
 
   try {
@@ -61,10 +63,19 @@ async function getMenu(): Promise<{
      * ingredients are filled in. A failed read is treated as off for the
      * same reason.
      */
+    /**
+     * Read from the VIEW, not the table.
+     *
+     * `settings` is staff-only and always has been — one policy since 0001,
+     * `using (is_staff())`. So this read came back with no row for every
+     * customer, `showNutrition` fell to false, and the whole feature was
+     * invisible to everybody except the owner testing it. The table also
+     * holds the shop's cash, so it cannot simply be opened; 0062 publishes
+     * the one column instead.
+     */
     const showNutrition = supabase
-      .from("settings")
+      .from("public_settings")
       .select("show_nutrition")
-      .eq("id", 1)
       .maybeSingle();
     const [
       { data, error },
@@ -216,10 +227,25 @@ async function getMenu(): Promise<{
       categories: (catRows ?? []) as MenuCategory[],
       configured: true,
       showNutrition: nutritionSetting?.show_nutrition === true,
+      /**
+       * Every dish's figure, by id, for the add-ons.
+       *
+       * An add-on points at a real dish and a chosen size IS a dish, so the
+       * figures are all here already — but the add-on's dish is usually
+       * hidden from the menu and never becomes a `Variant`, so the dialog
+       * has no other way to reach them. Complete ones only, and rounded to
+       * what gets printed: an incomplete figure must not be added into a
+       * total that then looks authoritative.
+       */
+      nutritionByMeal: Object.fromEntries(
+        [...inside.entries()]
+          .filter(([, d]) => isComplete(d))
+          .map(([id, d]) => [id, round(d.per)])
+      ),
     };
   } catch (err) {
     console.error("Failed to load menu:", err);
-    return { menu: null, categories: [], configured: true, showNutrition: false };
+    return { menu: null, categories: [], configured: true, showNutrition: false, nutritionByMeal: {} };
   }
 }
 
@@ -248,7 +274,8 @@ const emptyStateClass =
   "rounded-3xl border-2 border-dashed border-brand-300 bg-cream-100 p-8 text-center text-ink-800/80";
 
 export default async function MenuPage() {
-  const [{ menu, categories, configured, showNutrition }, viewer] = await Promise.all([
+  const [{ menu, categories, configured, showNutrition, nutritionByMeal }, viewer] =
+    await Promise.all([
     getMenu(),
     getViewer(),
   ]);
@@ -289,6 +316,7 @@ export default async function MenuPage() {
               staff={staff}
               known={categories}
               showNutrition={showNutrition}
+              nutritionByMeal={nutritionByMeal}
             />
           </>
         )}

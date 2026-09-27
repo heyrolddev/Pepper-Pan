@@ -9,7 +9,9 @@ import { Stars } from "@/components/stars";
 import { LOW_STOCK_SERVINGS } from "@/lib/costing";
 import { usePrefersReducedMotion } from "@/lib/reduced-motion";
 import { useDialog } from "@/lib/dialog";
-import { isComplete, macroSplit, round } from "@/lib/nutrition";
+import { isComplete, round, type Nutrition } from "@/lib/nutrition";
+import { orderNutrition } from "@/lib/order-nutrition";
+import { NutritionPanel } from "@/components/nutrition-panel";
 import {
   chipState,
   isSoldOut,
@@ -83,6 +85,7 @@ export function ProductDialog({
   product,
   staff,
   showNutrition = false,
+  nutritionByMeal = {},
   onClose,
 }: {
   product: Product;
@@ -90,6 +93,8 @@ export function ProductDialog({
   staff: boolean;
   /** The owner's master switch. Off means no figure reaches a customer. */
   showNutrition?: boolean;
+  /** Every dish's figure by id, so the add-ons can be added in. */
+  nutritionByMeal?: Record<string, Nutrition>;
   onClose: () => void;
 }) {
   const { addItem } = useCart();
@@ -113,19 +118,21 @@ export function ProductDialog({
   const gone = isSoldOut(chosen);
 
   /**
-   * The chosen variant's own figures.
+   * What is actually going in the basket — the chosen flavour plus
+   * everything ticked under it.
    *
-   * Only ever a COMPLETE one — a dish whose recipe is half filled in has a
-   * sum, and that sum is smaller than the truth. Somebody counting calories
-   * would be handed a number that is confidently too low and looks exactly
-   * like a right one. Same rule as the card, from the same function, so the
-   * two can never disagree about what counts as known.
+   * Only ever built on a COMPLETE figure for the dish: one whose recipe is
+   * half filled in has a sum, and that sum is smaller than the truth.
+   * Somebody counting calories would be handed a number that is confidently
+   * too low and looks exactly like a right one.
+   *
+   * Declared below `extras` because it reads them — this is the line that
+   * makes the panel live rather than a label.
    */
-  const facts =
+  const dishFacts =
     showNutrition && isComplete(chosen.nutrition)
       ? round(chosen.nutrition!.per)
       : null;
-  const split = facts ? macroSplit(facts) : null;
 
   const groups = useMemo(() => chosen.groups ?? [], [chosen]);
   // Derived on every render rather than corrected in an effect. Changing the
@@ -134,6 +141,12 @@ export function ProductDialog({
   // ticked and charged for.
   const choice = useMemo(() => reconcile(groups, ticked), [groups, ticked]);
   const extras = useMemo(() => extrasOf(groups, choice), [groups, choice]);
+
+  /** The dish plus what is ticked under it, redrawn on every tap. */
+  const facts = useMemo(
+    () => orderNutrition(dishFacts, extras, nutritionByMeal),
+    [dishFacts, extras, nutritionByMeal]
+  );
   const unanswered = choiceProblem(groups, choice);
   const unit = Number(chosen.price) + extrasTotal(extras);
   const low =
@@ -284,44 +297,18 @@ export function ProductDialog({
               )}
 
               {/* ── what is in the one they picked ──────────────────────
-                  The card can only quote a range across the flavours; this
-                  is the exact figure for the dish that is about to go in
-                  the basket, and it changes as the chips are tapped.
+                  Under the photograph, where the owner asked for it and
+                  where it belongs: this is a fact about the dish on the
+                  left, and it changes when the chips on the right do.
 
-                  This is what the card's own comment always promised —
-                  "cards that hold a choice carry these on the chips inside
-                  the dish instead" — and never had. For a menu made almost
-                  entirely of two-flavour cards, that meant every filled-in
-                  recipe reached nobody. */}
-              {facts && split && (
-                <div className="mt-2 flex max-w-xs flex-col gap-1">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="font-display text-sm font-black tabular-nums text-ink-950">
-                      {facts.kcal.toLocaleString("en-PH")}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-ink-800/50">
-                      kcal
-                    </span>
-                    <span className="ml-auto text-[10px] font-semibold tabular-nums text-ink-800/55">
-                      {facts.protein}P · {facts.carbs}C · {facts.fat}F
-                    </span>
-                  </div>
-                  <span
-                    className="flex h-1 w-full overflow-hidden rounded-full bg-ink-950/10"
-                    role="img"
-                    aria-label={`${chosen.name}: ${facts.kcal} calories, ${facts.protein} grams protein, ${facts.carbs} carbs, ${facts.fat} fat`}
-                  >
-                    <span className="bg-ocean-600" style={{ width: `${split.protein}%` }} />
-                    <span className="bg-gold-400" style={{ width: `${split.carbs}%` }} />
-                    <span className="bg-chili-500" style={{ width: `${split.fat}%` }} />
-                  </span>
-                  {/* Said once, quietly. Add-ons have their own figures and
-                      this total does not include them — a number that
-                      silently ignores the extra rice would be worse than no
-                      number for exactly the people who read it. */}
-                  <span className="text-[10px] leading-relaxed text-ink-800/40">
-                    The dish on its own — add-ons not counted.
-                  </span>
+                  The card can only quote a range across the flavours. This
+                  is the exact figure for the dish about to go in the
+                  basket, with the extra rice and the drink counted in — and
+                  the reader of a calorie count is exactly the person that
+                  difference matters to. */}
+              {facts && (
+                <div className="mt-3">
+                  <NutritionPanel n={facts} />
                 </div>
               )}
             </div>
