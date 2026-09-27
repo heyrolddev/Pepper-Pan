@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { NutritionDishes } from "@/components/nutrition-dishes";
 import {
   verdictText,
   type Rollout,
@@ -53,14 +54,22 @@ export function NutritionStatus({
         <p className="font-display text-base font-black text-ink-950">
           {headline}
         </p>
-        {showMenuLink && (verdict.kind === "switch-off" || ready.length > 0) && (
-          <Link
-            href="/admin/menu"
-            className="shrink-0 rounded-full bg-ink-950 px-3.5 py-1.5 text-xs font-bold text-cream-50 transition-colors hover:bg-brand-600"
-          >
-            {verdict.kind === "switch-off" ? "Turn them on →" : "Menu settings →"}
-          </Link>
-        )}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {/* The list, on the screen where the filling happens too. The
+              chips below say WHICH ingredients; this says which dishes are
+              waiting on them. */}
+          {(blocked.length > 0 || ready.length > 0) && (
+            <NutritionDishes rollout={rollout} label="Dish by dish" />
+          )}
+          {showMenuLink && (verdict.kind === "switch-off" || ready.length > 0) && (
+            <Link
+              href="/admin/menu"
+              className="rounded-full bg-ink-950 px-3.5 py-1.5 text-xs font-bold text-cream-50 transition-colors hover:bg-brand-600"
+            >
+              {verdict.kind === "switch-off" ? "Turn them on →" : "Menu settings →"}
+            </Link>
+          )}
+        </div>
       </div>
       <p className="mt-1 text-sm leading-relaxed text-ink-800/70">{next}</p>
 

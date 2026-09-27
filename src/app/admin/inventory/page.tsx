@@ -55,12 +55,14 @@ export default async function AdminInventoryPage() {
     ? await (async () => {
         const supabase = createAdminClient();
         const [{ data: mealRows }, { data: setting }, nutrition] = await Promise.all([
-          supabase.from("meals").select("id, name").order("name"),
+          supabase.from("meals").select("id, name, is_public").order("name"),
           supabase.from("settings").select("show_nutrition").eq("id", 1).maybeSingle(),
           loadNutrition(),
         ]);
         return rolloutOf(
-          (mealRows ?? []) as { id: string; name: string }[],
+          ((mealRows ?? []) as { id: string; name: string; is_public: boolean }[]).map(
+            (m) => ({ id: m.id, name: m.name, isPublic: m.is_public })
+          ),
           nutrition,
           setting?.show_nutrition === true
         );

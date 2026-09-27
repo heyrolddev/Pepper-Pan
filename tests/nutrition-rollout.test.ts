@@ -167,3 +167,38 @@ test("every verdict has both a headline and a next step", () => {
     assert.ok(next.length > 0, `${v.kind} has no next step`);
   }
 });
+
+test("a dish kept off the customer's menu is marked as such", () => {
+  // "54 dishes are blank" reads very differently once half of them turn out
+  // to be add-ons and packaging nobody reads a calorie count on.
+  const r = rolloutOf(
+    [
+      { id: "a", name: "Chicken Noodles", isPublic: true },
+      { id: "x", name: "Extra Rice", isPublic: false },
+      { id: "b", name: "Chicken Rice" },
+    ],
+    new Map([
+      ["a", dish(620)],
+      ["x", dish(0, ["Rice"])],
+      ["b", dish(0, ["Rice"])],
+    ]),
+    true
+  );
+
+  assert.equal(r.ready[0].hidden, false);
+  assert.deepEqual(
+    r.blocked.map((d) => [d.name, d.hidden]),
+    [
+      ["Chicken Rice", false],
+      ["Extra Rice", true],
+    ]
+  );
+});
+
+test("a caller that does not know is not told every dish is hidden", () => {
+  // `isPublic` absent means public. Defaulting the other way would stamp
+  // "not on the menu" across the whole list on any screen that did not
+  // happen to read that column.
+  const r = rolloutOf([{ id: "a", name: "Chicken Noodles" }], new Map([["a", dish(620)]]), true);
+  assert.equal(r.ready[0].hidden, false);
+});

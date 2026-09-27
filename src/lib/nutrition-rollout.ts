@@ -47,6 +47,17 @@ export type DishStatus = {
   missing: string[];
   /** The owner typed the figures rather than the recipe producing them. */
   manual: boolean;
+  /**
+   * Not on the customer's menu — an add-on dish like "Extra rice", or one
+   * kept back deliberately.
+   *
+   * Said because it changes how urgent the row is. A hidden dish still
+   * needs its figures (it is charged for and it comes off the shelf), but
+   * "54 dishes are blank" reads very differently once the owner can see
+   * that half of them are packaging and extras nobody reads a calorie
+   * count on.
+   */
+  hidden: boolean;
 };
 
 /** An ingredient standing in the way, and how much it is standing in. */
@@ -77,7 +88,7 @@ export type Rollout = {
 };
 
 export function rolloutOf(
-  meals: { id: string; name: string }[],
+  meals: { id: string; name: string; isPublic?: boolean }[],
   nutrition: Map<string, DishNutrition>,
   on: boolean
 ): Rollout {
@@ -93,6 +104,9 @@ export function rolloutOf(
       kcal: Math.round(n?.per.kcal ?? 0),
       missing: n?.missingNames ?? [],
       manual: n?.manual === true,
+      // Absent means public. Every caller that knows passes it; the ones
+      // that do not should not have every dish marked hidden.
+      hidden: m.isPublic === false,
     };
     // A dish nobody has written a recipe for is not "missing an ingredient";
     // it is missing a recipe. Counting it as blocked would put it at the top

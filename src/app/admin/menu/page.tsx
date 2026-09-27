@@ -165,7 +165,7 @@ export default async function AdminMenuPage() {
    * beside the switch cannot disagree with the boxes underneath it.
    */
   const rollout = rolloutOf(
-    rows.map((m) => ({ id: m.id, name: m.name })),
+    rows.map((m) => ({ id: m.id, name: m.name, isPublic: m.is_public })),
     inside,
     nutritionOn
   );
@@ -294,6 +294,7 @@ export default async function AdminMenuPage() {
             on={nutritionOn}
             ready={rollout.ready.length}
             total={meals.length}
+            rollout={rollout}
           />
           {/* The same panel the Inventory tab shows, on purpose. That screen
               is where the ingredients get filled in and this one is where
