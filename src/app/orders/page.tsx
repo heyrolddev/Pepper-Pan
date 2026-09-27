@@ -6,6 +6,7 @@ import { OrderTracker, type TrackedOrder } from "@/components/order-tracker";
 import { PushToggle } from "@/components/push-toggle";
 import { pushConfigured } from "@/lib/push";
 import type { ReviewableItem } from "@/components/order-review-panel";
+import { orderToAskOn } from "@/lib/review-ask";
 import {
   PAYMENT_STATUSES,
   type PaymentMethod,
@@ -151,6 +152,14 @@ export default async function OrdersPage() {
     ];
   };
 
+  /**
+   * The one order that may ask for a Google review, decided over the whole
+   * list rather than per row — so a regular with twenty completed orders
+   * meets the ask once on this page instead of twenty times. See
+   * `orderToAskOn` for the other two restraints.
+   */
+  const askOn = orderToAskOn(typedOrders);
+
   const tracked: TrackedOrder[] = typedOrders.map((o) => ({
     id: o.id,
     created_at: o.created_at,
@@ -173,6 +182,7 @@ export default async function OrdersPage() {
     downpayment_amount: Number(o.downpayment_amount ?? 0),
     downpayment_confirmed_at: o.downpayment_confirmed_at,
     reviewable: reviewableFor(o),
+    askGoogle: o.id === askOn,
     lines: (o.order_lines ?? []).map((l) => ({
       id: l.id,
       qty: Number(l.qty),

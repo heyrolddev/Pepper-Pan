@@ -54,6 +54,8 @@ export type TrackedOrder = {
   downpayment_amount: number;
   downpayment_confirmed_at: string | null;
   reviewable: ReviewableItem[];
+  /** The one recent finished order that carries the Google ask. */
+  askGoogle?: boolean;
   lines: TrackedLine[];
 };
 
@@ -507,7 +509,10 @@ function OrderCard({ order }: { order: TrackedOrder }) {
       )}
 
       {order.status === "completed" && order.reviewable.length > 0 && (
-        <OrderReviewPanel items={order.reviewable} />
+        <OrderReviewPanel
+          items={order.reviewable}
+          askGoogle={order.askGoogle === true}
+        />
       )}
 
       {error && (
