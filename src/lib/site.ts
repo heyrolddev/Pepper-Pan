@@ -49,6 +49,26 @@ export const SHOP = {
    * ?cid= is the listing itself and does not.
    */
   mapUrl: "https://maps.google.com/?cid=13918401762537882815",
+
+  /**
+   * Straight into the write-a-review box on the shop's Google listing.
+   *
+   * Copied out of the owner's own search result, which is why it is long:
+   * everything after `si=` is the token that opens the review panel rather
+   * than the listing. It works, and it is one line to replace.
+   *
+   * The durable form is `search.google.com/local/writereview?placeid=<id>`,
+   * which never goes stale — but it needs the listing's Place ID (a `ChIJ…`
+   * string), and the shop has only ever given us the CID above. Worth
+   * swapping in if that id ever turns up; not worth guessing at, because a
+   * review link pointing at the wrong business is worse than a long one.
+   */
+  reviewUrl:
+    "https://www.google.com/search?sca_esv=1401726689d3c5c7&sxsrf=APpeQntA20LHswXeyo_XgX9xWC-ZnjqL4g:1790428104875&q=pepper+pan+apalit+reviews&si=APenkKm7iecQ4G6P-TsbSMFKIQtv3EFIqRAFw-i8uEbk55Z-_yTfmaR7ifQPoAaWasaYv5jH6Va8DrfQ7FPeifcHztD9RqcJHit1fYHhFr2jTiHogEqe1rL5499D43LGrQGVvw1dYBkidja3q6mQzKT6P6pwy3YZPw%3D%3D",
+
+  /** The stall's own mark, for anywhere a face or a logo is wanted. */
+  iconUrl:
+    "https://djxcwbxahmtoglinsaaz.supabase.co/storage/v1/object/public/PepperPan/Pepper%20Pan%20Icon.png",
 } as const;
 
 /**

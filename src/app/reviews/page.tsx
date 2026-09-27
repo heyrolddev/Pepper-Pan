@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GoogleReviewButton } from "@/components/google-review-button";
 import { PageHeader } from "@/components/page-header";
 import { Stars } from "@/components/stars";
 import { ReviewList } from "@/components/review-list";
@@ -52,6 +53,14 @@ export default async function ReviewsPage() {
             >
               Order something →
             </Link>
+            {/* Somebody has eaten here even when this page is empty — the
+                stall sold walk-ins long before it sold online, and those
+                customers never had an order on this site to review. */}
+            <p className="mt-8 border-t border-ink-950/10 pt-6 text-sm text-ink-800/60">
+              Eaten at the stall already? You can leave one on Google without
+              an order here.
+            </p>
+            <GoogleReviewButton tone="outline" className="mt-3" />
           </div>
         ) : (
           <>
@@ -101,6 +110,21 @@ export default async function ReviewsPage() {
               <span className="font-semibold">Sent on Messenger</span> were
               written to us in a chat and typed in here by the shop.
             </p>
+
+            {/* The two do different jobs and the shop needs both. A review
+                here sells the next visitor who is already on the site; one
+                on Google decides whether somebody searching "food near
+                Apalit" is shown the stall at all.
+
+                Quiet, and below the rest: a customer who leaves for Google
+                mid-thought usually does not come back to write both, and
+                the one on this page is the one the shop can answer. */}
+            <div className="mt-8 flex flex-col items-center gap-3 border-t border-ink-950/10 pt-8 text-center">
+              <p className="text-sm text-ink-800/60">
+                Help people find the stall — leave one on Google too.
+              </p>
+              <GoogleReviewButton tone="outline" />
+            </div>
           </>
         )}
       </section>
