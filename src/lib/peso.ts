@@ -52,3 +52,37 @@ export function pesoRound(n: number): string {
   const sign = n < 0 ? "−" : "";
   return sign + "₱" + Math.round(Math.abs(n)).toLocaleString("en-PH");
 }
+
+/**
+ * A unit cost, to as many decimals as it actually needs.
+ *
+ * `peso(n, 4)` on a batch that costs ₱18.75 a pack prints "₱18.7510" — which
+ * the owner read, reasonably, as "₱18.75" with a stray 10 stuck on the end,
+ * sitting two words away from a "₱18.75 a batch" that was the same number.
+ * Four decimals exist for a good reason: a gram of salt is ₱0.0012, and
+ * rounding that to ₱0.00 makes a whole recipe read as free. But a cost that
+ * lands on ₱18.75 does not need them, and spending them anyway turns a
+ * readable figure into a puzzle.
+ *
+ * So the precision is given to the figures that need it and taken back from
+ * the ones that don't: up to four decimals, trailing zeros trimmed, and
+ * never fewer than two, because money below a peso still looks like money.
+ */
+export function unitPeso(n: number): string {
+  const sign = n < 0 ? "−" : "";
+  const abs = Math.abs(n);
+  // Rounded first, so 18.750999 does not keep a decimal it does not have.
+  const at4 = Math.round(abs * 10000) / 10000;
+  const decimals = Math.max(
+    2,
+    Math.min(4, ((at4.toString().split(".")[1] ?? "").length))
+  );
+  return (
+    sign +
+    "₱" +
+    at4.toLocaleString("en-PH", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })
+  );
+}

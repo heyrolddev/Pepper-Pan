@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
-import { peso } from "@/lib/peso";
+import { peso, unitPeso } from "@/lib/peso";
 import {
   adjustStock,
   deleteIngredient,
@@ -233,7 +233,7 @@ export function IngredientForm({
         <p className="rounded-xl bg-gold-400/25 px-4 py-3 text-sm text-ink-950">
           Works out at{" "}
           <strong className="font-display tabular-nums">
-            {derived > 0 ? peso(derived, 4) : "—"}
+            {derived > 0 ? unitPeso(derived) : "—"}
           </strong>{" "}
           per {unit || "unit"}.
           <span className="mt-1 block text-xs text-ink-800/60">
@@ -600,13 +600,13 @@ export function RestockForm({
             }`}
           >
             <strong className="font-display tabular-nums">
-              {peso(newUnitCost, 4)}
+              {unitPeso(newUnitCost)}
             </strong>{" "}
             per {ingredient.unit}
             {moved && (
               <>
                 {" — "}
-                {dearer ? "dearer" : "cheaper"} than the {peso(ingredient.unitCost, 4)}{" "}
+                {dearer ? "dearer" : "cheaper"} than the {unitPeso(ingredient.unitCost)}{" "}
                 you&apos;ve been costing with.
               </>
             )}

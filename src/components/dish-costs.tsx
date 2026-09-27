@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FOOD_COST_TARGET, type Margin } from "@/lib/costing";
-import { peso } from "@/lib/peso";
+import { peso, unitPeso } from "@/lib/peso";
 import { RecipeEditor, type RecipeOption } from "@/components/recipe-editor";
 import { NewDishDialog } from "@/components/new-dish-dialog";
 import { setMealOnMenu } from "@/app/admin/menu/actions";
@@ -698,7 +698,7 @@ export function DishCosts({
                                   {l.qty.toLocaleString("en-PH")} {l.unit}
                                 </td>
                                 <td className="py-2 text-right tabular-nums text-ink-800/50">
-                                  {l.unitCost > 0 ? peso(l.unitCost, 4) : "—"}
+                                  {l.unitCost > 0 ? unitPeso(l.unitCost) : "—"}
                                 </td>
                                 <td className="py-2 text-right font-bold tabular-nums text-ink-950">
                                   {peso(l.cost)}

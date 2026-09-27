@@ -5,9 +5,17 @@ import {
   remainingFor,
   stockBadge,
   ticketDraw,
+  type PoolShort,
   type Shortfall,
   type TicketLine as DrawLine,
 } from "@/lib/costing";
+import {
+  alsoDrawOn,
+  explainStock,
+  lineArithmetic,
+  whySentence,
+  type WhyLine,
+} from "@/lib/stock-why";
 import { peso } from "@/lib/peso";
 import { AdminDialog } from "@/components/admin-dialog";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
@@ -560,83 +568,12 @@ export function CounterTill({
       )}
 
       {why && (
-        <AdminDialog
-          title={`${why.name} — what's missing`}
-          subtitle="Every line of the recipe against what's on the shelf right now."
+        <WhyPanel
+          meal={why}
+          meals={meals}
+          claimed={claimed}
           onClose={() => setWhy(null)}
-        >
-          <div className="flex flex-col gap-4">
-            {(why.limits ?? []).length === 0 ? (
-              <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm text-ink-800/70">
-                No recipe entered for this one, so the system can&apos;t say
-                what it needs. Somebody marked it sold out by hand, or its
-                recipe is empty — check <strong>Dish costs</strong>.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1.5">
-                {(why.limits ?? []).map((l, i) => {
-                  const short = l.allows <= 0;
-                  return (
-                    <li
-                      key={i}
-                      className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 ring-1 ${
-                        short
-                          ? "bg-brand-600 text-cream-50 ring-brand-700/30"
-                          : "bg-cream-100 text-ink-950 ring-ink-950/10"
-                      }`}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-bold">
-                          {l.label}
-                          {l.kind === "batch" && (
-                            <span className="ml-2 rounded-full bg-ink-950/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide opacity-70">
-                              batch
-                            </span>
-                          )}
-                        </span>
-                        <span className="text-xs opacity-70">
-                          Needs {l.need.toLocaleString("en-PH")} {l.unit} · have{" "}
-                          {l.have.toLocaleString("en-PH")} {l.unit}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-right">
-                        <span className="block font-display text-lg font-black tabular-nums">
-                          {l.allows}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-wide opacity-70">
-                          servings
-                        </span>
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {(why.limits ?? []).some((l) => l.kind === "batch" && l.allows <= 0) && (
-              <p className="rounded-2xl bg-gold-400/20 px-4 py-3 text-sm leading-relaxed text-ink-800/80">
-                The one you&apos;re short of is a <strong>batch</strong> —
-                somebody can go and make more of it on the Inventory tab, if
-                the ingredients are there.
-              </p>
-            )}
-
-            <p className="text-xs leading-relaxed text-ink-800/50">
-              You can still ring this up. The count may simply be behind — the
-              till never blocks a sale over it, and the shelf is what it is.
-            </p>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setWhy(null)}
-                className="rounded-xl bg-ink-950 px-5 py-2.5 text-sm font-bold text-cream-50 hover:bg-ink-800"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </AdminDialog>
+        />
       )}
 
       {review && (
@@ -816,42 +753,48 @@ export function CounterTill({
                           {qty}
                         </span>
                       )}
-                      {/* One slot, one badge, always filled when there is
-                          anything to say. `out` is left to the button below,
-                          which is a real control rather than a label. */}
-                      {badge.level !== "out" && (
-                        <span
-                          className={`absolute bottom-1.5 right-2 rounded-full px-1.5 text-[9px] font-black uppercase tracking-wide ${
-                            badge.level === "low"
-                              ? // Loud, and the same gold as the basket
-                                // count, because both mean "look at this".
-                                "bg-gold-400 text-ink-950"
-                              : qty > 0
-                                ? // The tile is black once it is on the
-                                  // ticket, so the quiet badge has to invert
-                                  // with it or it disappears into the tile.
-                                  "bg-cream-50/20 text-cream-50/85"
-                                : "bg-ink-950/10 text-ink-800/65"
-                          }`}
-                        >
-                          {badge.text}
-                        </span>
-                      )}
                     </button>
 
-                    {/* Its own button, on top of the tile rather than inside
-                        it: a <button> cannot contain a <button>, and tapping
-                        "no stock" has to ask why rather than add one more to
-                        the ticket. */}
-                    {out && (
-                      <button
-                        onClick={() => setWhy(m)}
-                        aria-label={`Why is ${m.name} out of stock?`}
-                        className="absolute bottom-1.5 right-2 rounded-full bg-brand-600 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-cream-50 ring-1 ring-cream-50/30 transition-colors hover:bg-brand-700"
-                      >
-                        no stock · why?
-                      </button>
-                    )}
+                    {/**
+                     * The count, and a way to ask where it came from.
+                     *
+                     * It used to be a label everywhere except at zero, and
+                     * that was the wrong half to make clickable. "No stock"
+                     * is the easy question — the hard one is a tile saying 7
+                     * next to a batch the kitchen just made 18 of, which is
+                     * exactly the screen this was reported from. The number
+                     * that needs explaining is the number that looks wrong,
+                     * and a number only looks wrong while it is above zero.
+                     *
+                     * So every tile's badge asks now. Same place, same size,
+                     * same three tones — the only thing that changed is that
+                     * it answers when you press it.
+                     */}
+                    <button
+                      onClick={() => setWhy(m)}
+                      aria-label={`${m.name}: ${badge.text}. Why this number?`}
+                      className={`absolute bottom-1.5 right-2 rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide transition-colors ${
+                        out
+                          ? "bg-brand-600 text-cream-50 ring-1 ring-cream-50/30 hover:bg-brand-700"
+                          : badge.level === "low"
+                            ? // Loud, and the same gold as the basket count,
+                              // because both mean "look at this".
+                              "bg-gold-400 text-ink-950 hover:bg-gold-500"
+                            : qty > 0
+                              ? // The tile is black once it is on the ticket,
+                                // so the quiet badge has to invert with it or
+                                // it disappears into the tile.
+                                "bg-cream-50/20 text-cream-50/85 hover:bg-cream-50/35"
+                              : "bg-ink-950/10 text-ink-800/65 hover:bg-ink-950/20"
+                      }`}
+                    >
+                      {badge.text}
+                      {/* The affordance. Without it the badge looks like the
+                          label it used to be, and nobody presses a label. */}
+                      <span aria-hidden className="ml-1 opacity-60">
+                        ?
+                      </span>
+                    </button>
                   </li>
                 );
               })}
@@ -1457,5 +1400,213 @@ function AddOnSheet({
         </button>
       </div>
     </AdminDialog>
+  );
+}
+
+/**
+ * Where a stock number came from.
+ *
+ * ── The screen this was reported from ────────────────────────────────────
+ *
+ * Four tiles — La/BP Chicken Noodles 7, XL/BP Chicken Noodles 7, La/BP
+ * Chicken Rice 8, XL/BP Chicken Rice 8 — all cooking from one batch that the
+ * kitchen had just made 18 packs of. The owner's question was exactly right:
+ * where did 18 go, and why do four dishes sharing one thing disagree?
+ *
+ * The till knew both answers and showed neither.
+ *
+ *   The chicken was never the limit. A dish makes as many servings as its
+ *   TIGHTEST line allows, and for the noodle dishes that is the noodles. 18
+ *   packs of chicken is plenty; there were only noodles for 7. Nothing said
+ *   which line was doing the stopping, so the only number to compare against
+ *   was the one on the batch — and it looked like the count had gone missing.
+ *
+ *   And the four counts cannot be added up. Each is worked out as if that
+ *   dish were the only thing being sold. 7 + 7 + 8 + 8 is 30 servings out of
+ *   18 packs. Every number true alone, the set of them badly misleading.
+ *
+ * So this panel is three answers in the order they get asked: what sets the
+ * number, what is NOT holding it back, and who else is counting the same
+ * shelf. The arithmetic is spelled out on every line, because "1,400 g on
+ * the shelf, 200 g a serving" is an answer somebody can act on and "7" is
+ * not.
+ *
+ * Every figure comes from `explainStock`, which is tested — including
+ * against these exact four dishes. A why panel that explains the wrong
+ * reason is worse than no panel at all, because it gets believed.
+ */
+function WhyPanel({
+  meal,
+  meals,
+  claimed,
+  onClose,
+}: {
+  meal: CounterMeal;
+  meals: CounterMeal[];
+  claimed: Map<string, PoolShort>;
+  onClose: () => void;
+}) {
+  const why = explainStock(meal.limits ?? [], claimed);
+  const badge = stockBadge(why.left);
+
+  // Who else counts the same shelf. Worked out for the binding lines only:
+  // a cashier does not need to know who shares the thing there is plenty of.
+  const sharing = why.binding
+    .map((l) => ({ line: l, dishes: alsoDrawOn(l.refId, meals, meal.id) }))
+    .filter((x) => x.dishes.length > 0);
+
+  return (
+    <AdminDialog
+      title={`${meal.name} — why ${badge.text}`}
+      subtitle="Every line of the recipe against what's on the shelf right now."
+      onClose={onClose}
+    >
+      <div className="flex flex-col gap-4">
+        {/* The headline answer, in one sentence, before any table. The old
+            panel opened straight into rows and left the reader to work out
+            which one mattered — which is the job the panel was opened to
+            do. */}
+        <p
+          className={`rounded-2xl px-4 py-3 text-sm font-bold leading-relaxed ring-1 ${
+            why.left === null
+              ? "bg-cream-100 text-ink-800/75 ring-ink-950/10"
+              : why.left <= 0
+                ? "bg-brand-600 text-cream-50 ring-brand-700/30"
+                : "bg-ink-950 text-cream-50 ring-ink-950/20"
+          }`}
+        >
+          {whySentence(why)}
+        </p>
+
+        {why.left === null ? (
+          <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm text-ink-800/70">
+            Somebody marked it sold out by hand, or its recipe is empty —
+            check <strong>Dish costs</strong>. Until a recipe is in, selling
+            it books no cost and takes nothing off the shelf.
+          </p>
+        ) : (
+          <>
+            {/* ── what sets it ──────────────────────────────────────────── */}
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/45">
+                What sets the number
+              </p>
+              {why.binding.map((l) => (
+                <RecipeLine key={l.refId} line={l} binding />
+              ))}
+            </div>
+
+            {/* ── what does not ─────────────────────────────────────────────
+                The half that was missing, and the half the question was
+                actually about. Naming the thing there is plenty of is what
+                stops "but we just made 18 packs" from reading as a bug. */}
+            {why.roomy.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[11px] font-black uppercase tracking-widest text-ink-800/45">
+                  Not what&apos;s holding it back
+                </p>
+                {why.roomy.map((l) => (
+                  <RecipeLine key={l.refId} line={l} binding={false} />
+                ))}
+              </div>
+            )}
+
+            {/* ── who else counts this shelf ───────────────────────────── */}
+            {sharing.length > 0 && (
+              <div className="rounded-2xl bg-gold-400/20 px-4 py-3">
+                {sharing.map(({ line, dishes }) => (
+                  <p
+                    key={line.refId}
+                    className="text-sm leading-relaxed text-ink-800/85"
+                  >
+                    <strong>{line.label}</strong> is shared with{" "}
+                    {dishes.length} other {dishes.length === 1 ? "dish" : "dishes"}:{" "}
+                    {dishes
+                      .map(
+                        (d) =>
+                          `${d.name}${d.need !== line.need ? ` (${d.need} ${line.unit} each)` : ""}`
+                      )
+                      .join(", ")}
+                    .
+                  </p>
+                ))}
+                {/* The sentence the whole panel exists for. */}
+                <p className="mt-2 text-xs leading-relaxed text-ink-800/65">
+                  Each tile&apos;s count is that dish <strong>on its own</strong>
+                  , as if nothing else were selling. They draw on the same
+                  shelf, so the counts <strong>cannot be added up</strong> —
+                  sell one and the others drop with it.
+                </p>
+              </div>
+            )}
+
+            {why.binding.some((l) => l.kind === "batch") && (
+              <p className="rounded-2xl bg-jade-600/12 px-4 py-3 text-sm leading-relaxed text-ink-800/80">
+                What&apos;s short is a <strong>batch</strong> — somebody can go
+                and make more of it on the Inventory tab, if the ingredients
+                are there.
+              </p>
+            )}
+          </>
+        )}
+
+        <p className="text-xs leading-relaxed text-ink-800/50">
+          You can still ring this up. The count may simply be behind — the
+          till never blocks a sale over it, and the shelf is what it is.
+        </p>
+
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-ink-950 px-5 py-2.5 text-sm font-bold text-cream-50 hover:bg-ink-800"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
+    </AdminDialog>
+  );
+}
+
+/**
+ * One line of the recipe, with its division written out.
+ *
+ * The number on the right is what THIS line alone allows — which is the only
+ * way to see that one line is the answer and the rest are bystanders. The
+ * binding one is inverted rather than merely tinted: at a counter, glanced
+ * at sideways, weight reads faster than hue.
+ */
+function RecipeLine({ line, binding }: { line: WhyLine; binding: boolean }) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 ring-1 ${
+        binding
+          ? line.allowsNow <= 0
+            ? "bg-brand-600 text-cream-50 ring-brand-700/30"
+            : "bg-ink-950 text-cream-50 ring-ink-950/20"
+          : "bg-cream-100 text-ink-950 ring-ink-950/10"
+      }`}
+    >
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-bold">
+          {line.label}
+          {line.kind === "batch" && (
+            <span className="ml-2 rounded-full bg-ink-950/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide opacity-70">
+              batch
+            </span>
+          )}
+        </span>
+        <span className="text-xs opacity-70">{lineArithmetic(line)}</span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="block font-display text-lg font-black tabular-nums">
+          {line.allowsNow}
+        </span>
+        <span className="text-[10px] uppercase tracking-wide opacity-70">
+          servings
+        </span>
+      </span>
+    </div>
   );
 }

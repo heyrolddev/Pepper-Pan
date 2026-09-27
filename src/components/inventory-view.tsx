@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { peso } from "@/lib/peso";
+import { peso, unitPeso } from "@/lib/peso";
 import { batchStockValue, shelfTotal, shortShelf } from "@/lib/costing";
 import {
   CountForm,
@@ -847,7 +847,7 @@ export function InventoryView({
                   </span>
                   {canSeeCosts && s.unitCost > 0 && (
                     <>
-                      <span>{peso(s.unitCost, 4)} / {s.unit}</span>
+                      <span>{unitPeso(s.unitCost)} / {s.unit}</span>
                       <span>{peso(s.value, 0)} on hand</span>
                     </>
                   )}
@@ -986,12 +986,18 @@ export function InventoryView({
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-800/50">
                   <span>
                     Makes {b.yieldQty.toLocaleString("en-PH")} {b.yieldUnit}
-                    {b.lineCount > 0 && ` from ${b.lineCount} ingredients`}
+                    {b.lineCount > 0 &&
+                      ` from ${b.lineCount} ingredient${b.lineCount === 1 ? "" : "s"}`}
                   </span>
                   {canSeeCosts && !b.unknown && (
                     <>
                       <span>{peso(b.total)} a batch</span>
-                      <span>{peso(b.perUnit, 4)} / {b.yieldUnit}</span>
+                      {/* Not `peso(…, 4)`. On a batch costing ₱18.75 a pack
+                          that printed "₱18.7510" two words from "₱18.75 a
+                          batch" — the same number, looking like a typo. The
+                          four decimals are kept for the costs that need
+                          them; see `unitPeso`. */}
+                      <span>{unitPeso(b.perUnit)} / {b.yieldUnit}</span>
                     </>
                   )}
                   {canSeeCosts && b.unknown && (
