@@ -246,9 +246,33 @@ export function CheckoutForm({
           mealId: i.mealId,
           qty: i.qty,
           name: i.name,
-          // Ids only. The server re-reads every label and every price from
-          // the menu — the browser says what was chosen, never what it costs.
-          optionIds: i.extras.map((e) => e.optionId),
+          /**
+           * `options`, not `optionIds`. The name matters more than it looks.
+           *
+           * This sent `optionIds` — a field `placeOrder` does not have and
+           * never read. TypeScript could not catch it: the array comes out of
+           * `.map()`, so it is not a fresh object literal at the assignment,
+           * and excess-property checking does not apply. `options` is
+           * optional, so the shape stayed legal and the compiler stayed quiet.
+           *
+           * What it cost, every day since add-ons shipped: `placeOrder` read
+           * `item.options`, found nothing, and skipped straight past the
+           * add-ons. A customer who asked for extra rice online was not
+           * charged for it, the kitchen was never told to cook it, and the
+           * rice never came off the shelf. Silent in all three directions.
+           *
+           * `tests/order-wire.test.ts` now reads this file and the action
+           * together and fails if they stop agreeing.
+           *
+           * Ids only, still: the server re-reads every label and every price
+           * from the menu — the browser says what was chosen, never what it
+           * costs.
+           */
+          options: i.extras.map((e) => ({
+            id: e.optionId,
+            qty: e.qty,
+            ...(e.variantMealId ? { variantMealId: e.variantMealId } : {}),
+          })),
         })),
         contactName,
         contactPhone,

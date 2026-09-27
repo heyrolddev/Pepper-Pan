@@ -52,6 +52,7 @@ export default async function AdminMenuPage() {
     { data: productAttachRows },
     { data: recipeRows },
     { data: componentRows },
+    { data: optionPriceRows },
   ] = await Promise.all([
     supabase
       .from("meals")
@@ -90,7 +91,9 @@ export default async function AdminMenuPage() {
       .order("name"),
     supabase
       .from("modifier_options")
-      .select("id, group_id, label, option_meal_id, price_override, max_qty, sort_order")
+      .select(
+        "id, group_id, label, option_meal_id, option_product_id, price_override, max_qty, sort_order"
+      )
       .eq("is_active", true)
       .order("sort_order"),
     supabase.from("meal_modifier_groups").select("meal_id, group_id"),
@@ -104,6 +107,16 @@ export default async function AdminMenuPage() {
      */
     supabase.from("meal_ingredients").select("meal_id"),
     supabase.from("meal_components").select("meal_id"),
+    /**
+     * What each size of a sized add-on charges.
+     *
+     * Loaded so the boxes come back filled. An editor that shows a saved
+     * override as blank is worse than one that has no box at all: blank
+     * means "charge the dish price", so the owner re-opens the group, sees
+     * nothing typed, saves, and the ₱15 they set on the large silently
+     * becomes the full price.
+     */
+    supabase.from("modifier_option_prices").select("option_id, meal_id, price"),
   ]);
 
   // Read-only, so it is safe on every load. It is what decides whether the
@@ -185,11 +198,26 @@ export default async function AdminMenuPage() {
     group_id: string;
     label: string;
     option_meal_id: string | null;
+    option_product_id: string | null;
     price_override: number | null;
     max_qty: number;
     sort_order: number;
   };
-  const optionRows = (modOptionRows ?? []) as OptRow[];
+  const priceRows = (optionPriceRows ?? []) as {
+    option_id: string;
+    meal_id: string;
+    price: number;
+  }[];
+  const sizePricesOf = (optionId: string) =>
+    Object.fromEntries(
+      priceRows
+        .filter((r) => r.option_id === optionId)
+        .map((r) => [r.meal_id, Number(r.price)])
+    );
+  const optionRows = ((modOptionRows ?? []) as OptRow[]).map((o) => ({
+    ...o,
+    sizePrices: sizePricesOf(o.id),
+  }));
   const mealAttach = (mealAttachRows ?? []) as { meal_id: string; group_id: string }[];
   const productAttach = (productAttachRows ?? []) as {
     product_id: string;
@@ -278,6 +306,31 @@ export default async function AdminMenuPage() {
             is_public: m.is_public,
           }))}
           cards={groups.map((g) => ({ id: g.id, name: g.name }))}
+          /**
+           * The same groups again, this time with their variants.
+           *
+           * `cards` says which menu cards a QUESTION can be attached to;
+           * this says which cards an ANSWER can be — a drink that comes in
+           * sizes. Two different uses of the same rows, kept as two props so
+           * neither has to guess which one the component meant.
+           */
+          products={groups.map((g) => ({
+            id: g.id,
+            name: g.name,
+            variants: g.members.map((m) => ({
+              mealId: m.mealId,
+              // The variant's own axis values are what the menu already calls
+              // it — {"Size":"22oz"} reads "22oz". A second name for the same
+              // thing is a second thing to keep in step.
+              label:
+                Object.values(m.options ?? {})
+                  .filter(Boolean)
+                  .join(" · ") ||
+                meals.find((x) => x.id === m.mealId)?.name ||
+                "",
+              price: Number(meals.find((x) => x.id === m.mealId)?.price ?? 0),
+            })),
+          }))}
           withRecipe={withRecipe}
         />
       )}

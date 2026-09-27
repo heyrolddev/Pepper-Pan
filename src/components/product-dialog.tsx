@@ -23,12 +23,15 @@ import {
   extrasOf,
   extrasTotal,
   isFull,
+  isSized,
   optionSoldOut,
   qtyOf,
   reconcile,
   ruleLabel,
   setOptionQty,
+  setVariant,
   toggleOption,
+  variantSoldOut,
   type ModifierChoice,
   type ModifierGroup,
 } from "@/lib/modifiers";
@@ -350,6 +353,11 @@ export function ProductDialog({
                     setOptionQty(group, reconcile(groups, t), optionId, qty)
                   )
                 }
+                onSize={(optionId, variantMealId) =>
+                  setTicked((t) =>
+                    setVariant(group, reconcile(groups, t), optionId, variantMealId)
+                  )
+                }
               />
             ))}
 
@@ -480,12 +488,14 @@ function AddOnGroup({
   full,
   onToggle,
   onQty,
+  onSize,
 }: {
   group: ModifierGroup;
   choice: ModifierChoice;
   full: boolean;
   onToggle: (optionId: string) => void;
   onQty: (optionId: string, qty: number) => void;
+  onSize: (optionId: string, variantMealId: string) => void;
 }) {
   const single = group.max === 1;
 
@@ -520,9 +530,13 @@ function AddOnGroup({
           const blocked = out || (full && !on);
           const countable = option.maxQty > 1 && !out;
 
+          const sizes = isSized(option) ? (option.variants ?? []) : [];
+          const chosenSize = choice[group.id]?.find((p) => p.id === option.id)
+            ?.variantMealId;
+
           return (
+            <div key={option.id}>
             <div
-              key={option.id}
               className="flex items-center gap-1 rounded-xl px-2 py-1 transition-colors has-[button:hover]:bg-cream-50"
             >
               <button
@@ -600,10 +614,54 @@ function AddOnGroup({
                   blocked ? "text-ink-800/35" : "text-ink-800/70"
                 }`}
               >
-                {option.price > 0
-                  ? `+₱${(option.price * Math.max(1, qty)).toFixed(2)}`
-                  : "Free"}
+                {(() => {
+                  // A sized option is priced by the size that is chosen, not
+                  // by the option — the row would otherwise read "Free" over
+                  // a large that costs ₱15.
+                  const each = sizes.length
+                    ? (sizes.find((v) => v.mealId === chosenSize)?.price ?? 0)
+                    : option.price;
+                  return each > 0 ? `+₱${(each * Math.max(1, qty)).toFixed(2)}` : "Free";
+                })()}
               </span>
+            </div>
+
+            {/* ---- which size ----
+
+                Only once the drink is ticked. Shown before that it is a
+                control with nothing to apply to, and on a pick-one group it
+                would look like four drinks each asking a question. Indented
+                under its own option so it reads as part of it rather than as
+                another thing to choose from the group. */}
+            {sizes.length > 0 && on && (
+              <div className="mb-1 ml-10 flex flex-wrap gap-1.5">
+                {sizes.map((v) => {
+                  const gone = variantSoldOut(v);
+                  const picked = v.mealId === chosenSize;
+                  return (
+                    <button
+                      key={v.mealId}
+                      type="button"
+                      disabled={gone}
+                      aria-pressed={picked}
+                      onClick={() => onSize(option.id, v.mealId)}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
+                        picked
+                          ? "bg-ink-950 text-cream-50"
+                          : gone
+                            ? "cursor-not-allowed bg-ink-950/[0.04] text-ink-800/30 line-through"
+                            : "bg-ink-950/[0.06] text-ink-950 hover:bg-ink-950/15"
+                      }`}
+                    >
+                      {v.label}
+                      {v.price > 0 && (
+                        <span className="ml-1 opacity-70">+₱{v.price.toFixed(0)}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             </div>
           );
         })}

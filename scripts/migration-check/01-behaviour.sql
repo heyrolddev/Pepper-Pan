@@ -1710,3 +1710,117 @@ begin
   if n <> 0 then raise exception 'FAIL: a good sale was complained about'; end if;
   raise notice 'a fully costed sale says nothing, as it should';
 end $$;
+
+
+\echo '=== 0061 an add-on that comes in sizes ==='
+-- The claim this migration rests on is that NOTHING on the order side
+-- changes: a chosen size is a dish, and `order_line_extras.meal_id` has
+-- pointed at a dish since 0049. A claim like that is worth ten of my
+-- sentences and none of them, so it is measured here against the real
+-- schema — the large's tea leaves must come off the shelf, and the
+-- regular's must not.
+select act_as_service();
+reset role;
+
+insert into ingredients (id, name, unit, cost, stock)
+  values ('v-tea', 'V Tea Leaves', 'g', 2.00, 1000)
+  on conflict (id) do update set stock = 1000;
+
+insert into menu_products (id, name) values ('v-card', 'V Iced Tea')
+  on conflict (id) do update set name = excluded.name;
+
+insert into meals (id, name, price, product_id, options, variant_sort) values
+  ('v-reg', 'V Iced Tea Regular', 35, 'v-card', '{"Size":"Regular"}'::jsonb, 0),
+  ('v-lrg', 'V Iced Tea Large',   50, 'v-card', '{"Size":"Large"}'::jsonb,   1)
+on conflict (id) do update set
+  price = excluded.price, product_id = excluded.product_id,
+  options = excluded.options, variant_sort = excluded.variant_sort;
+
+delete from meal_ingredients where meal_id in ('v-reg', 'v-lrg');
+insert into meal_ingredients (meal_id, ref_type, ref_id, qty)
+  values ('v-reg', 'inv', 'v-tea', 10), ('v-lrg', 'inv', 'v-tea', 25);
+
+insert into meals (id, name, price) values ('v-dish', 'V Rice Meal', 150)
+  on conflict (id) do update set price = excluded.price;
+
+\echo '--- an option may name a product instead of a dish ---'
+insert into modifier_groups (id, name, min_select, max_select)
+  values ('v-grp', 'Choose your drink', 0, 1)
+  on conflict (id) do update set name = excluded.name;
+delete from modifier_options where group_id = 'v-grp';
+insert into modifier_options (id, group_id, label, option_product_id, sort_order)
+  values ('v-opt', 'v-grp', 'Iced Tea', 'v-card', 0);
+
+\echo '--- but never both at once ---'
+do $$
+begin
+  begin
+    update modifier_options set option_meal_id = 'v-dish' where id = 'v-opt';
+    raise exception 'FAIL: an option naming a dish AND a product was allowed';
+  exception when check_violation then
+    raise notice 'an option naming both is refused, as it must be';
+  end;
+end $$;
+
+\echo '--- each size may charge its own price ---'
+delete from modifier_option_prices where option_id = 'v-opt';
+insert into modifier_option_prices (option_id, meal_id, price)
+  values ('v-opt', 'v-reg', 0), ('v-opt', 'v-lrg', 15);
+do $$
+declare got numeric;
+begin
+  select price into got from modifier_option_prices
+   where option_id = 'v-opt' and meal_id = 'v-reg';
+  -- Zero has to survive the round trip. If an absent row and a zero row
+  -- were the same thing, the size that comes free with the combo would
+  -- quietly start charging ₱35.
+  if got is distinct from 0 then
+    raise exception 'FAIL: a free size did not stay free — got %', got;
+  end if;
+  raise notice 'regular free, large +15';
+end $$;
+
+\echo '--- the size the customer picked is the stock that moves ---'
+delete from activity_log;
+insert into orders (id, ticket, revenue, status, fulfillment)
+  values ('v-order', 26, 200, 'pending', 'pickup');
+with l as (
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+  values ('v-order', 'v-dish', 1, 150) returning id
+)
+insert into order_line_extras (order_line_id, meal_id, label, qty, price_at_sale)
+  select id, 'v-lrg', 'Iced Tea · Large', 1, 15 from l;
+
+do $$
+declare before numeric; after numeric; cost numeric;
+begin
+  select stock into before from ingredients where id = 'v-tea';
+  cost := apply_order_stock('v-order');
+  select stock into after from ingredients where id = 'v-tea';
+  raise notice 'tea leaves % -> % | cogs %', before, after, cost;
+
+  -- 25g is the LARGE's recipe. 10g would mean the order deducted the
+  -- regular, which is the bug this whole shape exists to make impossible.
+  if before - after <> 25 then
+    raise exception 'FAIL: the chosen size did not move — % g came off, expected 25', before - after;
+  end if;
+  if cost < 50 then
+    raise exception 'FAIL: the large tea booked no cost of its own — cogs %', cost;
+  end if;
+end $$;
+
+\echo '--- deleting the card empties the option, it does not delete it ---'
+do $$
+declare still int; points text;
+begin
+  delete from menu_products where id = 'v-card';
+  select count(*) into still from modifier_options where id = 'v-opt';
+  select option_product_id into points from modifier_options where id = 'v-opt';
+  if still <> 1 then
+    raise exception 'FAIL: deleting a card took the owner''s option with it';
+  end if;
+  if points is not null then
+    raise exception 'FAIL: the option still points at a card that is gone';
+  end if;
+  raise notice 'the option survives with its label and stops being offered';
+end $$;

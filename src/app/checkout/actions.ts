@@ -30,7 +30,14 @@ type PlaceOrderInput = {
     mealId: string;
     qty: number;
     name?: string;
-    options?: { id: string; qty: number }[];
+    /**
+     * What was ticked. `variantMealId` names the SIZE, for an add-on that
+     * comes in sizes — a dish id, because that is the thing the order
+     * records, the thing stock moves against, and the thing the server can
+     * check against the option that offered it. Every one of them is
+     * re-verified in `resolveChoice`; a cart is a suggestion.
+     */
+    options?: { id: string; qty: number; variantMealId?: string }[];
   }[];
   /**
    * Manila wall-clock, as a `datetime-local` value ("2026-09-01T18:30").

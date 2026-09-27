@@ -25,7 +25,14 @@ import { poolShortfalls, type TicketLine } from "@/lib/costing";
 export type CounterLine = {
   mealId: string;
   qty: number;
-  options?: { id: string; qty: number }[];
+  /**
+   * What was ticked. `variantMealId` names the SIZE, for an add-on that
+   * comes in sizes — a dish id, because that is the thing the order
+   * records, the thing stock moves against, and the thing the server can
+   * check against the option that offered it. Every one of them is
+   * re-verified in `resolveChoice`; a cart is a suggestion.
+   */
+  options?: { id: string; qty: number; variantMealId?: string }[];
 };
 
 export type CounterResult =

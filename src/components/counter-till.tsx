@@ -35,12 +35,15 @@ import {
   extrasOf,
   extrasTotal,
   isFull,
+  isSized,
   optionSoldOut,
   qtyOf,
   reconcile,
   ruleLabel,
   setOptionQty,
+  setVariant,
   toggleOption,
+  variantSoldOut,
   type ChosenExtra,
   type ModifierChoice,
   type ModifierGroup,
@@ -388,7 +391,11 @@ export function CounterTill({
         lines: lines.map((l) => ({
           mealId: l.meal.id,
           qty: l.qty,
-          options: l.extras.map((e) => ({ id: e.optionId, qty: e.qty })),
+          options: l.extras.map((e) => ({
+            id: e.optionId,
+            qty: e.qty,
+            ...(e.variantMealId ? { variantMealId: e.variantMealId } : {}),
+          })),
         })),
         method,
         reference,
@@ -1287,8 +1294,20 @@ function AddOnSheet({
                   const out = optionSoldOut(option);
                   const blocked = out || (full && !on);
                   const countable = option.maxQty > 1 && !out;
+                  const sizes = isSized(option) ? (option.variants ?? []) : [];
+                  const chosenSize = choice[group.id]?.find((p) => p.id === option.id)
+                    ?.variantMealId;
+                  const each = sizes.length
+                    ? (sizes.find((v) => v.mealId === chosenSize)?.price ?? 0)
+                    : option.price;
                   return (
-                    <div key={option.id} className="relative">
+                    <div
+                      key={option.id}
+                      // A sized drink takes the full width: its tile carries a
+                      // second row of chips, and half a column at a counter is
+                      // not enough to tap a size cleanly with a wet thumb.
+                      className={`relative ${sizes.length > 0 ? "col-span-2" : ""}`}
+                    >
                       <button
                         type="button"
                         disabled={blocked}
@@ -1312,12 +1331,61 @@ function AddOnSheet({
                         <span className="text-xs font-bold tabular-nums opacity-70">
                           {out
                             ? "sold out"
-                            : option.price > 0
-                              ? `+${peso(option.price * Math.max(1, qty), 0)}`
+                            : each > 0
+                              ? `+${peso(each * Math.max(1, qty), 0)}`
                               : "free"}
                           {countable && !on && ` · up to ${option.maxQty}`}
+                          {sizes.length > 0 && !on && ` · ${sizes.length} sizes`}
                         </span>
                       </button>
+
+                      {/* ---- which size ----
+
+                          Under the tile and only once it is on, for the same
+                          reason the stepper is: a control shown before the
+                          drink is picked has nothing to apply to. Full-height
+                          taps, because this is a counter — the cashier is
+                          working fast with one hand. */}
+                      {sizes.length > 0 && on && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {sizes.map((v) => {
+                            const gone = variantSoldOut(v);
+                            const picked = v.mealId === chosenSize;
+                            return (
+                              <button
+                                key={v.mealId}
+                                type="button"
+                                disabled={gone}
+                                aria-pressed={picked}
+                                onClick={() =>
+                                  setTicked((t) =>
+                                    setVariant(
+                                      group,
+                                      reconcile(groups, t),
+                                      option.id,
+                                      v.mealId
+                                    )
+                                  )
+                                }
+                                className={`min-h-10 rounded-lg px-3 py-1.5 text-xs font-black transition-colors ${
+                                  picked
+                                    ? "bg-gold-400 text-ink-950"
+                                    : gone
+                                      ? "cursor-not-allowed bg-ink-950/[0.04] text-ink-800/30 line-through"
+                                      : "bg-ink-950/[0.06] text-ink-950 hover:bg-ink-950/15"
+                                }`}
+                              >
+                                {v.label}
+                                {v.price > 0 && (
+                                  <span className="ml-1 opacity-75">
+                                    +{peso(v.price, 0)}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {/* On top of the tile rather than inside it — a button
                           cannot contain a button, and at a counter the minus
