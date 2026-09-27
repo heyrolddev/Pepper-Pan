@@ -24,6 +24,7 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showResolved, setShowResolved] = useState(false);
+  const [wipeFailed, setWipeFailed] = useState<string | null>(null);
 
   const open = errors.filter((e) => !e.resolved);
   const resolved = errors.filter((e) => e.resolved);
@@ -84,7 +85,17 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
               <button
                 onClick={() =>
                   startTransition(async () => {
-                    await clearResolvedErrors();
+                    // Read, not discarded. `clearResolvedErrors` refuses
+                    // anyone without `settings`, and a refusal thrown away
+                    // here closed the list and refreshed as though it had
+                    // worked — the rows came back on the next render with
+                    // nothing to explain them.
+                    const r = await clearResolvedErrors();
+                    if (r.error !== null) {
+                      setWipeFailed(r.error);
+                      return;
+                    }
+                    setWipeFailed(null);
                     setShowResolved(false);
                     router.refresh();
                   })
@@ -94,6 +105,11 @@ export function ErrorLogPanel({ errors }: { errors: LoggedError[] }) {
               >
                 Delete these
               </button>
+            )}
+            {wipeFailed && (
+              <p className="w-full rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-cream-50">
+                {wipeFailed}
+              </p>
             )}
           </div>
         )}

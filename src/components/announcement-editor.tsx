@@ -800,6 +800,7 @@ function Editor({
 function DeleteButton({ id, onDone }: { id: number; onDone: () => void }) {
   const router = useRouter();
   const [asking, setAsking] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   if (!asking) {
@@ -813,18 +814,39 @@ function DeleteButton({ id, onDone }: { id: number; onDone: () => void }) {
     );
   }
   return (
-    <button
-      onClick={() =>
-        startTransition(async () => {
-          await deleteAnnouncement(id);
-          router.refresh();
-          onDone();
-        })
-      }
-      disabled={pending}
-      className="rounded-2xl bg-brand-600 px-4 py-3 text-sm font-black text-cream-50 disabled:opacity-60"
-    >
-      {pending ? "Deleting…" : "Really delete"}
-    </button>
+    <div className="flex flex-col gap-2">
+      <button
+        onClick={() =>
+          startTransition(async () => {
+            /* The result is read now.
+
+               It used to be thrown away: the dialog closed and the page
+               refreshed whatever came back, so a refusal — `mayPost()` saying
+               no, or any database error — looked exactly like a successful
+               delete. The post was still there on the next screen and nothing
+               had said a word about why. A destructive button that reports
+               success it did not have is the worst kind of dead control,
+               because the owner stops trusting the list rather than the
+               button. */
+            const r = await deleteAnnouncement(id);
+            if (r.error !== null) {
+              setFailed(r.error);
+              return;
+            }
+            router.refresh();
+            onDone();
+          })
+        }
+        disabled={pending}
+        className="rounded-2xl bg-brand-600 px-4 py-3 text-sm font-black text-cream-50 disabled:opacity-60"
+      >
+        {pending ? "Deleting…" : "Really delete"}
+      </button>
+      {failed && (
+        <p className="rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-cream-50">
+          {failed}
+        </p>
+      )}
+    </div>
   );
 }
