@@ -16,6 +16,8 @@ import {
   whySentence,
   type WhyLine,
 } from "@/lib/stock-why";
+import { orderNutrition } from "@/lib/order-nutrition";
+import type { Nutrition } from "@/lib/nutrition";
 import { peso } from "@/lib/peso";
 import { AdminDialog } from "@/components/admin-dialog";
 import { recordWalkInSale } from "@/app/admin/counter/actions";
@@ -35,7 +37,12 @@ import { ticketOf } from "@/lib/tickets";
 import { ReceiptPrinter } from "@/components/receipt-printer";
 import { PrinterReady } from "@/components/printer-ready";
 import { printSale } from "@/lib/printer-store";
-import { asPlainText, renderReceipt, type Receipt } from "@/lib/receipt";
+import {
+  asPlainText,
+  renderReceipt,
+  type Receipt,
+  type ReceiptLine,
+} from "@/lib/receipt";
 import {
   cartKey,
   choiceProblem,
@@ -71,6 +78,8 @@ export type CounterMeal = {
   limits?: Shortfall[];
   /** "Extra rice?", "Choose your drink" — the same ones the website offers. */
   groups?: ModifierGroup[];
+  /** The kitchen's shorthand — "C1". Printed on the receipt for the cook. */
+  code?: string | null;
 };
 
 /**
@@ -105,6 +114,8 @@ export function CounterTill({
   salesToday,
   staffName,
   known = [],
+  nutritionByMeal = {},
+  showNutrition = false,
 }: {
   meals: CounterMeal[];
   loadError: string | null;
@@ -113,6 +124,16 @@ export function CounterTill({
   staffName: string;
   /** Category colours, so the till reads the same way the menu does. */
   known?: MenuCategory[];
+  /**
+   * Every dish's figure by id, for the receipt.
+   *
+   * Includes the add-ons' hidden dishes, which never appear as tiles — and
+   * without them the figure on a meal with a drink in it would be wrong by
+   * the drink.
+   */
+  nutritionByMeal?: Record<string, Nutrition>;
+  /** The owner's switch. Off keeps calories off the paper as well. */
+  showNutrition?: boolean;
 }) {
   const [ticket, setTicket] = useState<Ticket>({});
   /** The dish whose add-ons are being picked. Null when nothing is open. */
@@ -324,6 +345,42 @@ export function CounterTill({
    * out. Reading it back before the money is committed is the cheapest place
    * to catch that.
    */
+
+  /**
+   * The ticket, as receipt lines.
+   *
+   * One builder, called twice on purpose: once for the check-this-order
+   * preview and once for the paper. The preview says "everything else is
+   * exactly what will print", and it was built by a second copy of this
+   * mapping that had drifted the moment either gained a field — which is
+   * how the codes and the calories would have appeared on the paper and
+   * not in the check. A promise on screen is only as good as the one place
+   * that keeps it.
+   */
+  const receiptLines = (): ReceiptLine[] =>
+    lines.map((l) => {
+      /* What ONE of this line works out to, the dish and everything ticked
+         under it. Null the moment any part is unknown — the receipt then
+         prints the order total as a floor and says so, rather than a number
+         quietly low by the uncosted dish. */
+      const facts = orderNutrition(
+        nutritionByMeal[l.meal.id] ?? null,
+        l.extras,
+        nutritionByMeal
+      );
+      return {
+        name: l.meal.name,
+        code: l.meal.code ?? null,
+        qty: l.qty,
+        price: l.meal.price,
+        nutrition: facts && facts.uncounted.length === 0 ? facts.total : null,
+        extras: l.extras.map((e) => ({
+          label: e.qty > 1 ? `${e.label} \u00d7${e.qty}` : e.label,
+          price: e.price * e.qty,
+        })),
+      };
+    });
+
   function askToConfirm() {
     const stop = blocker();
     if (stop) {
@@ -344,15 +401,7 @@ export function CounterTill({
       // gap that is obviously a gap.
       ref: "----",
       at: new Date(),
-      lines: lines.map((l) => ({
-        name: l.meal.name,
-        qty: l.qty,
-        price: l.meal.price,
-        extras: l.extras.map((e) => ({
-          label: e.qty > 1 ? `${e.label} \u00d7${e.qty}` : e.label,
-          price: e.price * e.qty,
-        })),
-      })),
+      lines: receiptLines(),
       total,
       dineIn,
       method,
@@ -361,6 +410,7 @@ export function CounterTill({
       reference: method === "cash" ? null : reference.trim() || null,
       servedBy: staffName || null,
       customer: customer.trim() || null,
+      showNutrition,
     });
   }
 
@@ -384,15 +434,7 @@ export function CounterTill({
       const wasReference = reference;
       const wasTendered = Number(tendered) || 0;
       const wasCustomer = customer.trim();
-      const soldLines = lines.map((l) => ({
-        name: l.meal.name,
-        qty: l.qty,
-        price: l.meal.price,
-        extras: l.extras.map((e) => ({
-          label: e.qty > 1 ? `${e.label} \u00d7${e.qty}` : e.label,
-          price: e.price * e.qty,
-        })),
-      }));
+      const soldLines = receiptLines();
       const result = await recordWalkInSale({
         // Ids only, the same as the website sends. Every peso on the sale is
         // re-read on the server — a till running in a browser is still a
@@ -446,6 +488,7 @@ export function CounterTill({
         reference: wasMethod === "cash" ? null : wasReference || null,
         servedBy: staffName || null,
         customer: wasCustomer || null,
+        showNutrition,
       };
 
       setReview(null);
@@ -726,6 +769,25 @@ export function CounterTill({
                       }`}
                     >
                       <span className="text-sm font-bold leading-tight">
+                        {/* The kitchen's code, before the name.
+
+                            The same string the receipt prints, in the same
+                            place relative to the name — so a cashier reading
+                            a ticket back to the kitchen is reading the thing
+                            they tapped. Set apart rather than run into the
+                            name, because it is an identifier and a name that
+                            starts with "C1" reads as a dish called C1. */}
+                        {m.code && (
+                          <span
+                            className={`mr-1.5 rounded px-1 py-0.5 align-middle font-display text-[10px] font-black tabular-nums ${
+                              qty > 0
+                                ? "bg-cream-50/20 text-cream-50"
+                                : "bg-ink-950/10 text-ink-800/70"
+                            }`}
+                          >
+                            {m.code}
+                          </span>
+                        )}
                         {m.name}
                         {/* Said on the tile, so the cashier knows a sheet is
                             coming before they tap — a till that sometimes

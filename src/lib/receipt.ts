@@ -15,8 +15,27 @@
 
 export type ReceiptLine = {
   name: string;
+  /**
+   * The kitchen code — "C1", "J3".
+   *
+   * Printed straight after the quantity, at the left edge, because that is
+   * where a cook's eye goes down a ticket. The code is the shop's own
+   * shorthand for the exact dish, so it distinguishes the La from the XL
+   * where the name alone reads almost the same at arm's length over a wok.
+   */
+  code?: string | null;
   qty: number;
   price: number;
+  /**
+   * What ONE of it works out to, the dish and everything added to it.
+   *
+   * Null when any part of it is unknown — a dish with a half-filled recipe,
+   * or an add-on nobody has costed. Null rather than a partial sum, for the
+   * reason the whole feature is built on: a total made of most of a recipe
+   * is not a low estimate, it is a wrong number with a calorie sign in
+   * front of it, and a customer counting theirs would be misled by it.
+   */
+  nutrition?: Nutrition | null;
   /**
    * What was added to it, each on its own priced row underneath.
    *
@@ -37,6 +56,8 @@ export type ReceiptLine = {
  * multiple — and it is wrong on paper, where nobody sees it until a customer
  * is holding it. Saying it outright costs one field.
  */
+import { round, type Nutrition } from "./nutrition.ts";
+
 export type ReceiptRow = {
   text: string;
   align: "left" | "centre";
@@ -62,7 +83,60 @@ export type Receipt = {
   /** Who it is for. Printed so a bag on the counter can be handed over by
    *  name instead of by shouting a four-character reference across a queue. */
   customer?: string | null;
+  /**
+   * The owner's switch, the same one the customer's menu obeys.
+   *
+   * A receipt is customer-facing too, so a shop that has deliberately kept
+   * calories off the menu must not find them on the paper. Off by default:
+   * a receipt that grows a new block because somebody forgot to pass a flag
+   * is the wrong direction to fail in.
+   */
+  showNutrition?: boolean;
 };
+
+/**
+ * What a whole order works out to, and whether it can be said at all.
+ *
+ * `complete` is false the moment ONE line has no figure. The total is still
+ * returned — it is the right number for the lines that are known — but the
+ * paper has to say it is a floor rather than a total, because the customer
+ * has no way to see which line was left out.
+ */
+export function receiptNutrition(lines: ReceiptLine[]): {
+  total: Nutrition;
+  complete: boolean;
+  /** Lines that carry a figure at all. Zero means print nothing. */
+  known: number;
+} {
+  let total: Nutrition = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  let known = 0;
+  let complete = true;
+
+  for (const line of lines) {
+    const qty = Math.max(0, Math.floor(Number(line.qty) || 0));
+    if (qty <= 0) continue;
+    if (!line.nutrition) {
+      complete = false;
+      continue;
+    }
+    known += 1;
+    total = {
+      kcal: total.kcal + line.nutrition.kcal * qty,
+      protein: total.protein + line.nutrition.protein * qty,
+      carbs: total.carbs + line.nutrition.carbs * qty,
+      fat: total.fat + line.nutrition.fat * qty,
+    };
+  }
+
+  return { total: round(total), complete, known };
+}
+
+/** "742 kcal" and "38P 61C 37F" — the shorthand the menu already uses. */
+function macroText(n: Nutrition): string {
+  return `${n.protein}P ${n.carbs}C ${n.fat}F`;
+}
+
+const kcalText = (n: number) => `${Math.round(n).toLocaleString("en-PH")} kcal`;
 
 export const COLUMNS = { narrow: 32, wide: 48 } as const;
 export type RollWidth = keyof typeof COLUMNS;
@@ -172,9 +246,16 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
   if (r.servedBy) out.push(left(`Served by ${r.servedBy}`));
   out.push(left(rule(cols, "=")));
 
+  const facts = receiptNutrition(r.lines);
+  const showFacts = r.showNutrition === true && facts.known > 0;
+
   for (const line of r.lines) {
     const money = amount(line.price * line.qty);
-    const head = `${line.qty} x ${line.name}`;
+    // The code sits between the quantity and the name, at the left edge,
+    // because that is where a cook's eye goes down a ticket — and it is the
+    // one string that tells a La from an XL without reading to the end of a
+    // name that wraps.
+    const head = `${line.qty} x ${line.code ? `${line.code} ` : ""}${line.name}`;
     // A name that fits goes on one line with its price; one that doesn't gets
     // its own lines and the price under it, rather than being truncated.
     if (head.length + money.length + 1 <= cols) {
@@ -188,10 +269,53 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
     for (const extra of line.extras ?? []) {
       out.push(left(row(`  + ${extra.label}`, amount(extra.price * line.qty), cols)));
     }
+    /* What this line works out to, under its own extras rather than above
+       them — the figure already counts them in, so it belongs after the
+       things it counted. Indented to the same column as "@ each", so a
+       reader running down the left edge sees dish, extras, then facts.
+
+       For the line, not for one of it: the money above is the line's, and
+       two numbers on one row of paper that count differently is exactly the
+       confusion a receipt exists to prevent. */
+    if (showFacts && line.nutrition) {
+      const each = line.nutrition;
+      const all = {
+        kcal: each.kcal * line.qty,
+        protein: each.protein * line.qty,
+        carbs: each.carbs * line.qty,
+        fat: each.fat * line.qty,
+      };
+      const shown = round(all);
+      out.push(left(`    ${kcalText(shown.kcal)}  ${macroText(shown)}`));
+    }
   }
 
   out.push(left(rule(cols, "=")));
   out.push(left(row("TOTAL (PHP)", amount(r.total), cols)));
+
+  /* The order's own figure, under the money it belongs beside.
+
+     Marked as a floor when any line had no figure behind it. A silent skip
+     would print an authoritative number that is low by exactly the dish
+     nobody has costed — which, for the one person on the receipt who reads
+     it, is worse than printing nothing at all. */
+  if (showFacts) {
+    out.push(left(rule(cols)));
+    out.push(
+      left(
+        row(
+          facts.complete ? "Total calories" : "Calories (at least)",
+          kcalText(facts.total.kcal),
+          cols
+        )
+      )
+    );
+    out.push(left(row("Protein/Carbs/Fat", macroText(facts.total), cols)));
+    if (!facts.complete) {
+      out.push(left("Some items are not counted"));
+    }
+  }
+
   out.push(left(""));
 
   // Cash is the branch with tendered and change; anything else is a
