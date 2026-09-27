@@ -145,8 +145,25 @@ export function normalizeOptions(raw: unknown): VariantOptions {
   return out;
 }
 
+/**
+ * The least a thing has to be for the axis rules below to work on it.
+ *
+ * `Variant` satisfies it, and so does an add-on's size once it carries its
+ * own axis values. Widened rather than copied: "tapping Iced keeps the size
+ * you already picked where that combination exists" is a rule the shop
+ * needs in exactly the same shape in two places, and the second copy is the
+ * one that drifts.
+ */
+export type Choosable = {
+  name: string;
+  sort: number;
+  options: VariantOptions;
+  available: boolean;
+  makeable?: number | null;
+};
+
 /** Has this dish run out, by either of the two routes it can? */
-export function isSoldOut(v: Variant): boolean {
+export function isSoldOut(v: Choosable): boolean {
   if (!v.available) return true;
   return v.makeable !== null && v.makeable !== undefined && v.makeable <= 0;
 }
@@ -155,7 +172,7 @@ export function isSoldOut(v: Variant): boolean {
 /* What there is to choose                                             */
 /* ------------------------------------------------------------------ */
 
-const inOrder = (a: Variant, b: Variant) =>
+const inOrder = (a: Choosable, b: Choosable) =>
   a.sort - b.sort || a.name.localeCompare(b.name);
 
 /**
@@ -167,7 +184,7 @@ const inOrder = (a: Variant, b: Variant) =>
  * orders everything else, rather than a second ordering to maintain in a
  * place that would eventually disagree with it.
  */
-export function axesOf(variants: Variant[]): Axis[] {
+export function axesOf(variants: Choosable[]): Axis[] {
   const axes: Axis[] = [];
   const byName = new Map<string, Axis>();
 
@@ -189,7 +206,7 @@ export function axesOf(variants: Variant[]): Axis[] {
   return axes.filter((a) => a.values.length > 1);
 }
 
-const matches = (v: Variant, selection: VariantOptions) =>
+const matches = (v: Choosable, selection: VariantOptions) =>
   Object.entries(selection).every(([axis, value]) => v.options[axis] === value);
 
 /**
@@ -201,10 +218,10 @@ const matches = (v: Variant, selection: VariantOptions) =>
  * that can actually be sold wins, which turns an indistinguishable pair into
  * a working chip instead of a chip that is sold out for no visible reason.
  */
-export function variantFor(
-  variants: Variant[],
+export function variantFor<T extends Choosable>(
+  variants: T[],
   selection: VariantOptions
-): Variant | null {
+): T | null {
   const hits = [...variants].sort(inOrder).filter((v) => matches(v, selection));
   return hits.find((v) => !isSoldOut(v)) ?? hits[0] ?? null;
 }
@@ -285,8 +302,8 @@ export function chipState(
  * Stock only breaks a tie, where two dishes keep exactly as much of the
  * selection and there is no reason to prefer the one you cannot buy.
  */
-export function pick(
-  variants: Variant[],
+export function pick<T extends Choosable>(
+  variants: T[],
   selection: VariantOptions,
   axis: string,
   value: string
@@ -297,7 +314,7 @@ export function pick(
   if (candidates.length === 0) return selection;
 
   const others = Object.entries(selection).filter(([k]) => k !== axis);
-  const kept = (v: Variant) =>
+  const kept = (v: Choosable) =>
     others.filter(([k, val]) => v.options[k] === val).length;
 
   const best = [...candidates].sort((a, b) => {

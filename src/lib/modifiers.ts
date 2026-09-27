@@ -41,11 +41,27 @@
  * down in one place, so the day a third size is added the two cannot
  * disagree.
  */
+import { axesOf, pick, variantFor, type Axis } from "./menu-products.ts";
+
 export type OptionVariant = {
   /** The dish this size is. */
   mealId: string;
-  /** "Large", "22oz" — what the size chip says. */
+  /** "Large", "22oz", "Iced · 22oz" — the whole combination, in words. */
   label: string;
+  /**
+   * The axis values behind that label — `{"Temp":"Iced","Size":"22oz"}`.
+   *
+   * The label is one string, for a receipt. This is the thing a picker can
+   * take apart. A Spanish Latte in Hot and Iced across three sizes is six
+   * variants, and offering six chips makes the customer read every
+   * combination to find theirs. Two rows — temperature, then size — is the
+   * same information in the shape they already think in, and it is the
+   * shape the menu card upstairs has always used.
+   *
+   * Optional so an option loaded before 0063 still parses; absent reads as
+   * "one unnamed axis", which is what a single row of sizes already is.
+   */
+  options?: Record<string, string>;
   /** Already resolved through the three-step rule. See `variantPrice`. */
   price: number;
   /** Servings the shelf can still make. Null when there is no recipe. */
@@ -202,6 +218,61 @@ export function variantSoldOut(v: OptionVariant): boolean {
 /** Does this option ask a second question — which size? */
 export const isSized = (o: ModifierOption): boolean => (o.variants ?? []).length > 0;
 
+/* ------------------------------------------------------------------
+ * Sizes that come on more than one axis
+ * ------------------------------------------------------------------ */
+
+/**
+ * A size, in the shape the menu card's own rules already take.
+ *
+ * `axesOf`, `pick` and `variantFor` in lib/menu-products answer "which chip
+ * rows are there", "what does tapping one land on" and "which dish is this
+ * combination" — including the subtle part: tapping Iced KEEPS the size
+ * already chosen where that combination exists and gives it up where it
+ * does not, which is the answer a person would give at the counter.
+ * Copying that rule here would be a second copy to drift. This adapts the
+ * data instead, so an add-on's sizes and a menu card's variants are picked
+ * by the same code.
+ */
+const asChoosable = (v: OptionVariant) => ({
+  ...v,
+  name: v.label,
+  options: v.options ?? {},
+});
+
+/** The chip rows a sized add-on should offer. Empty when there is only one. */
+export function optionAxes(o: ModifierOption): Axis[] {
+  return axesOf((o.variants ?? []).map(asChoosable));
+}
+
+/** The size a set of axis values names, or nothing when no dish has them. */
+export function sizeFor(
+  o: ModifierOption,
+  selection: Record<string, string>
+): OptionVariant | null {
+  const hit = variantFor((o.variants ?? []).map(asChoosable), selection);
+  return hit ? ((o.variants ?? []).find((v) => v.mealId === hit.mealId) ?? null) : null;
+}
+
+/** Tapping one chip: the whole combination it lands on. */
+export function pickAxis(
+  o: ModifierOption,
+  selection: Record<string, string>,
+  axis: string,
+  value: string
+): Record<string, string> {
+  return pick((o.variants ?? []).map(asChoosable), selection, axis, value);
+}
+
+/** The axis values of the size currently chosen. */
+export function selectionOf(
+  o: ModifierOption,
+  variantMealId: string | undefined
+): Record<string, string> {
+  const at = (o.variants ?? []).find((v) => v.mealId === variantMealId);
+  return { ...(at?.options ?? {}) };
+}
+
 /**
  * The size that should be selected when a sized option is first picked.
  *
@@ -343,6 +414,42 @@ export function qtyOf(
  * anything over the limit, and answer a compulsory question that is now
  * unanswered. Idempotent, so it is safe to run on every render.
  */
+/**
+ * Keep the size the customer picked, through every rebuild.
+ *
+ * `reconcile` used to return `{ id, qty }` and nothing else, which threw the
+ * chosen size away on EVERY render — the dialog recomputes `choice` from it
+ * on each pass. Three things went wrong at once and only one of them was
+ * visible:
+ *
+ *   The chip stopped looking chosen, so nothing on screen said which size
+ *   was going in the basket.
+ *
+ *   The price beside the row read "Free", because it looks up the chosen
+ *   size and there wasn't one — over a drink that costs ₱75.
+ *
+ *   And the money was decided somewhere else entirely. `extrasOf` falls back
+ *   to `defaultVariant` — the CHEAPEST — when no size is set. So a customer
+ *   who tapped 22oz at ₱89 was charged ₱75 and would have been handed a
+ *   16oz. Tapped one thing, paid for another, and every number on the screen
+ *   agreed with itself.
+ *
+ * A size that has since sold out is KEPT rather than quietly swapped. The
+ * swap is the same bug one layer up: the customer asked for a large, and
+ * being given a regular without being told is worse than being told the
+ * large has gone. `choiceProblem` names it and the Add button refuses.
+ */
+function withSize(
+  option: ModifierOption,
+  base: Picked,
+  wanted?: string
+): Picked {
+  if (!isSized(option)) return base; // the key stays ABSENT, not undefined
+  const kept = (option.variants ?? []).find((v) => v.mealId === wanted);
+  const size = kept ?? defaultVariant(option);
+  return size ? { ...base, variantMealId: size.mealId } : base;
+}
+
 export function reconcile(
   groups: ModifierGroup[],
   choice: ModifierChoice
@@ -354,13 +461,19 @@ export function reconcile(
       .filter((p) => offered.has(p.id))
       // A quantity above what the option now allows is trimmed rather than
       // dropped: the owner lowered the limit, the customer still wants some.
-      .map((p) => ({ id: p.id, qty: clampQty(p.qty, offered.get(p.id)!.maxQty) }));
+      .map((p) => withSize(offered.get(p.id)!, {
+        id: p.id,
+        qty: clampQty(p.qty, offered.get(p.id)!.maxQty),
+      }, p.variantMealId));
     if (picked.length > g.max) picked = picked.slice(0, g.max);
     if (picked.length < g.min) {
       const fill = g.options.find(
         (o) => !optionSoldOut(o) && !picked.some((p) => p.id === o.id)
       );
-      if (fill) picked = [...picked, { id: fill.id, qty: 1 }].slice(0, g.max);
+      // Filled WITH a size. A pick that answers a compulsory question and
+      // leaves the size blank is the Add button refusing a question the
+      // customer was never asked.
+      if (fill) picked = [...picked, withSize(fill, { id: fill.id, qty: 1 })].slice(0, g.max);
     }
     out[g.id] = picked;
   }
@@ -544,6 +657,25 @@ export function choiceProblem(
       return g.min === 1
         ? `Choose your ${g.name.toLowerCase().replace(/^choose (your |a |an )?/, "")} first.`
         : `Pick ${g.min} from "${g.name}".`;
+    }
+  }
+
+  /**
+   * A size that ran out while the dialog was open.
+   *
+   * Checked across EVERY group, compulsory or not, because this is not a
+   * question left unanswered — it is an answer that stopped being true. The
+   * alternative is to swap it for one that is in stock, which hands somebody
+   * a regular when they asked for a large and says nothing.
+   */
+  for (const g of groups) {
+    for (const p of chosenIn(choice, g.id)) {
+      const o = g.options.find((x) => x.id === p.id);
+      if (!o || !isSized(o)) continue;
+      const size = (o.variants ?? []).find((v) => v.mealId === p.variantMealId);
+      if (size && variantSoldOut(size)) {
+        return `${o.label} · ${size.label} has just run out — pick another size.`;
+      }
     }
   }
   return null;
