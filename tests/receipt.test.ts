@@ -225,20 +225,37 @@ test("a dish with no code prints exactly as it always did", () => {
   assert.doesNotMatch(textOf(sale), /undefined|null/);
 });
 
-test("each line carries its own figure, for the LINE not for one of it", () => {
-  // The money above it is the line's total, and two numbers on one row of
-  // paper that count differently is exactly the confusion a receipt exists
-  // to prevent. Two noodles: 1,484 kcal, 76P 122C 74F.
-  assert.match(textOf(withFacts), /1,484 kcal {2}76P 122C 74F/);
-  assert.match(textOf(withFacts), /339 kcal {2}3P 68C 6F/);
+test("the figures are a note at the end, not threaded through the items", () => {
+  // They were under each line first, between the add-ons and the next dish,
+  // and that made the middle of the receipt hard to read: the part a
+  // customer scans for "did they charge me right" had a second kind of
+  // number running through it.
+  const text = textOf(withFacts);
+  const items = text.indexOf("2 x C1 Black Pepper");
+  const total = text.indexOf("TOTAL (PHP)");
+  const note = text.indexOf("WHAT'S IN IT");
+
+  assert.ok(items < total && total < note, "the note is not after the money");
+  // Nothing between the first item and the total but money.
+  const middle = text.slice(items, total);
+  assert.doesNotMatch(middle, /kcal/);
 });
 
-test("the order's own total is under the money", () => {
+test("the note quotes one serving, and says so when more were bought", () => {
+  // "What's in this dish" means one of it. The order total below multiplies,
+  // so without "each" the two would read as disagreeing.
   const text = textOf(withFacts);
-  assert.match(text, /Total calories\s+1,823 kcal/);
+  assert.match(text, /^C1 Black Pepper Chicken Noodles$/m);
+  assert.match(text, /^ {2}742 kcal {2}38P 61C 37F each$/m);
+  // One of it: no "each" to explain.
+  assert.match(text, /^ {2}339 kcal {2}3P 68C 6F$/m);
+});
+
+test("the order's own total closes the note", () => {
+  const text = textOf(withFacts);
+  assert.match(text, /Whole order\s+1,823 kcal/);
   assert.match(text, /Protein\/Carbs\/Fat\s+79P 190C 80F/);
-  // Under, not over: it belongs beside the money it is about.
-  assert.ok(text.indexOf("TOTAL (PHP)") < text.indexOf("Total calories"));
+  assert.ok(text.indexOf("WHAT'S IN IT") < text.indexOf("Whole order"));
 });
 
 test("a line with no figure makes the total a floor, and says so", () => {
@@ -253,9 +270,11 @@ test("a line with no figure makes the total a floor, and says so", () => {
     ],
   };
   const text = textOf(partial);
-  assert.match(text, /Calories \(at least\)\s+742 kcal/);
+  assert.match(text, /At least\s+742 kcal/);
   assert.match(text, /Some items are not counted/);
-  assert.doesNotMatch(text, /Total calories/);
+  assert.doesNotMatch(text, /Whole order/);
+  // And the uncosted dish simply is not in the note.
+  assert.doesNotMatch(text.slice(text.indexOf("WHAT'S IN IT")), /Mystery Special/);
 });
 
 test("nothing at all prints when the owner's switch is off", () => {
@@ -263,7 +282,7 @@ test("nothing at all prints when the owner's switch is off", () => {
   // menu must not find them on the paper.
   const off = textOf({ ...withFacts, showNutrition: false });
   assert.doesNotMatch(off, /kcal/);
-  assert.doesNotMatch(off, /Protein/);
+  assert.doesNotMatch(off, /WHAT'S IN IT/);
   // The codes are not part of that switch — they are for the kitchen.
   assert.match(off, /^2 x C1 /m);
 });
@@ -282,7 +301,7 @@ test("the switch on with nothing known prints no empty block", () => {
   };
   const text = textOf(blank);
   assert.doesNotMatch(text, /kcal/);
-  assert.doesNotMatch(text, /at least/);
+  assert.doesNotMatch(text, /WHAT'S IN IT/);
 });
 
 test("every line still fits the paper with codes and figures on it", () => {
@@ -315,13 +334,18 @@ test("a long name with a code still wraps rather than being cut", () => {
   const text = textOf(long);
   assert.match(text, /1 x C12 Extra Large/);
   assert.match(text, /with Egg\s+249\.00/);
+  // And in the note too — "Black Pep" is a dish nobody can match to the
+  // line above it.
+  const note = text.slice(text.indexOf("WHAT'S IN IT"));
+  assert.match(note, /C12 Extra Large Black Pepper/);
+  assert.match(note, /with Egg/);
 });
 
 test("the figures survive the fold to printer ASCII", () => {
   // The peso sign is folded to P; the macro shorthand uses P too, and must
   // not be mangled by the same pass.
   const text = textOf(withFacts);
-  assert.match(text, /76P 122C 74F/);
+  assert.match(text, /79P 190C 80F/);
   assert.doesNotMatch(text, /[^\x00-\x7F]/);
 });
 
@@ -333,5 +357,5 @@ test("zero quantities are not counted into the order total", () => {
       { name: "Ghost", qty: 0, price: 0, nutrition: DRINK },
     ],
   };
-  assert.match(textOf(zero), /Total calories\s+742 kcal/);
+  assert.match(textOf(zero), /Whole order\s+742 kcal/);
 });

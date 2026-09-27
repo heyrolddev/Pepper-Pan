@@ -269,42 +269,51 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
     for (const extra of line.extras ?? []) {
       out.push(left(row(`  + ${extra.label}`, amount(extra.price * line.qty), cols)));
     }
-    /* What this line works out to, under its own extras rather than above
-       them — the figure already counts them in, so it belongs after the
-       things it counted. Indented to the same column as "@ each", so a
-       reader running down the left edge sees dish, extras, then facts.
-
-       For the line, not for one of it: the money above is the line's, and
-       two numbers on one row of paper that count differently is exactly the
-       confusion a receipt exists to prevent. */
-    if (showFacts && line.nutrition) {
-      const each = line.nutrition;
-      const all = {
-        kcal: each.kcal * line.qty,
-        protein: each.protein * line.qty,
-        carbs: each.carbs * line.qty,
-        fat: each.fat * line.qty,
-      };
-      const shown = round(all);
-      out.push(left(`    ${kcalText(shown.kcal)}  ${macroText(shown)}`));
-    }
   }
 
   out.push(left(rule(cols, "=")));
   out.push(left(row("TOTAL (PHP)", amount(r.total), cols)));
 
-  /* The order's own figure, under the money it belongs beside.
+  /* ── what's in it ──────────────────────────────────────────────────
+     A note at the end, not a figure threaded through the items.
 
-     Marked as a floor when any line had no figure behind it. A silent skip
-     would print an authoritative number that is low by exactly the dish
-     nobody has costed — which, for the one person on the receipt who reads
-     it, is worse than printing nothing at all. */
+     It was under each line first, between the add-ons and the next dish,
+     and that made the middle of the receipt hard to read: the part a
+     customer scans for "did they charge me right" had a second kind of
+     number running through it. Money belongs in the money column; this is
+     a different question and it gets its own place to be asked.
+
+     Per SERVING rather than per line, which is what "what's in this dish"
+     means — and "each" says so wherever more than one was bought, so the
+     figure and the order total below it cannot be read as disagreeing. */
   if (showFacts) {
+    out.push(left(""));
     out.push(left(rule(cols)));
+    out.push(left("WHAT'S IN IT"));
+
+    for (const line of r.lines) {
+      if (!line.nutrition) continue;
+      const shown = round(line.nutrition);
+      const name = `${line.code ? `${line.code} ` : ""}${line.name}`;
+      // Wrapped, never cut. A dish that reads "Black Pep" on the note is a
+      // dish nobody can match to the line above it.
+      out.push(...wrap(name, cols).map(left));
+      out.push(
+        left(
+          `  ${kcalText(shown.kcal)}  ${macroText(shown)}${line.qty > 1 ? " each" : ""}`
+        )
+      );
+    }
+
+    out.push(left(rule(cols)));
+    /* Marked as a floor when any line had no figure behind it. A silent
+       skip would print an authoritative number that is low by exactly the
+       dish nobody has costed — which, for the one person on the receipt
+       who reads it, is worse than printing nothing at all. */
     out.push(
       left(
         row(
-          facts.complete ? "Total calories" : "Calories (at least)",
+          facts.complete ? "Whole order" : "At least",
           kcalText(facts.total.kcal),
           cols
         )
