@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ReviewForm, type ExistingReview } from "@/components/review-form";
+import { GoogleReviewNudge } from "@/components/google-review-nudge";
 
 export type ReviewableItem = {
   mealId: string | null;
@@ -15,7 +16,20 @@ export type ReviewableItem = {
  * Collapsed behind one button, because most people won't review every order
  * and an always-open block would bury the order details.
  */
-export function OrderReviewPanel({ items }: { items: ReviewableItem[] }) {
+export function OrderReviewPanel({
+  items,
+  askGoogle = false,
+}: {
+  items: ReviewableItem[];
+  /**
+   * May this order carry the Google ask?
+   *
+   * Decided once, over the whole list, by `orderToAskOn` — so a regular
+   * with twenty completed orders meets it on one of them rather than on
+   * all twenty. False here means "not this order", not "never".
+   */
+  askGoogle?: boolean;
+}) {
   const reviewed = items.filter((i) => i.existing).length;
   const [open, setOpen] = useState(false);
 
@@ -43,17 +57,27 @@ export function OrderReviewPanel({ items }: { items: ReviewableItem[] }) {
       </button>
 
       {open && (
-        <ul className="mt-4 flex flex-col gap-3">
-          {items.map((item) => (
-            <ReviewForm
-              key={item.mealId ?? "shop"}
-              mealId={item.mealId}
-              label={item.label}
-              sublabel={item.sublabel}
-              existing={item.existing}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="mt-4 flex flex-col gap-3">
+            {items.map((item) => (
+              <ReviewForm
+                key={item.mealId ?? "shop"}
+                mealId={item.mealId}
+                label={item.label}
+                sublabel={item.sublabel}
+                existing={item.existing}
+              />
+            ))}
+          </ul>
+
+          {/* Only once they have actually said something.
+
+              `reviewed` comes from the server and the form refreshes after
+              saving, so this appears the moment the first rating lands —
+              which is the moment it is worth asking, and not a second
+              before. */}
+          {askGoogle && reviewed > 0 && <GoogleReviewNudge />}
+        </>
       )}
     </div>
   );
