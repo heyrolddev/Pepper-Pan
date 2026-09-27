@@ -15,7 +15,6 @@ import { NoodleLift } from "@/components/noodle-lift";
 import { FanFavorites } from "@/components/fan-favorites";
 import { ReviewCarousel } from "@/components/review-carousel";
 import { SocialLinks } from "@/components/social-links";
-import { CustomerAvatar } from "@/components/customer-avatar";
 import { Stars } from "@/components/stars";
 import {
   SectionMark,
@@ -34,7 +33,8 @@ import { getSchedule } from "@/lib/hours-server";
 import { DAY_NAMES, formatClock } from "@/lib/hours";
 import { isConfigured } from "@/lib/auth";
 import { ShopSchema } from "@/components/shop-schema";
-import { canonical } from "@/lib/site";
+import { SHOP, canonical } from "@/lib/site";
+import { GoogleReviewButton } from "@/components/google-review-button";
 
 /**
  * The homepage's own canonical, which used to live in the root layout and be
@@ -340,7 +340,7 @@ export default async function Home() {
               </div>
 
               <p className="font-display text-lg font-black uppercase tracking-[0.08em] text-cream-50/85 sm:text-xl lg:text-2xl">
-                No passport required.
+                Sarap na kakaiba!
               </p>
             </div>
           </Reveal>
@@ -807,18 +807,35 @@ export default async function Home() {
 
             <ReviewCarousel reviews={featured} />
 
-            <div className="mt-8 text-center">
+            {/* Reading what regulars said is the moment somebody is most
+                likely to add theirs — so the ask sits here rather than
+                anywhere a first-time visitor would meet it. */}
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/reviews"
                 className="inline-block rounded-full bg-gold-400 px-7 py-3 font-bold text-ink-950 transition-transform hover:scale-105"
               >
                 Read all reviews →
               </Link>
+              <GoogleReviewButton />
             </div>
           </Reveal>
         ) : (
           <Reveal className="relative mx-auto flex max-w-4xl flex-col items-center gap-8 px-6 text-center sm:flex-row sm:text-left">
-            <CustomerAvatar className="h-32 w-32 shrink-0 sm:h-40 sm:w-40" />
+            {/* The stall's own mark, not a drawn customer.
+                An illustrated face is a stand-in for a person nobody can
+                name — and this quote is the shop's own claim, not a review
+                by somebody in particular. The logo says that honestly, and
+                it is the thing a customer has actually seen on the cup. */}
+            <span className="relative h-32 w-32 shrink-0 overflow-hidden rounded-full bg-cream-50/10 ring-2 ring-gold-400/30 sm:h-40 sm:w-40">
+              <Image
+                src={SHOP.iconUrl}
+                alt={SHOP.name}
+                fill
+                sizes="160px"
+                className="object-contain p-2"
+              />
+            </span>
             <div>
               <span className="font-display text-6xl leading-none text-gold-300">
                 &ldquo;
@@ -921,6 +938,21 @@ export default async function Home() {
                 Follow us
               </span>
               <SocialLinks tone="light" />
+            </div>
+
+            {/* The same block Google's own listing is made of — address,
+                phone, hours — and the one a returning customer opens to find
+                the stall again. Outline rather than solid: Get Directions is
+                what somebody standing in Apalit came here for, and this is
+                the quieter ask underneath it. */}
+            <div className="mt-8 border-t border-ink-950/10 pt-6">
+              <p className="text-sm text-ink-800/70">
+                Been before?{" "}
+                <strong className="font-bold text-ink-950">
+                  A review helps people find us.
+                </strong>
+              </p>
+              <GoogleReviewButton tone="outline" className="mt-3" />
             </div>
           </Reveal>
 
