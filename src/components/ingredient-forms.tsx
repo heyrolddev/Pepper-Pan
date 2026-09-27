@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import { peso } from "@/lib/peso";
 import {
@@ -19,6 +19,7 @@ import {
 import type { Supplier } from "@/lib/suppliers";
 
 import { entryBasis, fromPerUnit } from "@/lib/nutrition";
+import { suggestFor } from "@/lib/nutrition-reference";
 
 export type EditableIngredient = {
   id: string;
@@ -112,6 +113,17 @@ export function IngredientForm({
   const [protein, setProtein] = useState(asTyped(ingredient?.protein));
   const [carbs, setCarbs] = useState(asTyped(ingredient?.carbs));
   const [fat, setFat] = useState(asTyped(ingredient?.fat));
+
+  /**
+   * What the name says this probably is.
+   *
+   * Recomputed as the name is typed, so a brand-new ingredient gets the offer
+   * while it is being created rather than on a second visit. Matching is on
+   * the longest keyword, which is why "Pork belly" does not answer to the
+   * bare "pork" entry — the two differ by a factor of three in energy, and
+   * first-match ordering would treble a dish's calories in silence.
+   */
+  const suggestion = useMemo(() => suggestFor(name, unit), [name, unit]);
   const [opening, setOpening] = useState("");
   const [picked, setPicked] = useState<string[]>(ingredient?.categories ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -285,6 +297,63 @@ export function IngredientForm({
             everything in its recipe is filled in, so a guess here is worse
             than a gap.
           </p>
+          {/* ---- the figure, offered rather than demanded ----
+
+              Four columns existed for this since 0055 and every one of them
+              was null, because filling them means looking up pork belly, then
+              cabbage, then soy sauce, eighty times over. Nobody was ever
+              going to, so no dish reached "nothing missing", so no dish ever
+              showed a calorie count and the whole feature sat there doing
+              nothing. The blocker was never the software.
+
+              Offered, and never applied on its own: these are published
+              averages for a raw ingredient, not a measurement of this shop's
+              supplier. Pork belly at one butcher is fattier than at another.
+              One tap fills the boxes, and every box stays editable. */}
+          {suggestion && (
+            <div className="mt-3 rounded-2xl bg-jade-50 p-3 ring-1 ring-jade-600/20">
+              <p className="text-xs font-bold text-ink-950">
+                Looks like{" "}
+                <span className="text-jade-700">{suggestion.food.label}</span>
+              </p>
+              <p className="mt-0.5 text-xs text-ink-800/60">
+                {suggestion.fits ? (
+                  <>
+                    {suggestion.typed.kcal} kcal · {suggestion.typed.protein} g protein ·{" "}
+                    {suggestion.typed.carbs} g carbs · {suggestion.typed.fat} g fat, per{" "}
+                    {suggestion.food.basis === "each" ? "one" : suggestion.food.basis.replace("100", "100 ")}
+                  </>
+                ) : (
+                  <>
+                    Those figures are per{" "}
+                    {suggestion.food.basis.replace("100", "100 ")} and this is counted in{" "}
+                    {unit || "units"}. Only you know what one {unit || "unit"} weighs, so
+                    fill it in and scale it yourself.
+                  </>
+                )}
+              </p>
+              {suggestion.food.note && (
+                <p className="mt-1 text-[11px] leading-snug text-ink-800/50">
+                  {suggestion.food.note}
+                </p>
+              )}
+              {suggestion.fits && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKcal(String(suggestion.typed.kcal));
+                    setProtein(String(suggestion.typed.protein));
+                    setCarbs(String(suggestion.typed.carbs));
+                    setFat(String(suggestion.typed.fat));
+                  }}
+                  className="mt-2 rounded-xl bg-jade-600 px-4 py-2 text-xs font-black text-cream-50 transition-colors hover:bg-jade-700"
+                >
+                  Use these figures
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {(
               [
