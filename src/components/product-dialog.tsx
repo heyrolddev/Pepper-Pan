@@ -27,10 +27,15 @@ import {
   extrasTotal,
   isFull,
   isSized,
+  liveVariants,
+  optionAxes,
   optionSoldOut,
+  pickAxis,
   qtyOf,
   reconcile,
   ruleLabel,
+  selectionOf,
+  sizeFor,
   setOptionQty,
   setVariant,
   toggleOption,
@@ -581,6 +586,11 @@ function AddOnGroup({
           const sizes = isSized(option) ? (option.variants ?? []) : [];
           const chosenSize = choice[group.id]?.find((p) => p.id === option.id)
             ?.variantMealId;
+          // Two rows of chips when the drink varies on two things, the flat
+          // row it always was when it varies on one.
+          const axes = sizes.length > 0 ? optionAxes(option) : [];
+          const selection = selectionOf(option, chosenSize);
+          const chosen = sizes.find((v) => v.mealId === chosenSize) ?? null;
 
           return (
             <div key={option.id}>
@@ -663,13 +673,28 @@ function AddOnGroup({
                 }`}
               >
                 {(() => {
-                  // A sized option is priced by the size that is chosen, not
-                  // by the option — the row would otherwise read "Free" over
-                  // a large that costs ₱15.
-                  const each = sizes.length
-                    ? (sizes.find((v) => v.mealId === chosenSize)?.price ?? 0)
-                    : option.price;
-                  return each > 0 ? `+₱${(each * Math.max(1, qty)).toFixed(2)}` : "Free";
+                  /* A sized option is priced by the size that is CHOSEN, not
+                     by the option — the row would otherwise read "Free" over
+                     a drink that costs ₱75.
+
+                     And before it is ticked there is no chosen size, so it
+                     quotes the cheapest as a range. "Free" on a row that
+                     charges ₱75 the moment it is tapped is the worst of the
+                     three things this could say. */
+                  if (!sizes.length) {
+                    return option.price > 0
+                      ? `+₱${(option.price * Math.max(1, qty)).toFixed(2)}`
+                      : "Free";
+                  }
+                  const at = sizes.find((v) => v.mealId === chosenSize);
+                  if (at) {
+                    return at.price > 0
+                      ? `+₱${(at.price * Math.max(1, qty)).toFixed(2)}`
+                      : "Free";
+                  }
+                  const live = liveVariants(option);
+                  const from = Math.min(...(live.length ? live : sizes).map((v) => v.price));
+                  return from > 0 ? `from +₱${from.toFixed(2)}` : "Free";
                 })()}
               </span>
             </div>
@@ -682,32 +707,104 @@ function AddOnGroup({
                 under its own option so it reads as part of it rather than as
                 another thing to choose from the group. */}
             {sizes.length > 0 && on && (
-              <div className="mb-1 ml-10 flex flex-wrap gap-1.5">
-                {sizes.map((v) => {
-                  const gone = variantSoldOut(v);
-                  const picked = v.mealId === chosenSize;
-                  return (
-                    <button
-                      key={v.mealId}
-                      type="button"
-                      disabled={gone}
-                      aria-pressed={picked}
-                      onClick={() => onSize(option.id, v.mealId)}
-                      className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
-                        picked
-                          ? "bg-ink-950 text-cream-50"
-                          : gone
-                            ? "cursor-not-allowed bg-ink-950/[0.04] text-ink-800/30 line-through"
-                            : "bg-ink-950/[0.06] text-ink-950 hover:bg-ink-950/15"
-                      }`}
-                    >
-                      {v.label}
-                      {v.price > 0 && (
-                        <span className="ml-1 opacity-70">+₱{v.price.toFixed(0)}</span>
-                      )}
-                    </button>
-                  );
-                })}
+              <div className="mb-1.5 ml-10 flex flex-col gap-1.5">
+                {/* One row per axis.
+
+                    A Spanish Latte that comes Hot or Iced across three sizes
+                    is six variants, and six chips make the customer read
+                    every combination to find theirs — with a Hot that only
+                    comes 12oz sitting beside an Iced that only comes 16oz
+                    and 22oz, and nothing saying why. Two rows, temperature
+                    then size, is the same information in the shape people
+                    already think in.
+
+                    Tapping one keeps what it can of the other: on Iced 22oz,
+                    tapping Hot gives up the 22oz because there isn't one,
+                    and lands on a real drink rather than on a combination
+                    nobody sells. That rule is the menu card's own — see
+                    `pickAxis`. */}
+                {axes.length > 0
+                  ? axes.map((axis) => (
+                      <div key={axis.name} className="flex flex-wrap items-center gap-1.5">
+                        <span className="w-full text-[9px] font-black uppercase tracking-widest text-ink-800/40 sm:w-auto sm:pr-0.5">
+                          {axis.name}
+                        </span>
+                        {axis.values.map((value) => {
+                          const landing = pickAxis(option, selection, axis.name, value);
+                          const at = sizeFor(option, landing);
+                          const picked = selection[axis.name] === value;
+                          const gone = at ? variantSoldOut(at) : true;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              disabled={!at}
+                              aria-pressed={picked}
+                              onClick={() => at && onSize(option.id, at.mealId)}
+                              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
+                                picked
+                                  ? "bg-ink-950 text-cream-50"
+                                  : gone
+                                    ? "cursor-not-allowed bg-ink-950/[0.04] text-ink-800/30 line-through"
+                                    : "bg-ink-950/[0.06] text-ink-950 hover:bg-ink-950/15"
+                              }`}
+                            >
+                              {value}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))
+                  : /* One axis, or none named: the flat row it always was. */
+                    (
+                      <div className="flex flex-wrap gap-1.5">
+                        {sizes.map((v) => {
+                          const gone = variantSoldOut(v);
+                          const picked = v.mealId === chosenSize;
+                          return (
+                            <button
+                              key={v.mealId}
+                              type="button"
+                              disabled={gone}
+                              aria-pressed={picked}
+                              onClick={() => onSize(option.id, v.mealId)}
+                              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-colors ${
+                                picked
+                                  ? "bg-ink-950 text-cream-50"
+                                  : gone
+                                    ? "cursor-not-allowed bg-ink-950/[0.04] text-ink-800/30 line-through"
+                                    : "bg-ink-950/[0.06] text-ink-950 hover:bg-ink-950/15"
+                              }`}
+                            >
+                              {v.label}
+                              {v.price > 0 && (
+                                <span className="ml-1 opacity-70">+₱{v.price.toFixed(0)}</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                {/* Which drink the two rows have landed on.
+
+                    With two axes the price cannot live on the chips — the
+                    12oz chip has no single price when Hot and Iced charge
+                    differently — so it stays on the row above, where an
+                    add-on's price has always been. This line names the
+                    combination, which is the one thing two separate chip
+                    rows cannot say on their own, and carries the sold-out
+                    warning when the pair they picked has run out. */}
+                {axes.length > 0 && chosen && (
+                  <p className="text-[11px] font-bold text-ink-800/50">
+                    {chosen.label}
+                    {variantSoldOut(chosen) && (
+                      <span className="ml-1.5 font-black uppercase tracking-wide text-brand-600">
+                        · sold out
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
             )}
             </div>

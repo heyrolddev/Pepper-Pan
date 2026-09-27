@@ -44,6 +44,7 @@ import {
   extrasTotal,
   isFull,
   isSized,
+  liveVariants,
   optionSoldOut,
   qtyOf,
   reconcile,
@@ -1240,9 +1241,16 @@ function AddOnSheet({
                   const sizes = isSized(option) ? (option.variants ?? []) : [];
                   const chosenSize = choice[group.id]?.find((p) => p.id === option.id)
                     ?.variantMealId;
+                  /* The size that is CHOSEN prices the row, and before one
+                     is chosen the cheapest does, quoted as a range. `?? 0`
+                     used to make an untouched ₱89 drink read "Free". */
+                  const at = sizes.find((v) => v.mealId === chosenSize);
+                  const live = liveVariants(option);
                   const each = sizes.length
-                    ? (sizes.find((v) => v.mealId === chosenSize)?.price ?? 0)
+                    ? (at?.price ??
+                       Math.min(...(live.length ? live : sizes).map((v) => v.price)))
                     : option.price;
+                  const from = sizes.length > 0 && !at;
                   return (
                     <div
                       key={option.id}
@@ -1275,7 +1283,7 @@ function AddOnSheet({
                           {out
                             ? "sold out"
                             : each > 0
-                              ? `+${peso(each * Math.max(1, qty), 0)}`
+                              ? `${from ? "from " : ""}+${peso(each * Math.max(1, qty), 0)}`
                               : "free"}
                           {countable && !on && ` · up to ${option.maxQty}`}
                           {sizes.length > 0 && !on && ` · ${sizes.length} sizes`}

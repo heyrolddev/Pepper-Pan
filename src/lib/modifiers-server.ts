@@ -178,6 +178,12 @@ export async function loadModifiers(
       ? (variantsOfProduct.get(o.option_product_id) ?? []).map((v) => ({
           mealId: v.id,
           label: sizeLabel(v),
+          /* The axis values, not just the label they join into.
+             "Iced · 22oz" is one string for a receipt; this is the thing the
+             picker takes apart, so a drink that comes Hot or Iced AND in
+             three sizes is two rows of chips rather than six combinations
+             the customer has to read through. */
+          options: { ...(v.options ?? {}) },
           price: variantPrice(
             overrideFor.get(`${o.id}|${v.id}`) ?? null,
             o.price_override,
