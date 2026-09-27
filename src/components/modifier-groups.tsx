@@ -73,7 +73,11 @@ export type ModifierOptionRow = {
   id: string;
   label: string;
   option_meal_id: string | null;
+  /** Set instead of `option_meal_id` when this add-on comes in sizes. */
+  option_product_id: string | null;
   price_override: number | null;
+  /** What each size charges, by dish id. Absent size = charge its own price. */
+  sizePrices?: Record<string, number>;
   max_qty: number;
   sort_order: number;
 };
@@ -98,6 +102,31 @@ export type PickableMeal = {
 };
 
 export type PickableCard = { id: string; name: string };
+
+/**
+ * A menu card offered as an ANSWER rather than a place to ask.
+ *
+ * `PickableCard` is where a question gets attached; this is a drink that
+ * comes in sizes being chosen as one of the ways of answering it. The sizes
+ * are the card's variants, read from the menu rather than typed here — so
+ * the day a 1L is added to the menu, every combo offering that drink has it,
+ * and there is no second list to remember to update.
+ */
+export type PickableProduct = {
+  id: string;
+  name: string;
+  variants: { mealId: string; label: string; price: number }[];
+};
+
+/**
+ * How a product is told apart from a dish inside one picker.
+ *
+ * Two comboboxes side by side would make the owner decide which KIND of
+ * thing they are choosing before they may type its name — and they think in
+ * names, not in kinds. One list, and the prefix keeps the two id spaces from
+ * colliding on the way back out.
+ */
+const PRODUCT_PREFIX = "product:";
 
 type Draft = {
   id?: string;
@@ -143,8 +172,10 @@ const draftOf = (g: ModifierGroupRow): Draft => ({
       key: o.id,
       id: o.id,
       mealId: o.option_meal_id ?? "",
+      productId: o.option_product_id ?? null,
       label: o.label,
       priceOverride: o.price_override,
+      sizePrices: { ...(o.sizePrices ?? {}) },
       maxQty: Math.max(1, Number(o.max_qty) || 1),
     })),
   productIds: [...g.productIds],
@@ -176,10 +207,13 @@ function toneOf(g: { min_select: number; is_active: boolean }) {
 function OptionChip({
   label,
   price,
+  sizes,
   maxQty,
 }: {
   label: string;
   price: number;
+  /** How many sizes it comes in. 0 for a plain add-on. */
+  sizes: number;
   maxQty: number;
 }) {
   const free = price <= 0;
@@ -193,6 +227,14 @@ function OptionChip({
           up to {maxQty}
         </span>
       )}
+      {/* The price beside it is the cheapest size, so the chip has to say
+          that it IS the cheapest — "+₱0" on a drink whose large costs ₱15
+          reads as a mistake in the books. */}
+      {sizes > 0 && (
+        <span className="rounded-full bg-ink-950/[0.07] px-1.5 py-0.5 text-[10px] font-black tabular-nums text-ink-800/70">
+          {sizes} sizes
+        </span>
+      )}
       <span
         className={`rounded-full px-1.5 py-0.5 text-[10px] font-black tabular-nums ${
           free ? "bg-jade-600/12 text-jade-700" : "bg-gold-400/30 text-ink-900"
@@ -200,7 +242,7 @@ function OptionChip({
       >
         {/* Free is written as free. A blank space where a price goes reads as
             a number that failed to load. */}
-        {free ? "FREE" : `+${peso(price)}`}
+        {sizes > 0 ? (free ? "FROM FREE" : `from +${peso(price)}`) : free ? "FREE" : `+${peso(price)}`}
       </span>
     </span>
   );
@@ -210,11 +252,14 @@ export function ModifierGroups({
   groups,
   meals,
   cards,
+  products = [],
   withRecipe,
 }: {
   groups: ModifierGroupRow[];
   meals: PickableMeal[];
   cards: PickableCard[];
+  /** The same cards again, with their sizes — see `PickableProduct`. */
+  products?: PickableProduct[];
   /**
    * Dishes that have a recipe — ingredients, or components of their own.
    *
@@ -234,23 +279,63 @@ export function ModifierGroups({
 
   const mealById = useMemo(() => new Map(meals.map((m) => [m.id, m])), [meals]);
   const cardById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
+  const productById = useMemo(
+    () => new Map(products.map((p) => [p.id, p])),
+    [products]
+  );
 
+  /**
+   * One picker holding both, sized cards first.
+   *
+   * Sized first because it is the better answer whenever it exists: picking
+   * "Iced Tea · 2 sizes" offers both and keeps them in step with the menu,
+   * while picking the Regular dish underneath it quietly offers only the
+   * one. A card with no variants is left out — it would be an answer that
+   * resolves to nothing.
+   */
   const mealOptions = useMemo(
-    () =>
-      meals.map((m) => ({
+    () => [
+      ...products
+        .filter((p) => p.variants.length > 0)
+        .map((p) => ({
+          value: `${PRODUCT_PREFIX}${p.id}`,
+          label: `${p.name} · ${p.variants.length} size${
+            p.variants.length === 1 ? "" : "s"
+          }`,
+        })),
+      ...meals.map((m) => ({
         value: m.id,
         // The price is in the picker because it is the number the option will
         // charge when no override is typed — choosing blind and finding out
         // on the live menu is the mistake this prevents.
         label: `${m.name} · ${peso(m.price)}${m.is_public ? "" : " · hidden"}`,
       })),
-    [meals]
+    ],
+    [meals, products]
   );
 
-  /** What an option costs today: the override, or the dish's own price. */
-  const priceOf = (o: { price_override: number | null; option_meal_id: string | null }) =>
-    o.price_override ??
-    (o.option_meal_id ? (mealById.get(o.option_meal_id)?.price ?? 0) : 0);
+  /**
+   * What an option costs today: the override, or the dish's own price.
+   *
+   * A sized one has no single answer, so it is quoted from its cheapest size
+   * — the number the chip on the menu leads with, and the one the customer
+   * reads before opening the sizes.
+   */
+  const priceOf = (o: ModifierOptionRow) => {
+    if (o.option_product_id) {
+      const sizes = productById.get(o.option_product_id)?.variants ?? [];
+      if (sizes.length === 0) return o.price_override ?? 0;
+      return Math.min(
+        ...sizes.map(
+          (v) => o.sizePrices?.[v.mealId] ?? o.price_override ?? v.price
+        )
+      );
+    }
+    return (
+      o.price_override ??
+      (o.option_meal_id ? (mealById.get(o.option_meal_id)?.price ?? 0) : 0)
+    );
+  };
 
   // One line under the title instead of three big number tiles. These figures
   // are context, not the point of the screen — a row of stat cards here would
@@ -274,8 +359,10 @@ export function ModifierGroups({
         options: draft.options.map((o) => ({
           id: o.id,
           mealId: o.mealId,
+          productId: o.productId ?? null,
           label: o.label,
           priceOverride: o.priceOverride,
+          sizePrices: o.sizePrices,
           maxQty: o.maxQty,
         })),
         productIds: draft.productIds,
@@ -495,6 +582,12 @@ export function ModifierGroups({
                             key={o.id}
                             label={o.label}
                             price={priceOf(o)}
+                            sizes={
+                              o.option_product_id
+                                ? (productById.get(o.option_product_id)
+                                    ?.variants.length ?? 0)
+                                : 0
+                            }
                             maxQty={Math.max(1, Number(o.max_qty) || 1)}
                           />
                         ))}
@@ -564,6 +657,7 @@ export function ModifierGroups({
           mealOptions={mealOptions}
           meals={meals}
           cards={cards}
+          productById={productById}
           withRecipe={withRecipe}
           busy={busy}
           error={error}
@@ -633,6 +727,7 @@ function Editor({
   mealOptions,
   meals,
   cards,
+  productById,
   withRecipe,
   busy,
   error,
@@ -645,6 +740,7 @@ function Editor({
   mealOptions: { value: string; label: string }[];
   meals: PickableMeal[];
   cards: PickableCard[];
+  productById: Map<string, PickableProduct>;
   withRecipe: Set<string>;
   busy: boolean;
   error: string | null;
@@ -656,10 +752,35 @@ function Editor({
     max: Math.max(1, draft.maxSelect),
   });
 
-  const priced = draft.options.map((o) => ({
-    ...o,
-    price: o.priceOverride ?? (o.mealId ? (mealById.get(o.mealId)?.price ?? 0) : 0),
-  }));
+  /** The sizes an option comes in — empty for a plain one. */
+  const sizesOf = (o: { productId?: string | null }) =>
+    o.productId ? (productById.get(o.productId)?.variants ?? []) : [];
+
+  /**
+   * What one size charges.
+   *
+   * The same three steps the menu and the counter resolve — see
+   * `variantPrice` in lib/modifiers.ts, which has the tests. Written out
+   * here rather than imported because this one takes the DRAFT's shape,
+   * which is being typed into and is not a saved option yet.
+   */
+  const sizePrice = (
+    o: { sizePrices?: Record<string, number | null>; priceOverride: number | null },
+    v: { mealId: string; price: number }
+  ) => o.sizePrices?.[v.mealId] ?? o.priceOverride ?? v.price;
+
+  const priced = draft.options.map((o) => {
+    const sizes = sizesOf(o);
+    return {
+      ...o,
+      sizes,
+      price:
+        sizes.length > 0
+          ? Math.min(...sizes.map((v) => sizePrice(o, v)))
+          : (o.priceOverride ??
+            (o.mealId ? (mealById.get(o.mealId)?.price ?? 0) : 0)),
+    };
+  });
 
   /**
    * Options whose dish has no recipe.
@@ -668,10 +789,16 @@ function Editor({
    * the save would mean building the group twice. Said, and said in terms of
    * the two things that actually go wrong, because neither is visible
    * anywhere else until the books stop matching the shelf.
+   *
+   * A sized option is counted when ANY of its sizes is missing one. Checking
+   * only the cheapest would let a large iced tea sell all day booking no
+   * cost, behind a regular that looked fine.
    */
-  const noRecipe = draft.options.filter(
-    (o) => o.mealId && !withRecipe.has(o.mealId)
-  );
+  const noRecipe = draft.options.filter((o) => {
+    const sizes = sizesOf(o);
+    if (sizes.length > 0) return sizes.some((v) => !withRecipe.has(v.mealId));
+    return Boolean(o.mealId) && !withRecipe.has(o.mealId);
+  });
 
   return (
     <AdminDialog
@@ -745,19 +872,23 @@ function Editor({
         <Step
           n={2}
           title="The ways of answering"
-          hint="Each one points at a dish — that is what makes it cost real money and take real stock."
+          hint="Each one points at a dish — that is what makes it cost real money and take real stock. Pick a menu card instead when it comes in sizes."
         >
           <div className="flex flex-col gap-2">
             {draft.options.length === 0 && (
               <p className="rounded-xl bg-cream-50 px-3 py-3 text-xs text-ink-800/65 ring-1 ring-ink-950/10">
                 Make hidden dishes like &ldquo;Extra rice&rdquo; or
                 &ldquo;Coke&rdquo; first — with their own recipe and price —
-                then choose them here.
+                then choose them here. A drink that comes in sizes is a menu
+                card: choose the card and every size comes with it, each with
+                its own cost, stock and price.
               </p>
             )}
 
             {draft.options.map((o, at) => {
               const meal = o.mealId ? mealById.get(o.mealId) : null;
+              const product = o.productId ? productById.get(o.productId) : null;
+              const sizes = product?.variants ?? [];
               return (
                 /**
                  * Two lines, not four fields fighting over one.
@@ -779,15 +910,33 @@ function Editor({
                     <div className="min-w-0 flex-1">
                       <Combobox
                         ariaLabel="Which dish is this option?"
-                        placeholder="Which dish? Start typing a name…"
-                        value={o.mealId}
+                        placeholder="Which dish or sized drink? Start typing…"
+                        value={
+                          o.productId ? `${PRODUCT_PREFIX}${o.productId}` : o.mealId
+                        }
                         options={mealOptions}
                         onChange={(value) => {
-                          const picked = mealById.get(value);
+                          const isProduct = value.startsWith(PRODUCT_PREFIX);
+                          const productId = isProduct
+                            ? value.slice(PRODUCT_PREFIX.length)
+                            : "";
+                          const picked = isProduct
+                            ? productById.get(productId)
+                            : mealById.get(value);
                           const next = [...draft.options];
                           next[at] = {
                             ...o,
-                            mealId: value,
+                            // One or the other, never both — the same rule
+                            // the database enforces (0061). Cleared here so
+                            // the save cannot carry a stale dish under a
+                            // newly-chosen card.
+                            mealId: isProduct ? "" : value,
+                            productId: isProduct ? productId : null,
+                            // Sizes belong to the card that was chosen.
+                            // Keeping the old card's per-size prices would
+                            // reattach them by dish id to whatever happened
+                            // to match, which is a wrong price nobody typed.
+                            sizePrices: {},
                             // The label follows the dish the first time,
                             // because it is right nine times out of ten and
                             // the tenth is one edit. Never overwritten
@@ -869,12 +1018,104 @@ function Editor({
                         setDraft({ ...draft, options: next });
                       }}
                       placeholder={
-                        meal ? `${meal.price.toFixed(2)} (dish price)` : "Price"
+                        meal
+                          ? `${meal.price.toFixed(2)} (dish price)`
+                          : sizes.length > 0
+                            ? "Price for every size"
+                            : "Price"
                       }
-                      aria-label="Price, or blank to use the dish's own"
+                      aria-label={
+                        sizes.length > 0
+                          ? "Price for every size, unless a size sets its own"
+                          : "Price, or blank to use the dish's own"
+                      }
                       className={`${field} min-w-0 sm:w-40 sm:shrink-0`}
                     />
                   </div>
+
+                  {/* ── the sizes ──────────────────────────────────────────
+                      Listed, not entered. They are the card's own variants,
+                      so the only thing typed here is what each one CHARGES —
+                      the cost, the recipe, the stock and the sold-out switch
+                      are already that dish's, and there is nowhere for a
+                      second copy of them to go out of date.
+
+                      Three steps behind every box, in the order they are
+                      tried: this size's price, then the option's price above,
+                      then the dish's own. Each placeholder shows which one is
+                      answering right now, so a blank box is never a mystery. */}
+                  {o.productId &&
+                    (sizes.length === 0 ? (
+                      <p className="mt-2 ml-9 rounded-xl bg-gold-50 px-3 py-2 text-xs font-semibold text-ink-800 ring-1 ring-gold-400/60">
+                        ⚠︎ That menu card has no sizes on it yet, so this
+                        answer has nothing to offer. Add its dishes to the
+                        card in <strong>Menu cards</strong> above, or pick a
+                        single dish here instead.
+                      </p>
+                    ) : (
+                      <div className="mt-2 ml-9 rounded-xl bg-cream-100 p-2.5 ring-1 ring-ink-950/[0.07]">
+                        <p className={label}>
+                          What each size charges
+                        </p>
+                        <div className="mt-1.5 flex flex-col gap-1.5">
+                          {sizes.map((v) => {
+                            const own = o.sizePrices?.[v.mealId];
+                            const falls = o.priceOverride ?? v.price;
+                            return (
+                              <div
+                                key={v.mealId}
+                                className="flex items-center gap-2"
+                              >
+                                <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-950">
+                                  {v.label}
+                                  {!withRecipe.has(v.mealId) && (
+                                    <span className="ml-1.5 rounded-full bg-gold-400/30 px-1.5 py-0.5 text-[10px] font-black uppercase text-ink-900">
+                                      no recipe
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-[11px] font-bold tabular-nums text-ink-800/45">
+                                  dish {peso(v.price)}
+                                </span>
+                                <span className="w-28 shrink-0">
+                                  <input
+                                    inputMode="decimal"
+                                    value={own ?? ""}
+                                    onChange={(e) => {
+                                      const raw = e.target.value.trim();
+                                      const next = [...draft.options];
+                                      const prices = {
+                                        ...(o.sizePrices ?? {}),
+                                      };
+                                      // Blank REMOVES the row rather than
+                                      // writing a null: "not set" is the
+                                      // absence of an override, and a row
+                                      // saying null would have to mean the
+                                      // same thing in a second way.
+                                      if (raw === "") delete prices[v.mealId];
+                                      else prices[v.mealId] = Number(raw);
+                                      next[at] = { ...o, sizePrices: prices };
+                                      setDraft({ ...draft, options: next });
+                                    }}
+                                    placeholder={falls.toFixed(2)}
+                                    aria-label={`What ${v.label} charges`}
+                                    className="w-full rounded-lg border-2 border-ink-950/15 bg-cream-50 px-2 py-1 text-sm font-bold tabular-nums text-ink-950 outline-none focus:border-brand-600"
+                                  />
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-2 text-[11px] leading-relaxed text-ink-800/50">
+                          Leave a size blank to charge{" "}
+                          {o.priceOverride === null
+                            ? "that dish's own price"
+                            : `the ${peso(o.priceOverride)} above`}
+                          . Type <strong>0</strong> for the size that comes
+                          free with the combo.
+                        </p>
+                      </div>
+                    ))}
                 </div>
               );
             })}
@@ -888,8 +1129,10 @@ function Editor({
                     {
                       key: nextKey(),
                       mealId: "",
+                      productId: null,
                       label: "",
                       priceOverride: null,
+                      sizePrices: {},
                       maxQty: 1,
                     },
                   ],
@@ -904,7 +1147,13 @@ function Editor({
               <p className="rounded-xl bg-gold-50 px-3 py-2.5 text-xs font-semibold leading-relaxed text-ink-800 ring-1 ring-gold-400/60">
                 ⚠︎{" "}
                 {noRecipe
-                  .map((o) => o.label.trim() || mealById.get(o.mealId)?.name)
+                  .map(
+                    (o) =>
+                      o.label.trim() ||
+                      (o.productId
+                        ? productById.get(o.productId)?.name
+                        : mealById.get(o.mealId)?.name)
+                  )
                   .filter(Boolean)
                   .join(", ")}{" "}
                 {noRecipe.length === 1 ? "has" : "have"} no recipe yet. You can
@@ -924,6 +1173,10 @@ function Editor({
               for a drink that comes free with the combo. <strong>Max</strong>{" "}
               is how many of that one answer a customer may take — leave it at
               1 for a plain tick, raise it for something like extra rice.
+              Choosing a <strong>menu card</strong> instead of a dish offers
+              its sizes — the customer picks the answer, then the size, and
+              the one they pick is the dish that gets costed and taken off
+              the shelf.
             </p>
           </div>
         </Step>
@@ -986,10 +1239,8 @@ function Editor({
             ) : (
               <ul className="mt-2 flex flex-col">
                 {priced.map((o, i) => (
-                  <li
-                    key={o.key}
-                    className="flex items-center gap-3 rounded-lg px-1 py-1.5"
-                  >
+                  <li key={o.key} className="rounded-lg px-1 py-1.5">
+                   <div className="flex items-center gap-3">
                     <span
                       aria-hidden
                       className={`grid h-5 w-5 shrink-0 place-items-center border-2 text-[11px] font-black ${
@@ -1023,8 +1274,41 @@ function Editor({
                       </span>
                     )}
                     <span className="shrink-0 text-sm font-bold tabular-nums text-ink-800/70">
-                      {o.price > 0 ? `+${peso(o.price)}` : "Free"}
+                      {o.sizes.length > 0
+                        ? `from ${o.price > 0 ? `+${peso(o.price)}` : "Free"}`
+                        : o.price > 0
+                          ? `+${peso(o.price)}`
+                          : "Free"}
                     </span>
+                   </div>
+
+                    {/* The size chips, drawn where the customer meets them:
+                        under the answer, once it is ticked. The cheapest is
+                        shown chosen because that is what the dish dialog
+                        opens on — see `defaultVariant`. */}
+                    {o.sizes.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5 pl-8">
+                        {o.sizes.map((v) => {
+                          const p = sizePrice(o, v);
+                          const cheapest = p === o.price;
+                          return (
+                            <span
+                              key={v.mealId}
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                cheapest
+                                  ? "bg-ink-950 text-cream-50"
+                                  : "bg-cream-50 text-ink-950 ring-1 ring-ink-950/10"
+                              }`}
+                            >
+                              <span className="truncate">{v.label}</span>
+                              <span className="tabular-nums opacity-70">
+                                {p > 0 ? `+${peso(p)}` : "Free"}
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

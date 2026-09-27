@@ -53,6 +53,9 @@ const TABLES = [
   "meal_components",
   "modifier_groups",
   "modifier_options",
+  // What each SIZE of a sized add-on costs. Lost, every combo quietly falls
+  // back to charging full price for the drink that was included.
+  "modifier_option_prices",
   "meal_modifier_groups",
   "product_modifier_groups",
   // What a dish needs to travel, and what an order needs once. Same standing

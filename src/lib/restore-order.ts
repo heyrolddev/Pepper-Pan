@@ -47,6 +47,8 @@ export const RESTORE_ORDER = [
   // option names a dish, so the dishes have to be in by now too.
   "modifier_groups",
   "modifier_options",
+  // After `modifier_options` and `meals`, both of which it points at.
+  "modifier_option_prices",
   "meal_modifier_groups",
   "product_modifier_groups",
   // Before anything that names a supplier: the purchase log, the debts and

@@ -32,10 +32,28 @@ function revalidateMenu() {
 export type OptionInput = {
   /** Absent for a new one. */
   id?: string;
+  /**
+   * The dish this adds. Empty when `productId` is set instead.
+   *
+   * One or the other, never both — the database says so too (0061). An option
+   * naming a dish AND a product has no answer to "what does this add to the
+   * order", and the two would be resolved in different places, so the bug
+   * would surface as a price right on the menu and wrong on the receipt.
+   */
   mealId: string;
+  /** A menu card, when this add-on comes in sizes. Its variants are the sizes. */
+  productId?: string | null;
   label: string;
   /** Null means "charge whatever that dish costs". */
   priceOverride: number | null;
+  /**
+   * What each size costs, by dish id, when it differs from that dish's price.
+   *
+   * Only read for a sized option. Null for a size means "not set" — fall back
+   * to the option's own override, then to the dish's price. Zero is a real
+   * answer, which is the whole reason this is nullable rather than defaulting.
+   */
+  sizePrices?: Record<string, number | null>;
   /** How many of this one a customer may take. 1 is a tick. */
   maxQty: number;
 };
@@ -75,8 +93,12 @@ export async function saveModifierGroup(input: {
       // owner who types 40 means "lots", not "fail and lose my typing". The
       // database holds the same bound, so this only decides the message.
       maxQty: Math.max(1, Math.min(20, Math.round(Number(o.maxQty) || 1))),
+      productId: o.productId?.trim() || null,
     }))
-    .filter((o) => o.mealId);
+    // A half-filled row is dropped, not refused: "+ Add an answer" leaves an
+    // empty one behind, and an owner who adds one and changes their mind
+    // should be able to save rather than hunt for the bin icon.
+    .filter((o) => o.mealId || o.productId);
 
   if (options.length === 0) {
     return {
@@ -109,17 +131,62 @@ export async function saveModifierGroup(input: {
 
   // The dishes have to exist. An option pointing at a deleted id is exactly
   // the uncostable sale this whole file is trying to prevent.
-  const { data: liveMeals, error: mealsError } = await db
-    .from("meals")
-    .select("id, name")
-    .in("id", [...new Set(options.map((o) => o.mealId))]);
+  const wantMeals = [...new Set(options.filter((o) => !o.productId).map((o) => o.mealId))];
+  const wantProducts = [
+    ...new Set(options.map((o) => o.productId).filter((x): x is string => Boolean(x))),
+  ];
+
+  const [{ data: liveMeals, error: mealsError }, { data: liveProducts, error: productsError }] =
+    await Promise.all([
+      wantMeals.length > 0
+        ? db.from("meals").select("id").in("id", wantMeals)
+        : Promise.resolve({ data: [], error: null }),
+      wantProducts.length > 0
+        ? db.from("menu_products").select("id").in("id", wantProducts)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
   if (mealsError) return { error: mealsError.message };
+  if (productsError) return { error: productsError.message };
+
   const live = new Set(((liveMeals ?? []) as { id: string }[]).map((m) => m.id));
-  const missing = options.find((o) => !live.has(o.mealId));
+  const liveCards = new Set(((liveProducts ?? []) as { id: string }[]).map((p) => p.id));
+  const missing = options.find((o) =>
+    o.productId ? !liveCards.has(o.productId) : !live.has(o.mealId)
+  );
   if (missing) {
     return {
-      error: `"${missing.label}" points at a dish that no longer exists. Pick another one.`,
+      error: missing.productId
+        ? `"${missing.label}" points at a menu card that no longer exists. Pick another one.`
+        : `"${missing.label}" points at a dish that no longer exists. Pick another one.`,
     };
+  }
+
+  /**
+   * A sized option must have sizes to offer.
+   *
+   * Refused rather than saved, because it is the one shape that fails
+   * silently everywhere else: `offerable` in lib/modifiers.ts drops an
+   * option with no variants, so the group saves, the editor shows the
+   * answer, and the customer is simply never offered it — with nothing
+   * anywhere saying why.
+   */
+  if (wantProducts.length > 0) {
+    const { data: variantRows, error: variantError } = await db
+      .from("meals")
+      .select("id, product_id")
+      .in("product_id", wantProducts);
+    if (variantError) return { error: variantError.message };
+    const sized = new Set(
+      ((variantRows ?? []) as { product_id: string | null }[])
+        .map((r) => r.product_id)
+        .filter((x): x is string => Boolean(x))
+    );
+    const empty = options.find((o) => o.productId && !sized.has(o.productId));
+    if (empty) {
+      return {
+        error: `"${empty.label}" is a menu card with no dishes on it yet, so it has no sizes to offer. Add its dishes to the card first.`,
+      };
+    }
   }
 
   const row = {
@@ -173,7 +240,10 @@ export async function saveModifierGroup(input: {
   for (const [at, o] of options.entries()) {
     const optionRow = {
       group_id: id,
-      option_meal_id: o.mealId,
+      // Exactly one of the two. Empty string is what a cleared combobox
+      // gives, and it is not an id.
+      option_meal_id: o.productId ? null : o.mealId || null,
+      option_product_id: o.productId || null,
       label: o.label,
       price_override: o.priceOverride,
       max_qty: o.maxQty,
@@ -204,6 +274,41 @@ export async function saveModifierGroup(input: {
       return { error: error?.message ?? "Could not save an option." };
     }
     keep.push(data.id as string);
+  }
+
+  /**
+   * What each size costs, rewritten from scratch for every option.
+   *
+   * Cleared and re-inserted rather than merged, for the reason the
+   * attachments below give: these rows carry nothing but the pairing and a
+   * number, so losing and rewriting one loses nothing — while merging would
+   * need a rule for a size the owner has just removed, and a stale row for a
+   * size nobody offers is a price that applies to nothing until the day
+   * somebody re-adds that size and is surprised by it.
+   */
+  for (const [at, o] of options.entries()) {
+    const optionId = keep[at];
+    if (!optionId) continue;
+
+    const { error: clearError } = await db
+      .from("modifier_option_prices")
+      .delete()
+      .eq("option_id", optionId);
+    if (clearError) return { error: clearError.message };
+
+    const rows = Object.entries(o.productId ? (o.sizePrices ?? {}) : {})
+      // Null is "not set" and must leave no row behind — an absent row is how
+      // the fallback to the dish's own price is expressed.
+      .filter(([, price]) => price !== null && Number.isFinite(Number(price)))
+      .map(([mealId, price]) => ({
+        option_id: optionId,
+        meal_id: mealId,
+        price: Math.max(0, Number(price)),
+      }));
+    if (rows.length === 0) continue;
+
+    const { error } = await db.from("modifier_option_prices").insert(rows);
+    if (error) return { error: error.message };
   }
 
   const { data: existing } = await db

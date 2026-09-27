@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   optionPrice,
+  variantPrice,
   type ModifierGroup,
   type ModifierOption,
 } from "@/lib/modifiers";
@@ -57,8 +58,20 @@ type OptionRow = {
   sort_order: number;
   max_qty: number;
   option_meal_id: string | null;
+  option_product_id: string | null;
   meals: { price: number; is_available: boolean } | null;
 };
+/** One dish that is a variant of a product an option points at. */
+type VariantRow = {
+  id: string;
+  name: string;
+  price: number;
+  is_available: boolean;
+  product_id: string | null;
+  options: Record<string, string> | null;
+  variant_sort: number | null;
+};
+type OptionPriceRow = { option_id: string; meal_id: string; price: number };
 type AttachRow = { group_id: string; sort_order: number };
 
 export async function loadModifiers(
@@ -78,7 +91,8 @@ export async function loadModifiers(
    */
   makeable?: Map<string, number> | Promise<Map<string, number>>
 ): Promise<ModifierBook> {
-  const [groups, options, mealAttach, productAttach] = await Promise.all([
+  const [groups, options, mealAttach, productAttach, variantRows, priceRows] =
+    await Promise.all([
     supabase
       .from("modifier_groups")
       .select("id, name, helper, min_select, max_select, sort_order")
@@ -87,7 +101,7 @@ export async function loadModifiers(
     supabase
       .from("modifier_options")
       .select(
-        "id, group_id, label, price_override, sort_order, max_qty, option_meal_id, meals:option_meal_id(price, is_available)"
+        "id, group_id, label, price_override, sort_order, max_qty, option_meal_id, option_product_id, meals:option_meal_id(price, is_available)"
       )
       .eq("is_active", true)
       .order("sort_order"),
@@ -95,6 +109,20 @@ export async function loadModifiers(
     supabase
       .from("product_modifier_groups")
       .select("product_id, group_id, sort_order"),
+    /**
+     * Every dish that belongs to a product, and every per-size override.
+     *
+     * Fetched unconditionally rather than after reading which options are
+     * sized: knowing that needs the options back first, so making it wait
+     * would turn one round trip into two on every menu render. Both are small
+     * — a shop has tens of variants, not thousands.
+     */
+    supabase
+      .from("meals")
+      .select("id, name, price, is_available, product_id, options, variant_sort")
+      .not("product_id", "is", null)
+      .order("variant_sort"),
+    supabase.from("modifier_option_prices").select("option_id, meal_id, price"),
   ]);
 
   const failure =
@@ -109,13 +137,63 @@ export async function loadModifiers(
   // Only now, with the add-on queries already answered.
   const stock = await makeable;
 
+  /** The dishes of each product, in the order their sizes are offered. */
+  const variantsOfProduct = new Map<string, VariantRow[]>();
+  for (const v of (variantRows.data ?? []) as VariantRow[]) {
+    if (!v.product_id) continue;
+    const list = variantsOfProduct.get(v.product_id) ?? [];
+    list.push(v);
+    variantsOfProduct.set(v.product_id, list);
+  }
+
+  /** option → dish → what that size costs on this option. */
+  const overrideFor = new Map<string, number>();
+  for (const r of (priceRows.data ?? []) as OptionPriceRow[]) {
+    overrideFor.set(`${r.option_id}|${r.meal_id}`, Number(r.price));
+  }
+
+  /**
+   * What the size chip says.
+   *
+   * The variant's own axis values — {"Size":"22oz"} gives "22oz" — because
+   * that is what the menu already calls it and a second name for the same
+   * thing is a second thing to keep in step. A dish with no axes at all falls
+   * back to its name, which is at least true.
+   */
+  const sizeLabel = (v: VariantRow): string => {
+    const values = Object.values(v.options ?? {}).filter(Boolean);
+    return values.length > 0 ? values.join(" · ") : v.name;
+  };
+
   const optionsByGroup = new Map<string, ModifierOption[]>();
   for (const o of (options.data ?? []) as unknown as OptionRow[]) {
     const list = optionsByGroup.get(o.group_id) ?? [];
+
+    /* A sized option: its sizes are the product's own variants.
+
+       Read, never copied. A drink sold both on the menu and as a combo add-on
+       has its sizes written down once, so the day a third size is added the
+       two cannot disagree about what is on offer. */
+    const variants = o.option_product_id
+      ? (variantsOfProduct.get(o.option_product_id) ?? []).map((v) => ({
+          mealId: v.id,
+          label: sizeLabel(v),
+          price: variantPrice(
+            overrideFor.get(`${o.id}|${v.id}`) ?? null,
+            o.price_override,
+            v.price
+          ),
+          makeable: stock?.get(v.id) ?? null,
+          available: v.is_available !== false,
+          sort: v.variant_sort ?? 0,
+        }))
+      : undefined;
+
     list.push({
       id: o.id,
       label: o.label,
       mealId: o.option_meal_id,
+      ...(variants && variants.length > 0 ? { variants } : {}),
       price: optionPrice(o.price_override, o.meals?.price ?? null),
       // Null, not zero, when there is no recipe: zero means "can't make any"
       // and would take a perfectly sellable add-on off the menu.
