@@ -15,6 +15,7 @@ import {
   type RecipeOption,
 } from "@/components/recipe-editor";
 import { WasteForm } from "@/components/waste-form";
+import type { Wastable } from "@/lib/waste-lines";
 import {
   AddBatchButton,
   BatchHistoryDialog,
@@ -199,6 +200,7 @@ export function InventoryView({
   thinHistory,
   canSeeCosts,
   canManage,
+  wastableDishes = [],
   rollout = null,
   suppliers = [],
   failed,
@@ -222,6 +224,8 @@ export function InventoryView({
    * what would force the owner to hand over the books to get a shelf counted.
    */
   canManage: boolean;
+  /** Dishes that can be written off whole, priced at their COGS. */
+  wastableDishes?: Wastable[];
   /** Whether the calories filled in here are reaching a customer. */
   rollout?: Rollout | null;
   failed: string[];
@@ -1097,6 +1101,10 @@ export function InventoryView({
               kind: "batch" as const,
               stock: b.stock,
             })),
+            // Last, so a search still lands on the shelf first: the common
+            // case is a spoiled ingredient, and a dish is written off only
+            // when a whole serving is lost.
+            ...wastableDishes,
           ]}
           onClose={() => setEditing(null)}
         />

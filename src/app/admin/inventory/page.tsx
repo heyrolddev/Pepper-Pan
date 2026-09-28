@@ -38,8 +38,36 @@ export default async function AdminInventoryPage() {
   const canSeeCosts = can(viewer, "stock.manage");
   const canManage = can(viewer, "stock.manage");
 
-  const { ingredients, batches, batchCosts, batchIngredients, failed } =
+  const { ingredients, batches, batchCosts, batchIngredients, mealCosts, failed } =
     await loadCostBook();
+
+  /**
+   * Dishes that can be written off, priced at what they COST.
+   *
+   * What actually gets thrown away at a stall is a finished meal — a serving
+   * dropped on the way to a table, a plate the staff ate — and logging that
+   * as 180g noodles plus 100g chicken plus an egg is something nobody does
+   * with a queue waiting. So it did not get logged, and the count drifted
+   * from the shelf with nothing to say why.
+   *
+   * Only dishes with a recipe. One without has no cost to book and would
+   * take nothing off the shelf, so offering it is offering a line that
+   * records the word "waste" and no waste.
+   */
+  const wastableDishes = [...mealCosts.values()]
+    .filter((m) => m.costed)
+    .map((m) => ({
+      kind: "meal" as const,
+      id: m.meal.id,
+      name: m.meal.name,
+      unit: "serving",
+      unitCost: m.cost,
+      // A dish is made when it is ordered — it has no shelf of its own, and
+      // a number here would be about the ingredients pretending to be about
+      // the dish. The picker shows its cost instead.
+      stock: 0,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   /**
    * Whether the calories anybody fills in here ever reach a customer.
@@ -163,6 +191,7 @@ export default async function AdminInventoryPage() {
       thinHistory={insight.thin}
       canSeeCosts={canSeeCosts}
       canManage={canManage}
+      wastableDishes={wastableDishes}
       rollout={rollout}
       suppliers={suppliers}
       failed={failed}
