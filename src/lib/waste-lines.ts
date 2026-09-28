@@ -26,9 +26,25 @@
  * Quantity and item are per line. Obviously.
  */
 
+/**
+ * What can be thrown away.
+ *
+ * A whole DISH joined the two on 0063, and it is the one that actually gets
+ * thrown away at a stall: a serving dropped on the way to a table, a bowl
+ * cooked for the wrong order, a plate the staff ate at the end of a shift.
+ * Logging that as its parts — 180g noodles, 100g chicken, one egg — is
+ * something nobody does with a queue waiting, so it did not get logged at
+ * all, and the count drifted from the shelf with nothing to say why.
+ *
+ * Its `unitCost` is the dish's COGS, never its menu price. A staff meal is
+ * not a ₱179 sale the shop missed; it is the ₱62 of food that left the
+ * building, and pricing it at the menu would overstate every loss.
+ */
+export type WasteKind = "inv" | "batch" | "meal";
+
 /** What the item picker knows about one thing that can be thrown away. */
 export type Wastable = {
-  kind: "inv" | "batch";
+  kind: WasteKind;
   id: string;
   name: string;
   unit: string;
@@ -49,7 +65,7 @@ export type WasteDraft = {
 /** A row that is ready to be written. */
 export type WasteLine = {
   key: string;
-  kind: "inv" | "batch";
+  kind: WasteKind;
   id: string;
   name: string;
   unit: string;
@@ -113,7 +129,14 @@ export function wasteTotal(lines: WasteLine[]): number {
 
 /** Lines asking to remove more than the shelf says is there. */
 export function overStock(lines: WasteLine[]): WasteLine[] {
-  return lines.filter((l) => l.qty > l.stock);
+  /* A DISH has no shelf of its own — it is made when it is ordered — so its
+     `stock` is 0 and every dish line would read as "more than you have".
+     That warning would be false on every one of them, and a warning that is
+     always wrong is a warning people learn to tap past on the day it is
+     right about an ingredient. Whether the shelf can actually cover the
+     dish is a real question and a different one; `limitingFor` answers it
+     where it belongs, on the till. */
+  return lines.filter((l) => l.kind !== "meal" && l.qty > l.stock);
 }
 
 /**

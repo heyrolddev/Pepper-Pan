@@ -5,14 +5,15 @@ import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
 import { Combobox } from "@/components/combobox";
 import { peso } from "@/lib/peso";
 import { recordWasteMany, type WasteCategory } from "@/app/admin/inventory/actions";
-import type { RecipeOption } from "@/components/recipe-editor";
 import {
   doubledUp,
   overStock,
   partialReport,
   readyLines,
   wasteTotal,
+  type Wastable,
   type WasteDraft,
+  type WasteKind,
 } from "@/lib/waste-lines";
 
 /** The reasons that actually come up, so nobody has to invent wording. */
@@ -56,9 +57,15 @@ export function WasteForm({
   preselect,
   onClose,
 }: {
-  /** Ingredients and batches, priced. */
-  options: RecipeOption[];
-  preselect?: { kind: "inv" | "batch"; id: string };
+  /**
+   * Everything that can be written off, priced.
+   *
+   * Ingredients, batches and whole DISHES. Not `RecipeOption[]` any more:
+   * a dish is not something a recipe can contain as an ingredient, and
+   * widening that type would have offered dishes in the recipe editor too.
+   */
+  options: Wastable[];
+  preselect?: { kind: WasteKind; id: string };
   onClose: () => void;
 }) {
   const [category, setCategory] = useState<WasteCategory>("waste");
@@ -106,8 +113,22 @@ export function WasteForm({
     () =>
       options.map((o) => ({
         value: `${o.kind}:${o.id}`,
-        label: o.kind === "batch" ? `${o.name} (batch)` : o.name,
-        hint: `${o.stock.toLocaleString("en-PH")} ${o.unit}`,
+        // Said on the row, because the three are priced differently and a
+        // cashier picking "Pork" has to know whether they are logging the
+        // raw meat, the marinated batch, or a plated meal.
+        label:
+          o.kind === "batch"
+            ? `${o.name} (batch)`
+            : o.kind === "meal"
+              ? `${o.name} (dish)`
+              : o.name,
+        hint:
+          o.kind === "meal"
+            ? // A dish has no shelf of its own — it is made when it is
+              // ordered — so quoting "12 in stock" would be a number about
+              // the ingredients pretending to be about the dish.
+              `${peso(o.unitCost)} each`
+            : `${o.stock.toLocaleString("en-PH")} ${o.unit}`,
       })),
     [options]
   );

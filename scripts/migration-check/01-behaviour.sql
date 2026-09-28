@@ -1918,3 +1918,154 @@ begin
   end if;
   raise notice 'the owner''s switch still decides';
 end $$;
+
+
+\echo '=== 0063 a dish can be wasted too ==='
+-- The one thing that must never be true here: a staff meal priced at what
+-- it SELLS for. That would overstate every loss and make a month look like
+-- a disaster that never happened.
+select act_as_service();
+reset role;
+
+insert into ingredients (id, name, unit, cost, stock) values
+  ('w-pork', 'W Pork', 'g', 0.50, 1000),
+  ('w-noodle', 'W Noodles', 'g', 0.20, 1000),
+  ('w-box', 'W Box', 'pc', 5.00, 100)
+on conflict (id) do update set stock = excluded.stock, cost = excluded.cost;
+
+insert into meals (id, name, price) values
+  ('w-sauce-dish', 'W Sauce Base', 0),
+  ('w-meal', 'W Rice Meal', 179)
+on conflict (id) do update set price = excluded.price;
+
+delete from meal_ingredients where meal_id like 'w-%';
+delete from meal_components where meal_id like 'w-%';
+delete from meal_packaging where meal_id like 'w-%';
+
+-- 100g pork directly, plus a component dish carrying 50g noodles.
+insert into meal_ingredients (meal_id, ref_type, ref_id, qty) values
+  ('w-meal', 'inv', 'w-pork', 100),
+  ('w-sauce-dish', 'inv', 'w-noodle', 50);
+insert into meal_components (meal_id, component_meal_id, qty)
+  values ('w-meal', 'w-sauce-dish', 1);
+-- A box, which must NOT come off: a waste line does not know how it was served.
+insert into meal_packaging (meal_id, ref_type, ref_id, qty)
+  values ('w-meal', 'inv', 'w-box', 1);
+
+\echo '--- what one dish takes off the shelf ---'
+do $$
+declare pork numeric; noodle numeric; box int;
+begin
+  select qty into pork from meal_requirements('w-meal', 1) where ref_id = 'w-pork';
+  select qty into noodle from meal_requirements('w-meal', 1) where ref_id = 'w-noodle';
+  select count(*) into box from meal_requirements('w-meal', 1) where ref_id = 'w-box';
+
+  if pork is distinct from 100 then
+    raise exception 'FAIL: the dish''s own ingredient did not come through — %', pork;
+  end if;
+  -- Through the component, five levels deep if it needs to be.
+  if noodle is distinct from 50 then
+    raise exception 'FAIL: the component dish was not walked — %', noodle;
+  end if;
+  if box <> 0 then
+    raise exception 'FAIL: packaging was included — a waste line cannot know it was boxed';
+  end if;
+  raise notice '1 dish = 100g pork + 50g noodles, no box';
+end $$;
+
+\echo '--- two of it is twice as much ---'
+do $$
+declare pork numeric;
+begin
+  select qty into pork from meal_requirements('w-meal', 2) where ref_id = 'w-pork';
+  if pork is distinct from 200 then
+    raise exception 'FAIL: the quantity did not multiply — %', pork;
+  end if;
+  raise notice 'two dishes take twice the shelf';
+end $$;
+
+\echo '--- wasting it moves real stock and costs the COGS ---'
+do $$
+declare before_pork numeric; after_pork numeric;
+        before_noodle numeric; after_noodle numeric; cost numeric;
+begin
+  select stock into before_pork from ingredients where id = 'w-pork';
+  select stock into before_noodle from ingredients where id = 'w-noodle';
+
+  cost := consume_meal('w-meal', 2, shop_date(), 'internal');
+
+  select stock into after_pork from ingredients where id = 'w-pork';
+  select stock into after_noodle from ingredients where id = 'w-noodle';
+  raise notice 'pork % -> %, noodles % -> %, cost %',
+    before_pork, after_pork, before_noodle, after_noodle, cost;
+
+  if before_pork - after_pork <> 200 then
+    raise exception 'FAIL: the pork did not move — % came off', before_pork - after_pork;
+  end if;
+  if before_noodle - after_noodle <> 100 then
+    raise exception 'FAIL: the component''s noodles did not move — %', before_noodle - after_noodle;
+  end if;
+
+  -- 200g x 0.50 + 100g x 0.20 = 120. NOT 358, which is what two of them sell
+  -- for: a staff meal is not a missed sale.
+  if cost is distinct from 120 then
+    raise exception 'FAIL: expected the COGS of 120, got %', cost;
+  end if;
+  if cost >= 358 then
+    raise exception 'FAIL: the dish was priced at what it SELLS for';
+  end if;
+end $$;
+
+\echo '--- and it lands in the consumption log, so reorders stay right ---'
+do $$
+declare n int;
+begin
+  -- A staff meal that skipped this would quietly make every reorder
+  -- suggestion too small, and nothing would say why.
+  select count(*) into n
+    from consumption_log
+   where ingredient_id = 'w-pork' and date = shop_date() and type = 'internal';
+  if n = 0 then
+    raise exception 'FAIL: wasting a dish left no trace in consumption_log';
+  end if;
+  raise notice 'the usage averages and the reorder list see it';
+end $$;
+
+\echo '--- the log will accept a dish as a source ---'
+do $$
+begin
+  insert into waste_log (date, qty, unit, reason, total_cost, category,
+                         source_type, source_id, source_name)
+    values (shop_date(), 2, 'serving', 'Staff meal', 120, 'internal',
+            'meal', 'w-meal', 'W Rice Meal');
+  raise notice 'source_type = meal is allowed';
+exception when check_violation then
+  raise exception 'FAIL: the waste log still refuses a whole dish';
+end $$;
+
+\echo '--- but not an invented kind ---'
+do $$
+begin
+  begin
+    insert into waste_log (date, qty, reason, total_cost, source_type, source_id)
+      values (shop_date(), 1, 'x', 0, 'whatever', 'x');
+    raise exception 'FAIL: the log accepted a source_type nothing reads';
+  exception when check_violation then
+    raise notice 'an unknown source_type is still refused';
+  end;
+end $$;
+
+\echo '--- a dish with no recipe takes nothing and costs nothing ---'
+do $$
+declare cost numeric;
+begin
+  -- Rather than throwing: the costing screens already name a dish with no
+  -- recipe, and refusing the log would stop somebody recording a real loss.
+  insert into meals (id, name, price) values ('w-bare', 'W Bare', 99)
+    on conflict (id) do nothing;
+  cost := consume_meal('w-bare', 1, shop_date(), 'internal');
+  if cost is distinct from 0 then
+    raise exception 'FAIL: a dish with no recipe cost % out of nowhere', cost;
+  end if;
+  raise notice 'a dish with no recipe logs at zero rather than refusing';
+end $$;

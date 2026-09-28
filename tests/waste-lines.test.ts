@@ -166,3 +166,85 @@ test("every failed line is named, not just the first", () => {
   assert.match(msg, /Beansprouts/);
   assert.match(msg, /Dumpling filling/);
 });
+
+/* ------------------------------------------------------------------
+ * A whole dish can be written off
+ *
+ * What actually gets thrown away at a stall is a finished meal — a serving
+ * dropped on the way to a table, a bowl cooked for the wrong order, a plate
+ * the staff ate. Logging that as its parts is something nobody does with a
+ * queue waiting, so it did not get logged, and the count drifted from the
+ * shelf with nothing to say why.
+ * ------------------------------------------------------------------ */
+
+const dish = (id: string, name: string, cogs: number): Wastable => ({
+  kind: "meal",
+  id,
+  name,
+  unit: "serving",
+  unitCost: cogs,
+  // No shelf of its own: it is made when it is ordered.
+  stock: 0,
+});
+
+test("a dish line is priced at its COGS, never its menu price", () => {
+  // ₱179 on the board, ₱62 of food. A staff meal is not a missed sale.
+  const shelf = new Map([["meal:m1", dish("m1", "Pork Rice", 62)]]);
+  const { ready, problems } = readyLines(
+    [{ key: "a", pick: "meal:m1", qty: "2" }],
+    shelf
+  );
+  assert.deepEqual(problems, []);
+  assert.equal(ready[0].cost, 124);
+  assert.equal(ready[0].kind, "meal");
+  assert.equal(wasteTotal(ready), 124);
+});
+
+test("a dish never trips the not-enough-stock warning", () => {
+  // Its stock is 0 by construction, so the warning would be false on every
+  // dish — and a warning that is always wrong is one people learn to tap
+  // past on the day it is right about an ingredient.
+  const shelf = new Map([["meal:m1", dish("m1", "Pork Rice", 62)]]);
+  const { ready } = readyLines([{ key: "a", pick: "meal:m1", qty: "99" }], shelf);
+  assert.deepEqual(overStock(ready), []);
+});
+
+test("an ingredient still trips it", () => {
+  const shelf = new Map<string, Wastable>([
+    ["inv:i1", { kind: "inv", id: "i1", name: "Pork", unit: "g", unitCost: 0.5, stock: 100 }],
+  ]);
+  const { ready } = readyLines([{ key: "a", pick: "inv:i1", qty: "200" }], shelf);
+  assert.deepEqual(overStock(ready).map((l) => l.name), ["Pork"]);
+});
+
+test("dishes and ingredients add up together on one form", () => {
+  // A dropped serving and the sauce that went with it, in one go.
+  const shelf = new Map<string, Wastable>([
+    ["meal:m1", dish("m1", "Pork Rice", 62)],
+    ["inv:i1", { kind: "inv", id: "i1", name: "Pork", unit: "g", unitCost: 0.5, stock: 1000 }],
+  ]);
+  const { ready, problems } = readyLines(
+    [
+      { key: "a", pick: "meal:m1", qty: "1" },
+      { key: "b", pick: "inv:i1", qty: "100" },
+    ],
+    shelf
+  );
+  assert.deepEqual(problems, []);
+  assert.equal(wasteTotal(ready), 62 + 50);
+  assert.deepEqual(ready.map((l) => l.kind), ["meal", "inv"]);
+});
+
+test("the same dish twice is still flagged as doubled up", () => {
+  // Both deduct. Silently double-deducting is the quiet wrongness this
+  // whole module exists to prevent, and a dish is no exception.
+  const shelf = new Map([["meal:m1", dish("m1", "Pork Rice", 62)]]);
+  const { ready } = readyLines(
+    [
+      { key: "a", pick: "meal:m1", qty: "1" },
+      { key: "b", pick: "meal:m1", qty: "1" },
+    ],
+    shelf
+  );
+  assert.deepEqual(doubledUp(ready), ["Pork Rice"]);
+});

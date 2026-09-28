@@ -6,6 +6,7 @@ import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { toPerUnit } from "@/lib/nutrition";
 import { shopToday } from "@/lib/format-date";
+import type { WasteKind } from "@/lib/waste-lines";
 import { suggestFor } from "@/lib/nutrition-reference";
 import { PAID_FROM_LABELS, isPaidFrom, type PaidFrom } from "@/lib/money-accounts";
 import { recordDebt } from "@/lib/debts-server";
@@ -692,7 +693,7 @@ export type WasteCategory = "waste" | "internal";
 
 /** One thing that did not get sold, and why. */
 type WasteInput = {
-  sourceType: "inv" | "batch";
+  sourceType: WasteKind;
   sourceId: string;
   qty: number;
   reason: string;
@@ -759,6 +760,64 @@ async function writeWasteLine(
     await log(
       "waste",
       `${input.category === "internal" ? "Internal use" : "Waste"}: ${input.qty} ${ing.unit} of "${ing.name}" — ₱${total.toFixed(2)} (${input.reason.trim()})`,
+      viewer.profile?.id ?? null
+    );
+    return { error: null, cost: total };
+  }
+
+  if (input.sourceType === "meal") {
+    const { data: meal } = await supabase
+      .from("meals")
+      .select("id, name")
+      .eq("id", input.sourceId)
+      .maybeSingle();
+    if (!meal) return { error: "That dish no longer exists." };
+
+    /**
+     * The whole recipe, off the shelf, priced at what it COST.
+     *
+     * Through `consume_meal` (0063) rather than by walking the recipe here,
+     * for the reason every other movement in this file goes through the
+     * database: a dish is its ingredients, its batches AND its component
+     * dishes five levels down, and a second copy of that walk in TypeScript
+     * would be a second answer to "what does this take" — free to disagree
+     * with the one the till uses.
+     *
+     * It returns the COGS, so the line is priced from the same pass that
+     * moved the stock. A staff meal is not a ₱179 sale the shop missed; it
+     * is the ₱62 of food that left the building.
+     */
+    const { data: cost, error } = await supabase.rpc("consume_meal", {
+      p_meal_id: meal.id,
+      p_qty: input.qty,
+      p_date: today,
+      p_type: logType,
+    });
+    if (error) return { error: error.message };
+    const total = Number(cost ?? 0);
+
+    await supabase.from("waste_log").insert({
+      date: today,
+      // Null: this is not one ingredient, and putting a dish's id in a
+      // column that references `ingredients` is a foreign key waiting to
+      // fail. `source_id` is where a dish lives.
+      ingredient_id: null,
+      qty: input.qty,
+      unit: "serving",
+      reason: input.reason.trim(),
+      cost_at_time: input.qty > 0 ? total / input.qty : 0,
+      total_cost: total,
+      category: input.category,
+      source_type: "meal",
+      source_id: meal.id,
+      source_name: meal.name,
+      note: input.note?.trim() || null,
+      logged_by: viewer.profile?.full_name?.trim() || viewer.email,
+    });
+
+    await log(
+      "waste",
+      `${input.category === "internal" ? "Internal use" : "Waste"}: ${input.qty} x "${meal.name}" — ₱${total.toFixed(2)} (${input.reason.trim()})`,
       viewer.profile?.id ?? null
     );
     return { error: null, cost: total };
@@ -852,7 +911,7 @@ async function writeWasteLine(
  * one stale row in a list of eight silently discards six good ones.
  */
 export async function recordWasteMany(input: {
-  lines: { sourceType: "inv" | "batch"; sourceId: string; qty: number; name: string }[];
+  lines: { sourceType: WasteKind; sourceId: string; qty: number; name: string }[];
   reason: string;
   category: WasteCategory;
   note?: string;
