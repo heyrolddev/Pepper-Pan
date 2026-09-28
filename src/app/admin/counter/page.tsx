@@ -6,6 +6,25 @@ import { loadStockPicture } from "@/lib/costing-server";
 import { loadModifiers } from "@/lib/modifiers-server";
 import { loadNutrition } from "@/lib/nutrition-server";
 import { isComplete, round } from "@/lib/nutrition";
+import type { Promo } from "@/lib/promos";
+
+/** The promo row as the database hands it over. */
+type PromoDbRow = {
+  id: string;
+  code: string | null;
+  label: string;
+  kind: string;
+  value: number;
+  scope: string;
+  meal_id: string | null;
+  min_spend: number;
+  max_discount: number | null;
+  max_uses: number | null;
+  max_per_customer: number | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  online: boolean;
+};
 import { groupsFor } from "@/lib/modifiers";
 import type { MenuCategory } from "@/lib/categories";
 
@@ -60,6 +79,53 @@ export default async function AdminCounterPage() {
     loadNutrition(),
     supabase.from("settings").select("show_nutrition").eq("id", 1).maybeSingle(),
   ]);
+  /**
+   * The discounts a cashier may apply, as the owner defined them.
+   *
+   * Filtered to what is usable RIGHT NOW at the counter: running, in its
+   * date window, and allowed here. The server checks every one of those
+   * again when the sale is rung up — this is so the till does not show a
+   * chip that refuses itself the moment it is tapped.
+   *
+   * Never a box to type an amount into. A till that takes a number off
+   * whoever is standing at it is a till that leaks money.
+   */
+  const onDay = shopToday();
+  const { data: promoRows } = await supabase
+    .from("promos")
+    .select(
+      "id, code, label, kind, value, scope, meal_id, min_spend, max_discount, max_uses, max_per_customer, starts_on, ends_on, online, at_counter, is_active"
+    )
+    .eq("is_active", true)
+    .eq("at_counter", true)
+    .order("label");
+
+  const counterPromos: Promo[] = ((promoRows ?? []) as PromoDbRow[])
+    .filter(
+      (p) =>
+        (!p.starts_on || p.starts_on <= onDay) &&
+        (!p.ends_on || p.ends_on >= onDay)
+    )
+    .map((p) => ({
+      id: p.id,
+      code: p.code,
+      label: p.label,
+      kind: p.kind === "amount" ? "amount" : "percent",
+      value: Number(p.value),
+      scope: p.scope === "meal" ? "meal" : "order",
+      mealId: p.meal_id,
+      minSpend: Number(p.min_spend) || 0,
+      maxDiscount: p.max_discount === null ? null : Number(p.max_discount),
+      maxUses: p.max_uses === null ? null : Number(p.max_uses),
+      maxPerCustomer:
+        p.max_per_customer === null ? null : Number(p.max_per_customer),
+      startsOn: p.starts_on,
+      endsOn: p.ends_on,
+      online: p.online !== false,
+      atCounter: true,
+      isActive: true,
+    }));
+
   const nutritionByMeal = Object.fromEntries(
     [...inside.entries()]
       .filter(([, d]) => isComplete(d))
@@ -107,6 +173,7 @@ export default async function AdminCounterPage() {
       staffName={viewer!.profile?.full_name?.trim() || viewer!.email}
       nutritionByMeal={nutritionByMeal}
       showNutrition={settingsRow?.show_nutrition === true}
+      promos={counterPromos}
     />
   );
 }

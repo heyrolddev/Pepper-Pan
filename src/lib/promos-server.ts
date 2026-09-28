@@ -136,6 +136,24 @@ export async function resolvePromo(opts: {
   });
 }
 
+/**
+ * How many times a promo has been claimed, by anybody.
+ *
+ * Counted, never kept on the promo row, so cancelling and deleting an order
+ * frees the use back up on its own — `promo_redemptions` cascades with the
+ * order. A counter column would have to be decremented by hand, and the day
+ * somebody forgets is the day a code reads as used up by orders that no
+ * longer exist.
+ */
+export async function countPromoUses(promoId: string): Promise<number> {
+  const db = createAdminClient();
+  const { count } = await db
+    .from("promo_redemptions")
+    .select("id", { count: "exact", head: true })
+    .eq("promo_id", promoId);
+  return count ?? 0;
+}
+
 /** A promo by id, for the counter's own list — no code typed. */
 export async function promoById(id: string): Promise<Promo | null> {
   const db = createAdminClient();

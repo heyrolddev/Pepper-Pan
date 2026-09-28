@@ -80,6 +80,17 @@ export function CheckoutForm({
       : null
   );
   const [notes, setNotes] = useState("");
+  /**
+   * The promo code, exactly as typed.
+   *
+   * A string and nothing else travels with the order. What it is worth,
+   * whether it is live, how many times it has been claimed and whether this
+   * customer already used it are all decided on the server — see
+   * `resolvePromo`. This form deliberately shows no discount on the total:
+   * it does not know one, and a number here that the server then disagreed
+   * with would be worse than no number at all.
+   */
+  const [promoCode, setPromoCode] = useState("");
   // Null means "as soon as you can" — what most orders are. A date means the
   // customer booked it for later, which is the only way to order while the
   // shop is shut.
@@ -286,6 +297,7 @@ export function CheckoutForm({
         paymentReference: effectiveMethod === "gcash" ? reference : undefined,
         paymentReceipt: effectiveMethod === "gcash" ? receipt : null,
         scheduledFor,
+        promoCode: promoCode.trim() || null,
       });
 
       if (result.error) {
@@ -504,6 +516,29 @@ export function CheckoutForm({
         onReceiptChange={setReceipt}
         total={grandTotal}
       />
+
+      {/* Above the total, below the payment: a code is part of what is
+          owed, and somebody who spots it after the total has no reason to
+          believe the total. Refused loudly by the server if it does not
+          apply — with which of the six reasons it was — rather than
+          silently ignored, because a customer who types a code and watches
+          it vanish assumes the shop cheated them. */}
+      <label className={labelClass}>
+        Promo code (optional)
+        <input
+          value={promoCode}
+          onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+          placeholder="SULIT50"
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          className={`${fieldClass} font-mono uppercase tracking-wider`}
+        />
+        <span className="mt-1 block text-xs font-normal normal-case text-ink-800/50">
+          We&apos;ll work out what it takes off when you place the order, and
+          it will show on your receipt.
+        </span>
+      </label>
 
       <label className={labelClass}>
         Notes (optional)

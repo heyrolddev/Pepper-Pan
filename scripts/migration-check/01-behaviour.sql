@@ -2069,3 +2069,277 @@ begin
   end if;
   raise notice 'a dish with no recipe logs at zero rather than refusing';
 end $$;
+
+
+\echo '=== 0064 a discount is the first thing here that gives food away ==='
+-- Every other feature in this system records what happened. A discount
+-- CHANGES what is owed, so the rules that stop one costing more than the
+-- shop meant are constraints in the database, not conventions in a form.
+select act_as_service();
+reset role;
+
+insert into auth.users (id, email) values
+  ('33333333-3333-3333-3333-333333333333','buyer@x'),
+  ('44444444-4444-4444-4444-444444444444','other@x')
+on conflict do nothing;
+
+delete from promo_redemptions;
+delete from promos;
+
+insert into meals (id, name, price) values ('p-dish', 'P Dish', 150)
+  on conflict (id) do update set price = excluded.price;
+
+\echo '--- a percent over 100 would pay the customer to eat here ---'
+do $$
+begin
+  begin
+    insert into promos (label, kind, value) values ('Mad', 'percent', 150);
+    raise exception 'FAIL: 150%% off was accepted';
+  exception when check_violation then
+    raise notice 'a percent above 100 is refused';
+  end;
+end $$;
+
+\echo '--- but 150 pesos off is a Tuesday ---'
+do $$
+begin
+  -- The reason `kind` is two values and not one amount plus a flag: the
+  -- number that is nonsense for one is ordinary for the other.
+  insert into promos (id, label, kind, value) values ('p-amt', 'Tuesday', 'amount', 150);
+  raise notice 'a peso amount of 150 is allowed';
+end $$;
+
+\echo '--- a dish promo with no dish would advertise and never fire ---'
+do $$
+begin
+  begin
+    insert into promos (label, kind, value, scope) values ('Bad', 'percent', 10, 'meal');
+    raise exception 'FAIL: a dish promo with no dish was accepted';
+  exception when check_violation then
+    raise notice 'scope = meal without a meal_id is refused';
+  end;
+end $$;
+
+\echo '--- and a window that ends before it starts can never be used ---'
+do $$
+begin
+  begin
+    insert into promos (label, kind, value, starts_on, ends_on)
+      values ('Backwards', 'percent', 10, date '2026-10-10', date '2026-10-01');
+    raise exception 'FAIL: a backwards window was accepted';
+  exception when check_violation then
+    raise notice 'ends_on before starts_on is refused';
+  end;
+end $$;
+
+\echo '--- one code, one promo: SULIT50 cannot mean two things ---'
+do $$
+begin
+  insert into promos (id, code, label, kind, value)
+    values ('p-code', 'SULIT50', 'Sulit', 'percent', 50);
+  begin
+    insert into promos (code, label, kind, value)
+      values ('SULIT50', 'Sulit again', 'amount', 20);
+    raise exception 'FAIL: the same code now names two different discounts';
+  exception when unique_violation then
+    raise notice 'a duplicate code is refused';
+  end;
+end $$;
+
+\echo '--- but counter discounts have no code, and there can be many ---'
+do $$
+declare n int;
+begin
+  -- Postgres treats nulls as distinct in a unique index, which is exactly
+  -- what is wanted here: nobody types a counter discount, so it has no
+  -- code, and the shop will have several.
+  insert into promos (id, label, kind, value, code) values
+    ('p-senior', 'Senior 20%', 'percent', 20, null),
+    ('p-staff', 'Staff meal', 'percent', 50, null);
+  select count(*) into n from promos where code is null;
+  if n < 2 then
+    raise exception 'FAIL: only % codeless promo(s) survived — the unique index is eating them', n;
+  end if;
+  raise notice '% codeless counter discounts coexist', n;
+end $$;
+
+\echo '--- one promo per order: nothing stacks by accident ---'
+do $$
+begin
+  insert into orders (id, revenue, status, customer_id)
+    values ('p-order', 100, 'completed', '33333333-3333-3333-3333-333333333333');
+  insert into promo_redemptions (promo_id, order_id, customer_id, amount)
+    values ('p-code', 'p-order', '33333333-3333-3333-3333-333333333333', 50);
+  begin
+    insert into promo_redemptions (promo_id, order_id, customer_id, amount)
+      values ('p-amt', 'p-order', '33333333-3333-3333-3333-333333333333', 150);
+    raise exception 'FAIL: two promos landed on one order';
+  exception when unique_violation then
+    raise notice 'a second promo on the same order is refused';
+  end;
+end $$;
+
+\echo '--- a use cannot be recorded as a negative amount ---'
+do $$
+begin
+  begin
+    insert into orders (id, revenue, status) values ('p-order-neg', 100, 'completed');
+    insert into promo_redemptions (promo_id, order_id, amount)
+      values ('p-code', 'p-order-neg', -50);
+    raise exception 'FAIL: a promo ADDED 50 pesos';
+  exception when check_violation then
+    raise notice 'a negative discount is refused';
+  end;
+end $$;
+
+\echo '--- deleting the order gives the use back ---'
+do $$
+declare n int;
+begin
+  -- Without the cascade, a customer who cancelled would still be counted
+  -- against a "one each" code — told they had used something they never
+  -- received.
+  delete from orders where id = 'p-order';
+  select count(*) into n from promo_redemptions where promo_id = 'p-code';
+  if n <> 0 then
+    raise exception 'FAIL: % use(s) still counted against a deleted order', n;
+  end if;
+  raise notice 'the use went with the order';
+end $$;
+
+\echo '--- the order remembers what it was given, and stays net ---'
+do $$
+declare d numeric; r numeric; c text;
+begin
+  insert into orders (id, revenue, discount, promo_code, status)
+    values ('p-order-2', 150, 50, 'SULIT50', 'completed');
+  select discount, revenue, promo_code into d, r, c from orders where id = 'p-order-2';
+  if d is distinct from 50 or r is distinct from 150 or c is distinct from 'SULIT50' then
+    raise exception 'FAIL: the order came back as revenue %, discount %, code %', r, d, c;
+  end if;
+  raise notice 'revenue is what the drawer took; the discount sits beside it';
+end $$;
+
+\echo '--- and a negative discount on an order is refused too ---'
+do $$
+begin
+  begin
+    update orders set discount = -10 where id = 'p-order-2';
+    raise exception 'FAIL: an order carries a negative discount';
+  exception when check_violation then
+    raise notice 'orders.discount cannot go below zero';
+  end;
+end $$;
+
+\echo '--- a customer cannot read the shop''s coupon book ---'
+do $$
+declare seen int;
+begin
+  -- The whole feature is that a customer can CHECK one code. Being able to
+  -- LIST every code the shop has ever made is a different thing, and it is
+  -- worth money: every unreleased promo, every staff discount.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true);
+  select count(*) into seen from promos;
+  reset role;
+  if seen <> 0 then
+    raise exception 'FAIL: a customer can list % promo(s) — that is a coupon book', seen;
+  end if;
+  raise notice 'a signed-in customer sees 0 promos';
+end $$;
+
+\echo '--- but they can see their own uses, and only their own ---'
+select act_as_service();
+reset role;
+insert into orders (id, revenue, status, customer_id) values
+  ('p-mine', 100, 'completed', '33333333-3333-3333-3333-333333333333'),
+  ('p-theirs', 100, 'completed', '44444444-4444-4444-4444-444444444444');
+insert into promo_redemptions (promo_id, order_id, customer_id, amount) values
+  ('p-code', 'p-mine', '33333333-3333-3333-3333-333333333333', 50),
+  ('p-code', 'p-theirs', '44444444-4444-4444-4444-444444444444', 50);
+do $$
+declare mine int; total int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true);
+  select count(*) into total from promo_redemptions;
+  select count(*) into mine from promo_redemptions
+    where customer_id = '33333333-3333-3333-3333-333333333333';
+  reset role;
+  if mine <> 1 then
+    raise exception 'FAIL: a customer cannot see their own redemption — saw %', mine;
+  end if;
+  if total <> 1 then
+    raise exception 'FAIL: a customer sees % redemptions — somebody else''s too', total;
+  end if;
+  raise notice 'a customer sees their own use and nobody else''s';
+end $$;
+
+\echo '--- a customer cannot write themselves a discount ---'
+do $$
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', true);
+  begin
+    insert into promos (label, kind, value) values ('Free food', 'percent', 100);
+    reset role;
+    raise exception 'FAIL: a customer created their own 100%% off promo';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'a customer cannot create a promo';
+  end;
+end $$;
+
+\echo '--- and staff cannot either: only the owner sets the prices ---'
+do $$
+begin
+  -- Staff READ promos, because the till lists them. Writing one is how a
+  -- discount that nobody agreed to gets applied every shift.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+  begin
+    insert into promos (label, kind, value) values ('Ana''s discount', 'percent', 30);
+    reset role;
+    raise exception 'FAIL: staff wrote their own discount';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'staff may read the list, not add to it';
+  end;
+end $$;
+
+\echo '--- staff can read it, because the till has to show the list ---'
+do $$
+declare seen int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+  select count(*) into seen from promos;
+  reset role;
+  if seen = 0 then
+    raise exception 'FAIL: the counter cannot see a single promo to offer';
+  end if;
+  raise notice 'staff see % promo(s) at the till', seen;
+end $$;
+
+\echo '--- deleting a dish takes its dish-promo with it ---'
+select act_as_service();
+reset role;
+do $$
+declare n int;
+begin
+  -- Otherwise the promo survives pointing at nothing, and the next customer
+  -- who types it is told it applies to a dish that is not on the menu.
+  insert into promos (id, label, kind, value, scope, meal_id)
+    values ('p-dishpromo', 'Dish promo', 'percent', 10, 'meal', 'p-dish');
+  delete from meals where id = 'p-dish';
+  select count(*) into n from promos where id = 'p-dishpromo';
+  if n <> 0 then
+    raise exception 'FAIL: a dish promo outlived its dish';
+  end if;
+  raise notice 'the promo went with the dish';
+end $$;

@@ -220,3 +220,25 @@ export function discountLine(promo: Promo, discount: number): string {
   const scope = promo.scope === "meal" ? " (one dish)" : "";
   return `${promo.label} — ${what}${scope}: −₱${discount.toFixed(2)}`;
 }
+
+
+/**
+ * What a promo looks like it will take off, for a screen.
+ *
+ * An ESTIMATE, and named one. It runs the same arithmetic the server does
+ * and deliberately skips every rule that needs the database — how many
+ * times it has been claimed, whether this customer already used it. The
+ * till shows this to the person standing at the counter; the figure that
+ * gets recorded is always the server's, which is why `recordWalkInSale`
+ * runs `checkPromo` again and refuses rather than trusting it.
+ *
+ * Returns 0 rather than throwing when it does not apply, so a chip that
+ * cannot be used simply shows nothing off — and the till says so in words
+ * beside it.
+ */
+export function estimateDiscount(promo: Promo, lines: BasketLine[]): number {
+  if (!promo.isActive) return 0;
+  if (promo.minSpend > 0 && basketTotal(lines) < promo.minSpend) return 0;
+  if (promo.scope === "meal" && applicableTotal(promo, lines) <= 0) return 0;
+  return discountFor(promo, lines);
+}

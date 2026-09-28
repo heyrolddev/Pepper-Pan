@@ -8,6 +8,13 @@ import { syncStockForStatus } from "@/lib/stock-server";
 import { openShiftFor } from "@/lib/shifts-server";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { orderLabel } from "@/lib/tickets";
+import { shopToday } from "@/lib/format-date";
+import { checkPromo } from "@/lib/promos";
+import {
+  countPromoUses,
+  promoById,
+  recordRedemption,
+} from "@/lib/promos-server";
 import { cartQuantityProblem } from "@/lib/orders";
 import { loadStockPicture } from "@/lib/costing-server";
 import { METHOD_FOR_TILL, type TillMethod } from "@/lib/till";
@@ -37,7 +44,16 @@ export type CounterLine = {
 
 export type CounterResult =
   | { error: string; orderId?: undefined; total?: undefined; ticket?: undefined }
-  | { error: null; orderId: string; total: number; ticket: number };
+  | {
+      error: null;
+      orderId: string;
+      /** What the customer actually pays — already net of any discount. */
+      total: number;
+      /** Pesos taken off, and by what. Zero and null when there was none. */
+      discount: number;
+      promoLabel: string | null;
+      ticket: number;
+    };
 
 /**
  * A sale that happened at the stall.
@@ -66,6 +82,15 @@ type SaleInput = {
   /** Who the order is for. Goes in `contact_name`, the column that has always
    *  been there for it, so the name shows on the order as well as the paper. */
   customerName?: string;
+  /**
+   * The discount the cashier picked, by id — never an amount.
+   *
+   * A till that takes a number off the browser is a till any staff member
+   * can type ₱500 into. The phone names a promo the owner defined; this
+   * function looks it up and works out what it is worth, exactly as the
+   * checkout does for a code.
+   */
+  promoId?: string | null;
 };
 
 /**
@@ -179,6 +204,40 @@ async function ringUp(input: SaleInput): Promise<CounterResult> {
     0
   );
 
+  /* --- The discount ------------------------------------------------------
+     Worked out here from the shop's own rules, on prices this function has
+     already looked up. The till sends an id and nothing else.
+
+     Refused rather than ignored: a cashier who picked a discount and rang
+     up the full amount has a customer in front of them who watched them
+     pick it. */
+  let discount = 0;
+  let promoLabel: string | null = null;
+  if (input.promoId) {
+    const promo = await promoById(input.promoId);
+    const result = checkPromo(
+      promo,
+      lines.map((l, at) => ({
+        mealId: l.mealId,
+        qty: l.qty,
+        unitPrice: priceById.get(l.mealId)! + extraTotal(at),
+      })),
+      {
+        where: "counter",
+        today: shopToday(),
+        /* Counter use is not capped per customer — there is no account
+           behind a walk-in, and enforcing it would mean enforcing it
+           against whoever happened to be signed in on the till. The total
+           cap still applies, counted below. */
+        usage: { total: await countPromoUses(input.promoId), byCustomer: 0 },
+        signedIn: false,
+      }
+    );
+    if (!result.ok) return { error: result.refusal.message };
+    discount = result.discount;
+    promoLabel = result.label;
+  }
+
   /**
    * Stock, AFTER the add-ons and not before them.
    *
@@ -286,7 +345,13 @@ async function ringUp(input: SaleInput): Promise<CounterResult> {
       paid_at: new Date().toISOString(),
       payment_plan: "full",
       payment_reference: reference,
-      revenue: subtotal,
+      /* NET of the discount: `revenue` is what the drawer actually took,
+         which is what the books and every report already mean by it. The
+         discount sits in its own column so the shop can see what the promos
+         cost without the takings being overstated to make them visible. */
+      revenue: Math.max(0, subtotal - discount),
+      discount,
+      promo_code: promoLabel,
       contact_name: input.customerName?.trim() || null,
       notes: input.note?.trim() || null,
       tag: "walk-in",
@@ -347,6 +412,24 @@ async function ringUp(input: SaleInput): Promise<CounterResult> {
     }
   }
 
+  /* The discount is spent, now that there is an order to spend it on.
+
+     After the insert and after the rollback points above, never before: a
+     redemption pointing at an order that was rolled back is a use nobody
+     got. The unique index on `order_id` makes a double-write impossible,
+     and the row cascades with the order — so a cancelled sale that gets
+     deleted frees the use back up on its own. */
+  if (input.promoId && discount > 0) {
+    await recordRedemption({
+      promoId: input.promoId,
+      orderId: order.id,
+      // No account behind a walk-in. Null rather than the cashier's id,
+      // which would make the shift's staff look like the customer.
+      customerId: null,
+      amount: discount,
+    });
+  }
+
   // The estimate first, from current recipe prices, so an order always has a
   // cost even if stock movement can't run. Then the real thing: the movement
   // engine overwrites `cogs` with what actually came off the shelf, lot
@@ -370,7 +453,8 @@ async function ringUp(input: SaleInput): Promise<CounterResult> {
   const { error: logError } = await supabase.from("activity_log").insert({
     category: "orders",
     description:
-      `Rang up ${label} at the counter — ₱${subtotal.toFixed(2)} ` +
+      `Rang up ${label} at the counter — ₱${(subtotal - discount).toFixed(2)} ` +
+      (discount > 0 ? `(−₱${discount.toFixed(2)} ${promoLabel}) ` : "") +
       `${input.method === "cash" ? "cash" : "GCash"}` +
       `${input.toKitchen ? ", sent to the kitchen" : ", handed over"}`,
     actor: staffId,
@@ -382,5 +466,16 @@ async function ringUp(input: SaleInput): Promise<CounterResult> {
   revalidatePath("/admin/orders");
   revalidatePath("/admin/counter");
 
-  return { error: null, orderId: order.id, total: subtotal, ticket };
+  /* The total the till gets back is the one the customer PAYS. It used to
+     be the subtotal, which was the same number until a discount could exist
+     — and the moment one could, the receipt and the change would both have
+     been worked out from a figure nobody was charged. */
+  return {
+    error: null,
+    orderId: order.id,
+    total: Math.max(0, subtotal - discount),
+    discount,
+    promoLabel,
+    ticket,
+  };
 }

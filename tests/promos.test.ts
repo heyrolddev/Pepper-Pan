@@ -5,6 +5,7 @@ import {
   basketTotal,
   checkPromo,
   discountFor,
+  estimateDiscount,
   normalizeCode,
   type BasketLine,
   type Promo,
@@ -222,4 +223,51 @@ test("a counter discount with no code still applies and is labelled", () => {
 test("a negative or zero quantity cannot inflate the basket", () => {
   assert.equal(basketTotal([{ mealId: "m", qty: -5, unitPrice: 100 }]), 0);
   assert.equal(basketTotal([{ mealId: "m", qty: 0, unitPrice: 100 }]), 0);
+});
+
+/* ── the till's estimate ─────────────────────────────────────────────
+ *
+ * Named an estimate because it is one: it skips every rule that needs the
+ * database — how many times a code has been claimed, whether this customer
+ * already used it — and the server runs `checkPromo` again and refuses. The
+ * chip on screen is a guess for the customer standing there; the recorded
+ * figure is always the server's.
+ */
+
+test("the estimate agrees with the server on the arithmetic", () => {
+  for (const p of [
+    promo({ value: 10 }),
+    promo({ kind: "amount", value: 50 }),
+    promo({ value: 50, maxDiscount: 100 }),
+    promo({ kind: "amount", value: 20, scope: "meal", mealId: "m-tea" }),
+  ]) {
+    assert.equal(
+      estimateDiscount(p, BASKET),
+      ok(checkPromo(p, BASKET, FINE)).discount,
+      `${p.kind} ${p.value} disagreed with the server`
+    );
+  }
+});
+
+test("the estimate shows nothing for a promo that cannot apply", () => {
+  // The till then says so in words beside the chip, rather than showing a
+  // discount the server is about to refuse.
+  assert.equal(estimateDiscount(promo({ isActive: false }), BASKET), 0);
+  assert.equal(estimateDiscount(promo({ minSpend: 9999 }), BASKET), 0);
+  assert.equal(
+    estimateDiscount(promo({ scope: "meal", mealId: "not-ordered" }), BASKET),
+    0
+  );
+});
+
+test("the estimate cannot see usage, which is why the server checks again", () => {
+  // A code with every use claimed still estimates a discount — the till has
+  // no way to know, and pretending otherwise would mean shipping the count
+  // to the browser. `recordWalkInSale` refuses it.
+  const spent = promo({ maxUses: 1 });
+  assert.ok(estimateDiscount(spent, BASKET) > 0);
+  assert.equal(
+    why(checkPromo(spent, BASKET, { ...FINE, usage: { total: 1, byCustomer: 0 } })),
+    "used-up"
+  );
 });

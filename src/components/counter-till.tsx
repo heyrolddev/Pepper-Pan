@@ -16,6 +16,7 @@ import {
   whySentence,
   type WhyLine,
 } from "@/lib/stock-why";
+import { estimateDiscount, type Promo } from "@/lib/promos";
 import { orderNutrition } from "@/lib/order-nutrition";
 import type { Nutrition } from "@/lib/nutrition";
 import { peso } from "@/lib/peso";
@@ -116,6 +117,7 @@ export function CounterTill({
   known = [],
   nutritionByMeal = {},
   showNutrition = false,
+  promos = [],
 }: {
   meals: CounterMeal[];
   loadError: string | null;
@@ -134,6 +136,15 @@ export function CounterTill({
   nutritionByMeal?: Record<string, Nutrition>;
   /** The owner's switch. Off keeps calories off the paper as well. */
   showNutrition?: boolean;
+  /**
+   * The discounts the cashier may apply, as the OWNER defined them.
+   *
+   * A list, never a box to type an amount into: a till that takes a number
+   * off whoever is standing at it is a till that leaks money. Only the ones
+   * marked usable at the counter, and only while they are running — the
+   * server checks all of it again anyway.
+   */
+  promos?: Promo[];
 }) {
   const [ticket, setTicket] = useState<Ticket>({});
   /** The dish whose add-ons are being picked. Null when nothing is open. */
@@ -245,7 +256,29 @@ export function CounterTill({
 
   const unitOf = (l: { meal: CounterMeal; extras: ChosenExtra[] }) =>
     l.meal.price + extrasTotal(l.extras);
-  const total = lines.reduce((s, l) => s + unitOf(l) * l.qty, 0);
+  const full = lines.reduce((s, l) => s + unitOf(l) * l.qty, 0);
+  /**
+   * The discount the cashier picked, by id — never a typed amount.
+   *
+   * A till that takes a number off the browser is a till any staff member
+   * can type ₱500 into. They pick from the list the OWNER defined, and the
+   * server works out what it is worth from the same rules the checkout uses
+   * for a code. What is shown here is an estimate for the customer standing
+   * there; the recorded figure is the server's.
+   */
+  const [promoId, setPromoId] = useState<string | null>(null);
+  const picked = promos.find((p) => p.id === promoId) ?? null;
+  const discount = picked
+    ? estimateDiscount(
+        picked,
+        lines.map((l) => ({
+          mealId: l.meal.id,
+          qty: l.qty,
+          unitPrice: unitOf(l),
+        }))
+      )
+    : 0;
+  const total = Math.max(0, full - discount);
   const count = lines.reduce((s, l) => s + l.qty, 0);
 
   /** How many of this dish are on the ticket, across every way of having it. */
@@ -293,6 +326,10 @@ export function CounterTill({
     setNoName(false);
     setReference("");
     setTendered("");
+    /* Cleared with the rest. A discount left lit between customers is the
+       next person getting a senior rate they did not ask for, which is the
+       kind of mistake nobody notices until the day's takings are short. */
+    setPromoId(null);
     setError(null);
     setReview(null);
   };
@@ -403,6 +440,10 @@ export function CounterTill({
       at: new Date(),
       lines: receiptLines(),
       total,
+      // The till's own estimate, for the check-this-order preview. The
+      // paper below uses the server's.
+      discount,
+      promoLabel: picked?.label ?? null,
       dineIn,
       method,
       tendered: method === "cash" ? paid : null,
@@ -451,6 +492,7 @@ export function CounterTill({
         method,
         reference,
         toKitchen,
+        promoId,
         dineIn,
         note,
         customerName: customer,
@@ -477,7 +519,12 @@ export function CounterTill({
         ref: ticketOf(result.ticket),
         at: new Date(),
         lines: soldLines,
+        // The SERVER's figures, not the till's estimate. The chip on screen
+        // is a guess for the customer standing there; this is the paper,
+        // and it has to agree with the drawer.
         total: result.total,
+        discount: result.discount,
+        promoLabel: result.promoLabel,
         dineIn: wasDineIn,
         method: wasMethod,
         tendered: wasMethod === "cash" && wasTendered > 0 ? wasTendered : null,
@@ -945,6 +992,64 @@ export function CounterTill({
                   {peso(total, 0)}
                 </span>
               </div>
+
+              {/* ── discount ──────────────────────────────────────────────
+                  A list, never a box to type a number into. A till that
+                  takes an amount off whoever is standing at it is a till
+                  that leaks money — so the cashier picks from what the
+                  owner defined, and the server prices it.
+
+                  Only shown when there is something to pick and something
+                  in the basket: a control with nothing behind it is a
+                  control somebody taps at during a rush to find out. */}
+              {promos.length > 0 && lines.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-ink-800/40">
+                    Discount
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {promos.map((p) => {
+                      const on = promoId === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setPromoId(on ? null : p.id)}
+                          className={`min-h-10 rounded-xl px-3 py-2 text-xs font-black transition-colors ${
+                            on
+                              ? "bg-brand-600 text-cream-50"
+                              : "bg-ink-950/[0.06] text-ink-950 hover:bg-ink-950/15"
+                          }`}
+                        >
+                          {p.label}
+                          <span className="ml-1.5 opacity-70">
+                            {p.kind === "percent"
+                              ? `${p.value}%`
+                              : peso(p.value, 0)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {discount > 0 && (
+                    <p className="mt-2 flex items-baseline justify-between text-sm font-bold text-brand-600">
+                      <span>{picked?.label}</span>
+                      <span className="tabular-nums">
+                        −{peso(discount, 0)} · was {peso(full, 0)}
+                      </span>
+                    </p>
+                  )}
+                  {/* Said out loud, because the chip stays lit either way
+                      and a cashier who thinks a discount applied when it
+                      did not will argue with a customer about it. */}
+                  {picked && discount <= 0 && (
+                    <p className="mt-2 text-xs font-bold text-ink-800/55">
+                      {picked.label} does not apply to this order.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Where the food is going, asked before how it's paid for —
                   because this is the answer the person at the counter has
