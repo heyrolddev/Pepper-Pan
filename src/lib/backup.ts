@@ -77,6 +77,12 @@ const TABLES = [
   // What was added to each line, at the price it was added for. Without it a
   // restored order is missing the extra rice it was charged for.
   "order_line_extras",
+  // The discounts, and every use of one. The promos are shop configuration
+  // that took real thought to set up; the redemptions are what says a code
+  // has been claimed, and losing them would hand every "one each" code back
+  // out to customers who already used it.
+  "promos",
+  "promo_redemptions",
   "purchase_log",
   "consumption_log",
   "waste_log",
