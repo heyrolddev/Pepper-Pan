@@ -966,6 +966,7 @@ export function MoneyView({
             monthlyRate={money.monthlyRunningRate}
             windowDays={money.windowDays}
             tanks={money.tanks}
+            supplies={money.supplies}
             suppliers={suppliers}
             openPots={openPots.length > 0 ? openPots : ["cash"]}
           />

@@ -2343,3 +2343,136 @@ begin
   end if;
   raise notice 'the promo went with the dish';
 end $$;
+
+
+\echo '=== 0065 the day it ran out ==='
+-- The figure this protects is a reorder warning the shop will act on. An
+-- average three times too long does not look wrong on a screen — it looks
+-- like a number — and the shop finds out when the gas dies mid-service.
+select act_as_service();
+reset role;
+delete from running_costs;
+
+\echo '--- a purchase still in use records no end date, and that is a state ---'
+do $$
+declare open_rows int;
+begin
+  insert into running_costs (id, label, kind, amount, qty, spent_on)
+    values ('aaaa0001-0000-4000-8000-000000000001', 'Dishwashing liquid', 'supplies', 120, 1, date '2026-01-01');
+  select count(*) into open_rows from running_costs where ran_out_on is null;
+  if open_rows <> 1 then
+    raise exception 'FAIL: expected one open purchase, found %', open_rows;
+  end if;
+  raise notice 'null ran_out_on means still going, not missing';
+end $$;
+
+\echo '--- qty defaults to one, which is what every older row meant ---'
+do $$
+declare q numeric;
+begin
+  insert into running_costs (id, label, kind, amount, spent_on)
+    values ('aaaa0001-0000-4000-8000-000000000002', 'Tissue', 'supplies', 90, date '2026-01-01');
+  select qty into q from running_costs where id = 'aaaa0001-0000-4000-8000-000000000002';
+  if q is distinct from 1 then
+    raise exception 'FAIL: a row with no qty came back as % — every old lifespan would divide by it', q;
+  end if;
+  raise notice 'qty defaults to 1';
+end $$;
+
+\echo '--- running out before it was bought is a typo, every time ---'
+do $$
+begin
+  begin
+    update running_costs set ran_out_on = date '2025-12-01' where id = 'aaaa0001-0000-4000-8000-000000000001';
+    raise exception 'FAIL: a bottle ran out a month before it was bought';
+  exception when check_violation then
+    raise notice 'an end date before the purchase is refused';
+  end;
+end $$;
+
+\echo '--- but bought and finished the same day is real, and allowed ---'
+do $$
+begin
+  -- Refusing it would make the shop lie about the date to get the row saved,
+  -- and a lied-about date is worse than a short one.
+  insert into running_costs (id, label, kind, amount, spent_on, ran_out_on)
+    values ('aaaa0001-0000-4000-8000-000000000003', 'Charcoal', 'supplies', 60, date '2026-01-05', date '2026-01-05');
+  raise notice 'a same-day life is accepted';
+end $$;
+
+\echo '--- a quantity of zero would divide every lifespan by nothing ---'
+do $$
+begin
+  begin
+    insert into running_costs (id, label, kind, amount, qty, spent_on)
+      values ('aaaa0001-0000-4000-8000-000000000004', 'Nothing', 'supplies', 10, 0, shop_date());
+    raise exception 'FAIL: a purchase of zero things was accepted';
+  exception when check_violation then
+    raise notice 'qty must be positive';
+  end;
+end $$;
+
+\echo '--- the end date lands, and the maths it feeds is right ---'
+do $$
+declare each_lasts numeric;
+begin
+  -- Three tanks bought together, gone in ninety days. That is thirty days a
+  -- tank. The whole reason `qty` exists: without the division the shop is
+  -- told a tank lasts three months and reorders two tanks too late.
+  insert into running_costs (id, label, kind, amount, qty, size_label, spent_on, ran_out_on)
+    values ('aaaa0001-0000-4000-8000-000000000005', 'Gas refill', 'gas', 3600, 3, '11kg',
+            date '2026-01-01', date '2026-04-01');
+  select (ran_out_on - spent_on) / qty into each_lasts
+    from running_costs where id = 'aaaa0001-0000-4000-8000-000000000005';
+  if each_lasts is distinct from 30 then
+    raise exception 'FAIL: three tanks over 90 days came out at % days each', each_lasts;
+  end if;
+  raise notice 'three tanks over ninety days is thirty days each';
+end $$;
+
+\echo '--- the shift may record a spend but not rewrite what it cost ---'
+do $$
+declare still numeric;
+begin
+  -- Unchanged by 0065, and worth pinning precisely because the new columns
+  -- sit on a table the shift can insert into: the boundary is still that
+  -- only a manager edits a row that already exists.
+  --
+  -- Asserted on the VALUE, not on an exception, because RLS does not refuse
+  -- an UPDATE the way it refuses an INSERT — it filters the rows out, and
+  -- the statement then reports success having changed nothing. A check
+  -- written to expect an error would pass on a database that let the write
+  -- through, which is the wrong way round.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+  update running_costs set amount = 1, ran_out_on = null
+    where id = 'aaaa0001-0000-4000-8000-000000000005';
+  reset role;
+
+  select amount into still from running_costs
+    where id = 'aaaa0001-0000-4000-8000-000000000005';
+  if still is distinct from 3600 then
+    raise exception 'FAIL: staff rewrote a refill from 3600 to %', still;
+  end if;
+  raise notice 'staff add spends, a manager edits them';
+end $$;
+
+\echo '--- and a manager may, because somebody has to fix a typo ---'
+do $$
+declare ended date;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+  update running_costs set ran_out_on = date '2026-04-02'
+    where id = 'aaaa0001-0000-4000-8000-000000000005';
+  reset role;
+
+  select ran_out_on into ended from running_costs
+    where id = 'aaaa0001-0000-4000-8000-000000000005';
+  if ended is distinct from date '2026-04-02' then
+    raise exception 'FAIL: the owner could not record the day it ran out — got %', ended;
+  end if;
+  raise notice 'the owner records the end date';
+end $$;

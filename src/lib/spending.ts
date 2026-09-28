@@ -68,7 +68,21 @@ export type RunningCost = {
   amount: number;
   /** "22kg", "11kg" — gas only. */
   sizeLabel: string | null;
+  /**
+   * How many of the thing this one purchase covered.
+   *
+   * Three tanks bought together are one row and three lifespans. Every row
+   * written before 0065 means 1, which is the column default.
+   */
+  qty: number;
   spentOn: string;
+  /**
+   * The day the last of it was used up, filled in afterwards.
+   *
+   * Null means it is still going — a real state, and the one a reorder
+   * warning is about. See `lib/supply-life.ts` for what is built on it.
+   */
+  ranOutOn: string | null;
   supplierName: string | null;
   note: string | null;
   /**

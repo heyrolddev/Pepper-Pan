@@ -220,7 +220,28 @@ export const TOPICS: GuideTopic[] = [
       "From the dates, not from a stock level.\n\n" +
       "Gas looked like an obvious ingredient: it has a quantity, it runs out, and running out stops the shop. But an ingredient earns its place by being consumed in a MEASURED amount per dish, and nobody can weigh the gas that went into one bowl. Making it one would have put a guess inside every COGS figure downstream, to buy a stock level nobody could keep accurate anyway.\n\n" +
       "So instead: record each refill with its size — 22kg, 11kg — and what it cost. The gap between refills of the same size IS the usage. Two of a size and there is an estimate; from there it sharpens on its own, and a busy month shortens it without anybody adjusting a setting.\n\n" +
-      "That also handles the two things that made this awkward. The price moves between refills, which is fine, because every purchase carries its own amount. And a tank does not last a fixed number of days — which is the whole point of measuring it this way.",
+      "That also handles the two things that made this awkward. The price moves between refills, which is fine, because every purchase carries its own amount. And a tank does not last a fixed number of days — which is the whole point of measuring it this way.\n\n" +
+      "Better still, tap \u201cNaubos na?\u201d on the refill the day the tank actually dies. That is a measurement rather than a guess from the gaps, and it is the only one that survives buying a spare in advance or two tanks at once.",
+  },
+  {
+    id: "how-long-things-last",
+    group: "Money",
+    question: "How long does a tank / a bottle / a pack of tissue last us?",
+    triggers: [
+      "how long", "gaano katagal", "naubos", "ran out", "runs out", "ubos na",
+      "average consumption", "lasts", "tagal", "kailan mauubos", "reorder",
+      "when to buy", "kailan bibili", "consumption", "tissue", "sabon",
+      "dishwashing", "lpg", "cleaning", "receipt roll", "gamit",
+    ],
+    numbers: "running_costs",
+    where: { href: "/admin/money", label: "Costs & cash" },
+    answer:
+      "Record it when you buy it, then come back and say when it ran out. That is the whole thing.\n\n" +
+      "Gamit at gastos \u2192 Record a spend, with the date you bought it and how many you got. Later, when the last of it is gone, tap \u201cNaubos na?\u201d on that row and pick the day. From then on \u201cHow long things last\u201d tells you what one of them lasts you, how far into the open one you are, and when to buy the next.\n\n" +
+      "WHY NOT JUST GUESS FROM HOW OFTEN YOU BUY IT. Because that only works for something replaced the day it dies. Buy three tanks at once and two of them look like they lasted no time at all. Buy a spare early and every estimate afterwards comes out short. And a gap cannot tell \u201cstill using it\u201d from \u201cran out three weeks ago and nobody has bought more\u201d \u2014 which is the one worth a warning.\n\n" +
+      "SAY HOW MANY. Three tanks bought together is one row and three lifespans. If the count says 1 the average comes out three times too long, and the reminder to buy fires two tanks too late.\n\n" +
+      "TYPE THE NAME THE SAME WAY. \u201cTissue\u201d and \u201ctissue \u201d are treated as one item; \u201cTissue 2ply\u201d is a different one. If a thing shows up twice in the list with one purchase each, that is the two spellings \u2014 not two items.\n\n" +
+      "It also gives you cost per day, which is the figure that makes two sizes comparable: a 22kg at \u20b11,300 lasting 26 days is cheaper per day than an 11kg at \u20b1750 lasting 12, and nothing says so until the division is done.",
   },
   {
     id: "marketing-calc",
