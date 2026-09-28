@@ -15,6 +15,7 @@ import {
 } from "@/lib/payments";
 import { notifyNewOrder } from "@/lib/notify";
 import { cartQuantityProblem } from "@/lib/orders";
+import { recordRedemption, resolvePromo } from "@/lib/promos-server";
 import { recordOrderCost, loadAvailability } from "@/lib/costing-server";
 import { loadModifiers } from "@/lib/modifiers-server";
 import { groupsFor, resolveChoice, type ChosenExtra } from "@/lib/modifiers";
@@ -57,6 +58,15 @@ type PlaceOrderInput = {
   // Server Actions can carry a File directly, so the screenshot travels with
   // the rest of the order rather than needing a second round trip.
   paymentReceipt?: File | null;
+  /**
+   * The code the customer typed, exactly as typed.
+   *
+   * A string and nothing else. What it is worth, whether it is live, how
+   * many times it has been claimed and whether this customer already used
+   * it are all decided here — see `resolvePromo`. The browser is not told
+   * any of it and could not be trusted with it if it were.
+   */
+  promoCode?: string | null;
 };
 
 /** A phone we could actually ring: PH mobile/landline digits, lenient on format. */
@@ -207,6 +217,36 @@ export async function placeOrder(
     0
   );
 
+  /* --- The promo code -----------------------------------------------------
+     Decided from the prices this function has already looked up, never from
+     anything the browser said a thing costs. The phone sends a string;
+     every other fact about it is the shop's own.
+
+     Refused loudly rather than dropped: a customer who typed a code and
+     watched it silently vanish assumes the shop cheated them, and the
+     message names which of the six reasons it was. */
+  let discount = 0;
+  let promoId: string | null = null;
+  let promoLabel: string | null = null;
+  if (input.promoCode?.trim()) {
+    const result = await resolvePromo({
+      code: input.promoCode,
+      lines: input.items.map((i) => ({
+        mealId: i.mealId,
+        qty: i.qty,
+        unitPrice:
+          priceById.get(i.mealId)! +
+          extrasOfItem(i).reduce((n, e) => n + e.price * e.qty, 0),
+      })),
+      where: "online",
+      customerId: user.id,
+    });
+    if (!result.ok) return { error: result.refusal.message };
+    discount = result.discount;
+    promoId = result.promo.id;
+    promoLabel = result.label;
+  }
+
   // --- Delivery ----------------------------------------------------------
   // The fee is recomputed here from the shop's own settings. Whatever the
   // browser thought the fee was is discarded.
@@ -308,7 +348,12 @@ export async function placeOrder(
     return { error: "Part payment isn't available right now — please pay in full." };
   }
   const plan: PaymentPlan = wantsDownpayment ? "downpayment" : "full";
-  const orderTotal = subtotal + deliveryFee;
+  /* The discount comes off the food, then the fee is added.
+
+     Not off the fee: a rider is paid the same whatever coupon the customer
+     had, and a promo that quietly ate the delivery fee would be the shop
+     paying for its marketing out of somebody else's petrol. */
+  const orderTotal = Math.max(0, subtotal - discount) + deliveryFee;
   const downpaymentAmount =
     plan === "downpayment"
       ? amountDueNow(orderTotal, "downpayment", Number(paymentSettings.downpayment_percent))
@@ -423,8 +468,13 @@ export async function placeOrder(
       contact_name: input.contactName.trim(),
       contact_phone: input.contactPhone.trim(),
       notes: input.notes.trim() || null,
-      // `revenue` stays the food subtotal; the fee is its own column.
-      revenue: subtotal,
+      /* `revenue` is the food subtotal with the fee in its own column — and
+         NET of the discount, because that is what the drawer actually took.
+         The discount sits beside it so the shop can see what the promos
+         cost without the takings being overstated to make them visible. */
+      revenue: Math.max(0, subtotal - discount),
+      discount,
+      promo_code: promoLabel,
       delivery_address: address,
       delivery_lat: lat,
       delivery_lng: lng,
@@ -506,6 +556,22 @@ export async function placeOrder(
         };
       }
     }
+  }
+
+  /* The promo is spent, now that there is an order to spend it on.
+
+     After the insert, never before: a redemption pointing at an order that
+     was never written is a use the customer is charged for and got nothing
+     from. The unique index on `order_id` makes a double-write impossible
+     rather than unlikely, and the row cascades with the order — so
+     cancelling and deleting frees the use back up on its own. */
+  if (promoId) {
+    await recordRedemption({
+      promoId,
+      orderId: order.id,
+      customerId: user.id,
+      amount: discount,
+    });
   }
 
   // What the order cost to make, priced now. Awaited before the notification

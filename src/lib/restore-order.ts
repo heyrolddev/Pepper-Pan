@@ -60,6 +60,10 @@ export const RESTORE_ORDER = [
   "order_lines",
   // After both its parents: the line it hangs off, and the option it names.
   "order_line_extras",
+  // Promos before their redemptions, and both after `orders` and `meals` —
+  // a redemption points at an order, and a dish promo at a meal.
+  "promos",
+  "promo_redemptions",
   "purchase_log",
   "consumption_log",
   "waste_log",

@@ -71,6 +71,16 @@ export type Receipt = {
   at: Date;
   lines: ReceiptLine[];
   total: number;
+  /**
+   * What a discount took off, and what it was called.
+   *
+   * On the paper because a receipt that shows ₱497 over ₱397 handed across
+   * is a receipt the customer queries — and because the discount is the one
+   * line they will want to check twice. Zero means there was none, and then
+   * nothing prints.
+   */
+  discount?: number;
+  promoLabel?: string | null;
   /** Dine-in pays no packaging, and the receipt should say which it was. */
   dineIn: boolean;
   method: "cash" | "gcash" | "bank";
@@ -272,6 +282,20 @@ export function renderReceipt(r: Receipt, width: RollWidth = "narrow"): ReceiptR
   }
 
   out.push(left(rule(cols, "=")));
+
+  /* The discount, above the total it produced.
+
+     Written as the subtotal, then what came off, then what is owed — the
+     order somebody checks it in. A receipt that shows only the final figure
+     is one a customer has to take on faith, and the whole reason a shop
+     hands one over is so they do not have to. */
+  const off = Math.max(0, Number(r.discount) || 0);
+  if (off > 0) {
+    out.push(left(row("Subtotal", amount(r.total + off), cols)));
+    out.push(
+      left(row(r.promoLabel ? `Less ${r.promoLabel}` : "Discount", `-${amount(off)}`, cols))
+    );
+  }
   out.push(left(row("TOTAL (PHP)", amount(r.total), cols)));
 
   /* ── what's in it ──────────────────────────────────────────────────

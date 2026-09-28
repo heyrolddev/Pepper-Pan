@@ -359,3 +359,57 @@ test("zero quantities are not counted into the order total", () => {
   };
   assert.match(textOf(zero), /Whole order\s+742 kcal/);
 });
+
+/* ------------------------------------------------------------------
+ * A discount on the paper
+ *
+ * A receipt showing ₱497 over ₱397 handed across is a receipt the customer
+ * queries — and the discount is the one line they will want to check twice.
+ * ------------------------------------------------------------------ */
+
+const discounted: Receipt = {
+  ...sale,
+  total: 397,
+  discount: 100,
+  promoLabel: "SULIT50",
+};
+
+test("the discount is written as subtotal, less, total — the order it is checked in", () => {
+  const text = textOf(discounted);
+  assert.match(text, /^Subtotal\s+497\.00$/m);
+  assert.match(text, /^Less SULIT50\s+-100\.00$/m);
+  assert.match(text, /^TOTAL \(PHP\)\s+397\.00$/m);
+  // In that order, above the total it produced.
+  assert.ok(text.indexOf("Subtotal") < text.indexOf("Less SULIT50"));
+  assert.ok(text.indexOf("Less SULIT50") < text.indexOf("TOTAL (PHP)"));
+});
+
+test("a counter discount with no code is still named", () => {
+  const text = textOf({ ...discounted, promoLabel: "Senior discount" });
+  assert.match(text, /Less Senior discount\s+-100\.00/);
+});
+
+test("no discount prints no lines about one", () => {
+  const text = textOf(sale);
+  assert.doesNotMatch(text, /Subtotal|Less |Discount/);
+  assert.match(text, /^TOTAL \(PHP\)\s+233\.00$/m);
+});
+
+test("a zero discount is the same as none", () => {
+  const text = textOf({ ...sale, discount: 0, promoLabel: null });
+  assert.doesNotMatch(text, /Subtotal|Less /);
+});
+
+test("a discount line still fits the paper", () => {
+  for (const width of ["narrow", "wide"] as const) {
+    for (const row of renderReceipt(
+      { ...discounted, promoLabel: "A very long promotion name indeed" },
+      width
+    )) {
+      assert.ok(
+        row.text.length <= COLUMNS[width],
+        `"${row.text}" is ${row.text.length} chars on ${width} paper`
+      );
+    }
+  }
+});
