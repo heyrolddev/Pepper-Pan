@@ -250,6 +250,12 @@ Said plainly, so nobody discovers it at the wrong moment:
   negative and the shop is told; it is not prevented.
 - **Deleting a dish cannot be undone.** Marking it unavailable does everything
   you usually want.
+- **A website cannot turn your phone from a browser tab.** That is a browser
+  rule, not a setting we can change. **My account → Screen layout →
+  Landscape** always gives you the wide layout, and it turns the screen too
+  once Pepper Pan is added to your home screen — on Android. On an iPhone no
+  website can ever turn the screen; turn it by hand and the page fits itself
+  to it. The setting says which of these you are getting instead of guessing.
 
 ---
 

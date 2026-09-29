@@ -14,6 +14,7 @@ import { AskWidget } from "@/components/ask-widget";
 import { getChatSettings } from "@/lib/chat-settings";
 import { SHOP, siteUrl } from "@/lib/site";
 import { ShopChrome } from "@/components/shop-chrome";
+import { ScreenLock } from "@/components/screen-lock";
 
 // Warm display serif — reads artisanal and appetising rather than corporate.
 const fraunces = Fraunces({
@@ -201,6 +202,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               data-intro attribute the head script sets; unmounting it while
               the intro is still running would strand the scroll lock. */}
           <Preloader />
+          {/* Re-applies the saved Screen layout choice to the DEVICE on every
+              launch. The boot script in <head> restores the layout half of
+              that choice before first paint; this is the half that has to
+              wait for the page to be alive. */}
+          <ScreenLock />
           <DesktopCursor />
           <ScrollProgress />
 

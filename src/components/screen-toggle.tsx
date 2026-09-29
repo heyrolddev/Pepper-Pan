@@ -5,18 +5,24 @@ import {
   SCREEN_ATTR,
   SCREEN_KEY,
   applyOrientationLock,
-  isInstalled,
   readScreenMode,
+  type LockResult,
   type ScreenMode,
 } from "@/lib/screen";
 
 /**
  * Portrait or landscape, chosen rather than held.
  *
- * Deliberately honest about what it can deliver. In the installed app it
- * rotates the phone; in a browser tab it cannot, and says so rather than
- * quietly doing half the job — but the wide layout applies either way, which
+ * Deliberately honest about what it can deliver — and it now finds out what
+ * that is by asking, instead of inferring it. `display-mode: standalone`
+ * says the app is ALLOWED to turn the screen, not that it did; the note
+ * under the buttons is written from the answer `screen.orientation.lock()`
+ * actually gave. The wide layout applies in every one of those cases, which
  * is what makes the setting worth having on a tablet propped on the counter.
+ *
+ * Taking the lock on each LAUNCH is not this component's job — it lives on
+ * My account, and the app has to be sideways from the moment it opens. See
+ * <ScreenLock> in the root layout.
  */
 export function ScreenToggle({
   /** Why this shop's people would want it — the counter tablet in HQ, a
@@ -26,18 +32,31 @@ export function ScreenToggle({
   hint?: string;
 } = {}) {
   const [mode, setMode] = useState<ScreenMode>("auto");
-  const [canRotate, setCanRotate] = useState(false);
+  const [lock, setLock] = useState<LockResult | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // localStorage and display-mode are browser-only, so the real state can
-    // only be known after mount. Until then the control renders its default,
-    // which is what the server rendered too.
+    // localStorage is browser-only, so the real state can only be known after
+    // mount. Until then the control renders its default, which is what the
+    // server rendered too.
     /* eslint-disable react-hooks/set-state-in-effect */
-    setMode(readScreenMode());
-    setCanRotate(isInstalled());
+    const stored = readScreenMode();
+    setMode(stored);
     setReady(true);
     /* eslint-enable react-hooks/set-state-in-effect */
+
+    // Ask the device what it will actually do, rather than inferring it from
+    // `display-mode: standalone`. An installed app is ALLOWED to rotate; it
+    // is not guaranteed to, and this control's whole job is to not overclaim.
+    // Harmless to run: for "wide" the app is already locked by <ScreenLock>,
+    // and for "auto" this is the unlock that was going to happen anyway.
+    let live = true;
+    void applyOrientationLock(stored).then((result) => {
+      if (live) setLock(result);
+    });
+    return () => {
+      live = false;
+    };
   }, []);
 
   function choose(next: ScreenMode) {
@@ -49,7 +68,7 @@ export function ScreenToggle({
       // survive the next load, which is the most that can be promised.
     }
     document.documentElement.setAttribute(SCREEN_ATTR, next);
-    void applyOrientationLock(next);
+    void applyOrientationLock(next).then(setLock);
   }
 
   const options: { value: ScreenMode; label: string; hint: string }[] = [
@@ -104,13 +123,20 @@ export function ScreenToggle({
         })}
       </div>
 
-      {/* Rendered only once the check has run, so a browser tab never flashes
-          the claim that it can rotate the screen. */}
-      {ready && (
+      {/* Rendered only once the device has actually answered, so a browser
+          tab never flashes the claim that it can rotate the screen — and an
+          installed app never claims it either until the lock has been taken.
+          The wide LAYOUT is applied in every one of these cases; the sentence
+          is only ever about the screen turning. */}
+      {ready && lock !== null && (
         <p className="mt-3 text-xs leading-relaxed text-ink-800/60">
-          {canRotate
-            ? "Installed on your home screen, so Landscape turns the screen itself."
-            : "In a browser tab the phone can't be turned by a website — this changes the layout only. Add Pepper Pan to your home screen and it will rotate too."}
+          {lock === "locked"
+            ? "Held sideways. The screen will stay this way, and will be put back each time you open the app."
+            : lock === "unlocked"
+              ? "The screen follows however you hold the phone."
+              : lock === "refused"
+                ? "The layout is wide, but this browser won't let a website turn the screen. Add Pepper Pan to your home screen and it will rotate too."
+                : "The layout is wide. This phone doesn't let any website turn the screen — iPhones never do — so turn it by hand and the page will fit itself to it."}
         </p>
       )}
     </div>
