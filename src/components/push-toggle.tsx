@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+/** Safari only allows notifications once the site lives on the home screen —
+ *  the same "is this the installed app" question the screen setting asks. */
+import { isInstalled } from "@/lib/screen";
 import {
   savePushSubscription,
   removePushSubscription,
@@ -59,14 +62,6 @@ function describeDevice(): string {
 
 function isApple(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent);
-}
-
-/** Safari only allows notifications once the site lives on the home screen. */
-function isInstalled(): boolean {
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
 }
 
 type State =

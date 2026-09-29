@@ -72,22 +72,53 @@ type Lockable = ScreenOrientation & {
 };
 
 /**
- * Ask the device to rotate, and shrug when it says no.
+ * What actually happened when we asked.
+ *
+ * This used to be a `void` that swallowed every rejection, and the setting
+ * told the visitor "Installed on your home screen, so Landscape turns the
+ * screen itself" on the strength of `display-mode: standalone` alone —
+ * a claim about a call whose answer nobody had looked at. A control whose
+ * own note promises to be honest about what it can deliver has to read the
+ * receipt before it says the delivery arrived.
+ */
+export type LockResult =
+  /** The screen is now held sideways. */
+  | "locked"
+  /** Any earlier lock has been released; the phone follows how it is held. */
+  | "unlocked"
+  /** Asked and refused — a browser tab, or an OS that would not. */
+  | "refused"
+  /** No `screen.orientation.lock` here at all. Every iPhone, and desktops. */
+  | "unsupported";
+
+/**
+ * Ask the device to rotate, and report back.
  *
  * Every failure here is expected and harmless: a browser tab refuses, an
  * iPhone has no `lock` at all, a desktop has nothing to rotate. The layout
- * has already been applied by then, so there is nothing to undo and nothing
- * worth telling the visitor about.
+ * has already been applied by then, so there is nothing to undo — but there
+ * IS something to say, which is why this returns instead of shrugging.
  */
-export async function applyOrientationLock(mode: ScreenMode): Promise<void> {
-  if (typeof window === "undefined") return;
+export async function applyOrientationLock(mode: ScreenMode): Promise<LockResult> {
+  if (typeof window === "undefined") return "unsupported";
   const orientation = window.screen?.orientation as Lockable | undefined;
-  if (!orientation) return;
+  if (!orientation) return "unsupported";
 
+  if (mode !== "wide") {
+    try {
+      orientation.unlock?.();
+    } catch {
+      // Nothing was locked, or this browser will not say. Either way the
+      // visitor asked for "follows how you hold it", which is the default.
+    }
+    return "unlocked";
+  }
+
+  if (typeof orientation.lock !== "function") return "unsupported";
   try {
-    if (mode === "wide") await orientation.lock?.("landscape");
-    else orientation.unlock?.();
+    await orientation.lock("landscape");
+    return "locked";
   } catch {
-    // Not permitted here. The CSS side of the setting is already doing its job.
+    return "refused";
   }
 }
