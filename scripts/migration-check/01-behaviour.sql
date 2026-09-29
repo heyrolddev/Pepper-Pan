@@ -2911,7 +2911,7 @@ begin
   create temp table if not exists restore_pos(pos int, tbl text) on commit drop;
   delete from restore_pos;
   insert into restore_pos(pos, tbl) values
-    (0,'settings'),
+  (0,'settings'),
   (1,'shop_settings'),
   (2,'shop_hours'),
   (3,'shop_closures'),
@@ -2936,31 +2936,32 @@ begin
   (22,'meal_modifier_groups'),
   (23,'product_modifier_groups'),
   (24,'suppliers'),
-  (25,'staff_shifts'),
-  (26,'orders'),
-  (27,'order_lines'),
-  (28,'order_line_extras'),
-  (29,'promos'),
-  (30,'promo_redemptions'),
-  (31,'purchase_log'),
-  (32,'consumption_log'),
-  (33,'waste_log'),
-  (34,'cash_ledger'),
-  (35,'receivables'),
-  (36,'cycle_counts'),
-  (37,'oe_templates'),
-  (38,'fixed_costs'),
-  (39,'monthly_bills'),
-  (40,'assets'),
-  (41,'supplier_debts'),
-  (42,'running_costs'),
-  (43,'marketing_campaigns'),
-  (44,'reviews'),
-  (45,'chat_threads'),
-  (46,'chat_messages'),
-  (47,'faq_entries'),
-  (48,'activity_log'),
-  (49,'announcements');
+  (25,'supplier_prices'),
+  (26,'staff_shifts'),
+  (27,'orders'),
+  (28,'order_lines'),
+  (29,'order_line_extras'),
+  (30,'promos'),
+  (31,'promo_redemptions'),
+  (32,'purchase_log'),
+  (33,'consumption_log'),
+  (34,'waste_log'),
+  (35,'cash_ledger'),
+  (36,'receivables'),
+  (37,'cycle_counts'),
+  (38,'oe_templates'),
+  (39,'fixed_costs'),
+  (40,'monthly_bills'),
+  (41,'assets'),
+  (42,'supplier_debts'),
+  (43,'running_costs'),
+  (44,'marketing_campaigns'),
+  (45,'reviews'),
+  (46,'chat_threads'),
+  (47,'chat_messages'),
+  (48,'faq_entries'),
+  (49,'activity_log'),
+  (50,'announcements');
 
   select string_agg(format('%%s (at %%s) needs %%s (at %%s)',
                            c.relname, cp.pos, p.relname, pp.pos), ', ')
@@ -3179,4 +3180,150 @@ begin
     raise exception 'FAIL: the owner''s own session can list % Messenger sender(s) here', seen;
   end if;
   raise notice 'no policies, so no rows — even for the owner';
+end $$;
+
+
+\echo '=== 0071 what a supplier charges, before you buy ==='
+-- A price LIST, not a second price history. What was actually paid is
+-- `purchase_log`; two histories of the same thing is how they come to
+-- disagree.
+select act_as_service();
+reset role;
+
+do $$
+declare sup uuid;
+begin
+  delete from supplier_prices;
+  delete from suppliers where name in ('Q Kambal', 'Q Nena');
+  insert into suppliers (name) values ('Q Kambal') returning id into sup;
+  insert into ingredients (id, name, unit, cost, stock)
+    values ('q-chicken', 'Q Chicken', 'g', 0.25, 0)
+  on conflict (id) do update set unit = 'g', cost = 0.25;
+
+  insert into supplier_prices (supplier_id, ingredient_id, label, price, qty, unit)
+    values (sup, 'q-chicken', 'Chicken', 230, 1, 'kg');
+  raise notice 'a quote is on file';
+end $$;
+
+\echo '--- asking again replaces the number rather than adding a second ---'
+do $$
+declare n int; latest numeric;
+begin
+  -- Upserted on (supplier, label): a price list has one current answer per
+  -- thing. A second row would leave the screen to guess which is live.
+  insert into supplier_prices (supplier_id, ingredient_id, label, price, qty, unit)
+  select supplier_id, ingredient_id, label, 245, qty, unit from supplier_prices
+   where label = 'Chicken'
+  on conflict (supplier_id, label) do update set price = excluded.price;
+
+  select count(*), max(price) into n, latest
+    from supplier_prices where label = 'Chicken';
+  if n <> 1 then
+    raise exception 'FAIL: % rows for one thing from one supplier', n;
+  end if;
+  if latest is distinct from 245 then
+    raise exception 'FAIL: the new price did not take — still %', latest;
+  end if;
+  raise notice 'one row, and it holds the latest answer';
+end $$;
+
+\echo '--- two suppliers may both quote the same thing ---'
+do $$
+declare n int;
+begin
+  -- The whole point: comparing them. The uniqueness is per supplier.
+  insert into suppliers (name) values ('Q Nena');
+  insert into supplier_prices (supplier_id, ingredient_id, label, price, qty, unit)
+  select id, 'q-chicken', 'Chicken', 260, 1, 'kg' from suppliers where name = 'Q Nena';
+  select count(*) into n from supplier_prices where label = 'Chicken';
+  if n <> 2 then
+    raise exception 'FAIL: two suppliers quoting chicken came out as % row(s)', n;
+  end if;
+  raise notice 'two suppliers, two quotes, one ingredient';
+end $$;
+
+\echo '--- a price for something that is not an ingredient is fine ---'
+do $$
+begin
+  -- Half of what a supplier sells is not an ingredient — gas, bags, a
+  -- repair. Requiring the link would have no home for any of it.
+  insert into supplier_prices (supplier_id, ingredient_id, label, price, qty, unit)
+  select id, null, 'LPG 11kg', 950, 1, 'tank' from suppliers where name = 'Q Kambal';
+  raise notice 'gas has a price and no ingredient';
+end $$;
+
+\echo '--- nonsense is refused ---'
+do $$
+declare sup uuid;
+begin
+  select id into sup from suppliers where name = 'Q Kambal';
+  begin
+    insert into supplier_prices (supplier_id, label, price, qty, unit)
+      values (sup, 'Bad qty', 100, 0, 'kg');
+    raise exception 'FAIL: a price for zero of something was accepted';
+  exception when check_violation then
+    raise notice 'a quantity of zero is refused';
+  end;
+  begin
+    insert into supplier_prices (supplier_id, label, price, qty, unit)
+      values (sup, 'Bad price', -1, 1, 'kg');
+    raise exception 'FAIL: a negative price was accepted';
+  exception when check_violation then
+    raise notice 'a negative price is refused';
+  end;
+end $$;
+
+\echo '--- deleting the ingredient keeps the quote readable ---'
+do $$
+declare still text; linked text;
+begin
+  -- The label is stored rather than joined for, so a quote outlives the
+  -- ingredient it was attached to. Losing the row would lose a market trip.
+  delete from ingredients where id = 'q-chicken';
+  select label, ingredient_id into still, linked
+    from supplier_prices where label = 'Chicken' limit 1;
+  if still is distinct from 'Chicken' then
+    raise exception 'FAIL: the quote went with the ingredient';
+  end if;
+  if linked is not null then
+    raise exception 'FAIL: it still points at a deleted ingredient';
+  end if;
+  raise notice 'the quote survives, the link does not';
+end $$;
+
+\echo '--- but deleting the supplier takes their prices ---'
+do $$
+declare n int;
+begin
+  -- A price with nobody attached to it is not a price anybody can act on.
+  delete from suppliers where name = 'Q Kambal';
+  select count(*) into n from supplier_prices sp
+    left join suppliers s on s.id = sp.supplier_id where s.id is null;
+  if n <> 0 then
+    raise exception 'FAIL: % orphaned quote(s) left behind', n;
+  end if;
+  raise notice 'their prices go with them';
+end $$;
+
+\echo '--- the shift reads the list; only a manager writes it ---'
+do $$
+declare seen int; still numeric;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true);
+  select count(*) into seen from supplier_prices;
+  update supplier_prices set price = 1;
+  reset role;
+
+  if seen = 0 then
+    raise exception 'FAIL: the person doing the buying cannot see the prices';
+  end if;
+  -- RLS filters an UPDATE rather than refusing it, so the value is what
+  -- has to be checked — the same trap 0065 documents.
+  select max(price) into still from supplier_prices;
+  if still = 1 then
+    raise exception 'FAIL: the shift rewrote a supplier price';
+  end if;
+  raise notice 'staff see % price(s) and changed none of them', seen;
 end $$;

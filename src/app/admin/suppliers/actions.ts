@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { shopToday } from "@/lib/format-date";
 import { can, getViewer } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Supplier } from "@/lib/suppliers";
@@ -231,4 +232,172 @@ export async function supplierPurchases(supplierId: string): Promise<{
     others: all.filter((l) => l.supplierId !== supplierId),
     error: null,
   };
+}
+
+export type SupplierPrice = {
+  id: string;
+  supplierId: string;
+  ingredientId: string | null;
+  label: string;
+  price: number;
+  qty: number;
+  unit: string;
+  quotedOn: string;
+  note: string | null;
+  /** The ingredient's own unit and current cost, for the comparison. */
+  ingredientUnit: string | null;
+  ingredientCost: number | null;
+};
+
+/**
+ * What this supplier says they charge.
+ *
+ * Distinct from `supplierPurchases`, which is what the shop actually PAID —
+ * that only exists after the money has gone. This is the number you write
+ * down standing in the market on a Tuesday, before anything is bought and
+ * when it is most worth having.
+ *
+ * The ingredient rides along so the quote can be held against the current
+ * cost without a second round trip; `lib/supplier-quotes.ts` decides whether
+ * the two units make that comparison possible at all.
+ */
+export async function supplierPrices(supplierId: string): Promise<{
+  rows: SupplierPrice[];
+  error: string | null;
+}> {
+  const viewer = await getViewer();
+  if (!can(viewer, "stock.view")) return { rows: [], error: null };
+
+  const { data, error } = await createAdminClient()
+    .from("supplier_prices")
+    .select("id, supplier_id, ingredient_id, label, price, qty, unit, quoted_on, note, ingredients(unit, cost)")
+    .eq("supplier_id", supplierId)
+    .order("label", { ascending: true });
+
+  if (error) {
+    return {
+      rows: [],
+      error: `${error.message}. If this mentions supplier_prices, run migration 0071.`,
+    };
+  }
+
+  type Row = {
+    id: string;
+    supplier_id: string;
+    ingredient_id: string | null;
+    label: string;
+    price: number;
+    qty: number;
+    unit: string;
+    quoted_on: string;
+    note: string | null;
+    ingredients: { unit: string; cost: number } | { unit: string; cost: number }[] | null;
+  };
+
+  return {
+    rows: ((data ?? []) as Row[]).map((r) => {
+      const ing = Array.isArray(r.ingredients) ? r.ingredients[0] : r.ingredients;
+      return {
+        id: r.id,
+        supplierId: r.supplier_id,
+        ingredientId: r.ingredient_id,
+        label: r.label,
+        price: Number(r.price) || 0,
+        qty: Number(r.qty) || 1,
+        unit: r.unit,
+        quotedOn: r.quoted_on,
+        note: r.note,
+        ingredientUnit: ing?.unit ?? null,
+        ingredientCost: ing ? Number(ing.cost) : null,
+      };
+    }),
+    error: null,
+  };
+}
+
+/**
+ * Write one down, or correct it.
+ *
+ * Upserted on (supplier, label) because this is a price LIST, not a history:
+ * asking a supplier again on Friday replaces Tuesday's number rather than
+ * adding to it. What was actually paid, over time, is `purchase_log`, and
+ * keeping two histories of the same thing is how they come to disagree.
+ */
+export async function saveSupplierPrice(input: {
+  id?: string;
+  supplierId: string;
+  ingredientId: string | null;
+  label: string;
+  price: number;
+  qty: number;
+  unit: string;
+  note: string;
+}): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "stock.manage")) {
+    return { error: "Only the owner or a manager can set supplier prices." };
+  }
+
+  const label = input.label.trim();
+  if (!label) return { error: "What is the price for?" };
+  const unit = input.unit.trim();
+  if (!unit) return { error: "Priced by what — kg, L, pc?" };
+  const price = Number(input.price);
+  if (!Number.isFinite(price) || price < 0) return { error: "How much?" };
+  const qty = Number(input.qty);
+  if (!Number.isFinite(qty) || qty <= 0) return { error: "For how many?" };
+
+  const db = createAdminClient();
+  const row = {
+    supplier_id: input.supplierId,
+    ingredient_id: input.ingredientId || null,
+    label,
+    price,
+    qty,
+    unit,
+    // Asking again today makes today's date the quote's date, which is the
+    // whole reason a screen can say how old a number is.
+    quoted_on: shopToday(),
+    note: input.note.trim() || null,
+  };
+
+  const { error } = input.id
+    ? await db.from("supplier_prices").update(row).eq("id", input.id)
+    : await db
+        .from("supplier_prices")
+        .upsert(row, { onConflict: "supplier_id,label" });
+
+  if (error) {
+    return {
+      error: `${error.message}. If this mentions supplier_prices, run migration 0071.`,
+    };
+  }
+  revalidatePath("/admin/suppliers");
+  revalidatePath("/admin/inventory");
+  return { error: null };
+}
+
+export async function deleteSupplierPrice(id: string): Promise<{ error: string | null }> {
+  const viewer = await getViewer();
+  if (!can(viewer, "stock.manage")) {
+    return { error: "Only the owner or a manager can remove a price." };
+  }
+  const { error } = await createAdminClient().from("supplier_prices").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/suppliers");
+  return { error: null };
+}
+
+/** The ingredients a price can be attached to, for the picker. */
+export async function pickableIngredients(): Promise<
+  { id: string; name: string; unit: string }[]
+> {
+  const viewer = await getViewer();
+  if (!can(viewer, "stock.view")) return [];
+  const { data } = await createAdminClient()
+    .from("ingredients")
+    .select("id, name, unit")
+    .order("name", { ascending: true })
+    .limit(500);
+  return (data ?? []) as { id: string; name: string; unit: string }[];
 }
