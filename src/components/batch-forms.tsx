@@ -8,7 +8,6 @@ import {
   batchHistory,
   createBatch,
   deleteBatch,
-  ingredientHistory,
   saveBatch,
 } from "@/app/admin/inventory/actions";
 import type { Activity } from "@/lib/activity";
@@ -374,23 +373,6 @@ export function EditBatchForm({
 }
 
 /** An ingredient's own history — same dialog, same reader, different filter. */
-export function IngredientHistoryDialog({
-  row,
-  onClose,
-}: {
-  row: { id: string; name: string; stock: number; unit: string };
-  onClose: () => void;
-}) {
-  return (
-    <HistoryDialog
-      title={row.name}
-      subtitle={`${row.stock.toLocaleString("en-PH")} ${row.unit} on hand — here's how it got there.`}
-      load={() => ingredientHistory(row.id)}
-      onClose={onClose}
-    />
-  );
-}
-
 export function BatchHistoryDialog({
   batch,
   onClose,

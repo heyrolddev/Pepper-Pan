@@ -190,6 +190,36 @@ export function RestorePanel() {
             </div>
           )}
 
+          {/* What had to be repaired to get the rows in.
+          
+              Empty on a restore into the same project. Non-empty means the
+              file was put into a database that does not have the accounts
+              it refers to — and the owner has to be told which records came
+              back without their link and which are waiting on somebody
+              being re-invited. The old screen said "profiles: 40 of 62" and
+              left them to work out whether that was fine. */}
+          {result.repairs.length > 0 && (
+            <div className="mt-4 rounded-2xl bg-gold-400/20 px-4 py-3 ring-1 ring-gold-500/35">
+              <p className="text-sm font-bold text-ink-950">
+                This backup came from a different project
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-800/70">
+                A backup cannot carry sign-ins — those belong to Supabase, not
+                to the shop&apos;s own tables. So some records pointed at
+                accounts that do not exist here. The records themselves are
+                back; what they lost is the link.
+              </p>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {result.repairs.map((r) => (
+                  <li key={r.table} className="text-xs leading-relaxed text-ink-800/80">
+                    <code className="font-mono font-bold">{r.table}</code> —{" "}
+                    {r.note}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {result.skipped.length > 0 && (
             <p className="mt-4 text-xs text-ink-800/55">
               Not restored, because this version doesn&apos;t know them:{" "}

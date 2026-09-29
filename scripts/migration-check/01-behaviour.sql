@@ -1306,8 +1306,17 @@ begin
     if has_function_privilege(who, 'apply_order_stock(text)', 'execute') then
       raise exception 'FAIL: % may move stock directly after 0053 replaced the function', who;
     end if;
-    if has_function_privilege(who, 'consume_ingredient(text, numeric, date, text)', 'execute') then
-      raise exception 'FAIL: % may consume ingredients directly after 0053', who;
+    -- The five-argument signature since 0069, which gave it a note. The
+    -- four-argument one is dropped there: two overloads would make every
+    -- existing call ambiguous, and leaving a grant behind on a signature
+    -- nobody checks is how a door stays open after the wall moves.
+    if has_function_privilege(who, 'consume_ingredient(text, numeric, date, text, text)', 'execute') then
+      raise exception 'FAIL: % may consume ingredients directly', who;
+    end if;
+    if exists (select 1 from pg_proc pr join pg_namespace n on n.oid = pr.pronamespace
+                where n.nspname = 'public' and pr.proname = 'consume_ingredient'
+                  and pg_get_function_identity_arguments(pr.oid) = 'text, numeric, date, text') then
+      raise exception 'FAIL: the old four-argument consume_ingredient is still here — every call is now ambiguous';
     end if;
   end loop;
   raise notice 'replacing the functions did not hand the anon key the keys to the shelf';
@@ -2806,4 +2815,295 @@ begin
       before_rows, after_rows;
   end if;
   raise notice 'one sale, one warning';
+end $$;
+
+
+\echo '=== 0068 a sale survives its customer ==='
+-- The day this is about: the project is gone, the owner makes a new one,
+-- runs the migrations and puts the backup back. A backup cannot carry
+-- `auth.users`, so the file is full of rows pointing at accounts that exist
+-- nowhere. What happens to them is the whole question.
+select act_as_service();
+reset role;
+
+\echo '--- an order for an account that no longer exists is refused outright ---'
+do $$
+begin
+  begin
+    insert into orders (id, customer_id, revenue, status)
+      values ('gone-order', '99999999-9999-9999-9999-999999999999', 500, 'completed');
+    raise exception 'FAIL: the foreign key is gone — this check no longer tests anything';
+  exception when foreign_key_violation then
+    raise notice 'refused, which is why the restore has to repair the row first';
+  end;
+end $$;
+
+\echo '--- but without the dangling link it is still a sale ---'
+do $$
+declare rev numeric;
+begin
+  -- Exactly what `repairRows` does: drop the link, keep the money, the date,
+  -- the ticket and the lines. An order whose customer was deleted is not a
+  -- sale that did not happen.
+  insert into orders (id, customer_id, revenue, status)
+    values ('gone-order', null, 500, 'completed');
+  select revenue into rev from orders where id = 'gone-order';
+  if rev is distinct from 500 then
+    raise exception 'FAIL: the sale came back as %', rev;
+  end if;
+  raise notice 'the sale is intact, only the link is lost';
+end $$;
+
+\echo '--- the shop can ask which accounts actually exist here ---'
+do $$
+declare found int;
+begin
+  select count(*) into found from auth_users_present(array[
+    '11111111-1111-1111-1111-111111111111'::uuid,
+    '99999999-9999-9999-9999-999999999999'::uuid
+  ]);
+  if found <> 1 then
+    raise exception 'FAIL: expected exactly one of the two to exist, got %', found;
+  end if;
+  raise notice 'one of two accounts is present, which is the answer the restore needs';
+end $$;
+
+\echo '--- and it cannot be used to list the shop''s accounts ---'
+do $$
+declare n int;
+begin
+  -- Nothing comes back that did not go in. A function that answered an empty
+  -- array with every user would be an account dump behind a helper name.
+  select count(*) into n from auth_users_present(array[]::uuid[]);
+  if n <> 0 then
+    raise exception 'FAIL: an empty question returned % accounts', n;
+  end if;
+  raise notice 'nothing comes back that did not go in';
+end $$;
+
+\echo '--- a browser session cannot call it at all ---'
+do $$
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+  begin
+    perform auth_users_present(array['11111111-1111-1111-1111-111111111111'::uuid]);
+    reset role;
+    raise exception 'FAIL: a signed-in session can probe the account table';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'service role only';
+  end;
+end $$;
+
+\echo '--- and RESTORE_ORDER still satisfies every foreign key ---'
+do $$
+declare bad text;
+begin
+  /* The order the tables go back in is checked against the REAL foreign key
+     graph, not read by eye. A migration that adds a table referencing one
+     restored later breaks nothing today and everything on restore day —
+     which is the one day nobody has time to work out why.
+
+     The list below is generated from `src/lib/restore-order.ts`;
+     `tests/restore-order-sync.test.ts` fails if the two ever drift. */
+  create temp table if not exists restore_pos(pos int, tbl text) on commit drop;
+  delete from restore_pos;
+  insert into restore_pos(pos, tbl) values
+    (0,'settings'),
+  (1,'shop_settings'),
+  (2,'shop_hours'),
+  (3,'shop_closures'),
+  (4,'delivery_settings'),
+  (5,'payment_settings'),
+  (6,'profiles'),
+  (7,'ingredients'),
+  (8,'ingredient_lots'),
+  (9,'batches'),
+  (10,'batch_ingredients'),
+  (11,'menu_categories'),
+  (12,'menu_products'),
+  (13,'meals'),
+  (14,'chat_settings'),
+  (15,'meal_ingredients'),
+  (16,'meal_components'),
+  (17,'meal_packaging'),
+  (18,'order_packaging'),
+  (19,'modifier_groups'),
+  (20,'modifier_options'),
+  (21,'modifier_option_prices'),
+  (22,'meal_modifier_groups'),
+  (23,'product_modifier_groups'),
+  (24,'suppliers'),
+  (25,'staff_shifts'),
+  (26,'orders'),
+  (27,'order_lines'),
+  (28,'order_line_extras'),
+  (29,'promos'),
+  (30,'promo_redemptions'),
+  (31,'purchase_log'),
+  (32,'consumption_log'),
+  (33,'waste_log'),
+  (34,'cash_ledger'),
+  (35,'receivables'),
+  (36,'cycle_counts'),
+  (37,'oe_templates'),
+  (38,'fixed_costs'),
+  (39,'monthly_bills'),
+  (40,'assets'),
+  (41,'supplier_debts'),
+  (42,'running_costs'),
+  (43,'marketing_campaigns'),
+  (44,'reviews'),
+  (45,'chat_threads'),
+  (46,'chat_messages'),
+  (47,'faq_entries'),
+  (48,'activity_log'),
+  (49,'announcements');
+
+  select string_agg(format('%%s (at %%s) needs %%s (at %%s)',
+                           c.relname, cp.pos, p.relname, pp.pos), ', ')
+    into bad
+  from pg_constraint con
+  join pg_class c on c.oid = con.conrelid
+  join pg_class p on p.oid = con.confrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  join restore_pos cp on cp.tbl = c.relname
+  join restore_pos pp on pp.tbl = p.relname
+  where con.contype = 'f' and n.nspname = 'public'
+    and c.relname <> p.relname
+    and pp.pos > cp.pos;
+
+  if bad is not null then
+    raise exception 'FAIL: a restore would hit a foreign key it has not filled yet — %', bad;
+  end if;
+  raise notice 'every parent restores before its children';
+
+  -- In the same block, because each DO is its own transaction and the temp
+  -- table goes with it.
+  select string_agg(tbl, ', ') into bad from restore_pos p
+   where not exists (select 1 from information_schema.tables t
+                      where t.table_schema = 'public' and t.table_name = p.tbl);
+  if bad is not null then
+    raise exception 'FAIL: the restore would look for tables that are not here — %', bad;
+  end if;
+  raise notice 'and every table in the list is real';
+end $$;
+
+
+\echo '=== 0069 what moved the shelf, said in words ==='
+-- The shop reported the ingredient history as not working. It searched the
+-- ACTIVITY LOG for the ingredient's name, and a sale writes no activity line
+-- naming an ingredient — so every order was invisible. The fix reads
+-- `consumption_log` by id, which means this is the check that matters: does
+-- a sale actually land there, with something worth reading on it?
+select act_as_service();
+reset role;
+
+do $$
+declare n int; noted text;
+begin
+  delete from consumption_log where ingredient_id = 'h-pork';
+  insert into ingredients (id, name, unit, cost, stock)
+    values ('h-pork', 'H Pork', 'g', 0.5, 1000)
+  on conflict (id) do update set stock = 1000, cost = 0.5;
+  insert into meals (id, name, price) values ('h-dish', 'H Dish', 150)
+    on conflict (id) do update set price = 150;
+  delete from meal_ingredients where meal_id = 'h-dish';
+  insert into meal_ingredients (meal_id, ref_type, ref_id, qty)
+    values ('h-dish', 'inv', 'h-pork', 200);
+
+  insert into orders (id, revenue, status) values ('h-order', 150, 'completed')
+    on conflict (id) do update set status = 'completed', stock_applied_at = null;
+  delete from order_lines where order_id = 'h-order';
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+    values ('h-order', 'h-dish', 1, 150);
+
+  perform apply_order_stock('h-order');
+
+  select count(*), max(note) into n, noted
+    from consumption_log where ingredient_id = 'h-pork' and type = 'sale';
+  if n = 0 then
+    raise exception 'FAIL: a sale left no trace the history can read';
+  end if;
+  if noted is null or noted = '' then
+    raise exception 'FAIL: the sale recorded no description';
+  end if;
+  if noted not like '%ticket%' then
+    raise exception 'FAIL: the note says "%" — a ticket number is what somebody can match against a receipt', noted;
+  end if;
+  raise notice 'a sale writes: %', noted;
+end $$;
+
+\echo '--- a batch says which batch ---'
+do $$
+declare noted text;
+begin
+  insert into batches (id, name, yield_qty, yield_unit, batch_stock)
+    values ('h-batch', 'H Sauce', 10, 'pack', 0)
+  on conflict (id) do update set yield_qty = 10, name = 'H Sauce';
+  delete from batch_ingredients where batch_id = 'h-batch';
+  insert into batch_ingredients (batch_id, ref_type, ref_id, qty)
+    values ('h-batch', 'inv', 'h-pork', 100);
+
+  perform produce_batch('h-batch', 1);
+
+  select note into noted from consumption_log
+   where ingredient_id = 'h-pork' and type = 'batch'
+   order by created_at desc limit 1;
+  if noted is null or noted not like '%H Sauce%' then
+    raise exception 'FAIL: the batch line says "%" rather than naming the batch', noted;
+  end if;
+  raise notice 'a batch writes: %', noted;
+end $$;
+
+\echo '--- a staff meal says which dish ---'
+do $$
+declare noted text;
+begin
+  perform consume_meal('h-dish', 1, shop_date(), 'internal');
+  select note into noted from consumption_log
+   where ingredient_id = 'h-pork' and type = 'internal'
+   order by created_at desc limit 1;
+  if noted is null or noted not like '%H Dish%' then
+    raise exception 'FAIL: the staff-meal line says "%" rather than naming the dish', noted;
+  end if;
+  -- The dish name on its own reads as a label rather than an event: the
+  -- shelf wants to know whether it was eaten by staff or scraped into a bin.
+  if noted not like 'Staff meal%' then
+    raise exception 'FAIL: "%" does not say what happened to the dish', noted;
+  end if;
+  raise notice 'a staff meal writes: %', noted;
+end $$;
+
+\echo '--- and a four-argument caller still gets a sentence, not a blank ---'
+do $$
+declare noted text;
+begin
+  -- Rows written before 0069 have no note at all, and some caller somewhere
+  -- may still pass four arguments. Neither may produce an empty line.
+  perform consume_ingredient('h-pork', 10, shop_date(), 'count');
+  select note into noted from consumption_log
+   where ingredient_id = 'h-pork' and type = 'count'
+   order by created_at desc limit 1;
+  if noted is null or length(noted) < 4 then
+    raise exception 'FAIL: a note-less call wrote "%"', noted;
+  end if;
+  raise notice 'a call with no note still writes: %', noted;
+end $$;
+
+\echo '--- same-day lines can be read back in the order they happened ---'
+do $$
+declare first_at timestamptz; last_at timestamptz;
+begin
+  -- One sale takes four ingredients off. Without a tie-breaker they all
+  -- carry the same date and the history shows them in whatever order the
+  -- database felt like.
+  select min(created_at), max(created_at) into first_at, last_at
+    from consumption_log where ingredient_id = 'h-pork' and date = shop_date();
+  if first_at is null or first_at = last_at then
+    raise exception 'FAIL: same-day rows share a timestamp — the history cannot order them';
+  end if;
+  raise notice 'rows on one day are distinguishable in time';
 end $$;

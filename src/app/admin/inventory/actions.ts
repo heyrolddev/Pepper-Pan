@@ -4,6 +4,13 @@ import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  ingredientMoves,
+  type ConsumptionRow,
+  type IngredientMove,
+  type PurchaseRow,
+  type WasteRow,
+} from "@/lib/ingredient-history";
 import { toPerUnit } from "@/lib/nutrition";
 import { shopToday } from "@/lib/format-date";
 import type { WasteKind } from "@/lib/waste-lines";
@@ -1161,19 +1168,73 @@ export async function batchHistory(
 /** What happened to one ingredient — same reader, same reasoning as a batch's. */
 export async function ingredientHistory(
   ingredientId: string
-): Promise<{ rows: Activity[]; error: string | null }> {
+): Promise<{ moves: IngredientMove[]; error: string | null }> {
   const viewer = await getViewer();
-  if (!can(viewer, "stock.view")) return { rows: [], error: null };
+  if (!can(viewer, "stock.view")) return { moves: [], error: null };
 
   const supabase = createAdminClient();
   const { data: ing } = await supabase
     .from("ingredients")
-    .select("name")
+    .select("id")
     .eq("id", ingredientId)
     .maybeSingle();
-  if (!ing) return { rows: [], error: "That ingredient no longer exists." };
+  if (!ing) return { moves: [], error: "That ingredient no longer exists." };
 
-  return loadActivity({ mentions: ing.name as string, limit: 60 });
+  /* The three ledgers that actually record movement, all read BY ID.
+  
+     This used to search the activity log for the ingredient's NAME, which
+     failed three ways at once: a sale writes no activity line naming an
+     ingredient, so every order was invisible; renaming an ingredient erased
+     its whole history; and "Pork" matched "Pork Belly". Nothing here depends
+     on what anything is called. */
+  const [purchases, consumption, waste] = await Promise.all([
+    supabase
+      .from("purchase_log")
+      .select("id, date, qty, cost, supplier")
+      .eq("ingredient_id", ingredientId)
+      .order("date", { ascending: false })
+      .limit(120),
+    supabase
+      .from("consumption_log")
+      .select("id, date, created_at, qty, type, note")
+      .eq("ingredient_id", ingredientId)
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(200),
+    // `waste_log` has no timestamp of its own, which the reader handles: a
+    // row with no time sorts within its own day rather than to the start of
+    // time, because the day is a fact and the hour is merely unknown.
+    supabase
+      .from("waste_log")
+      .select("id, date, qty, reason, total_cost")
+      .eq("source_type", "inv")
+      .eq("source_id", ingredientId)
+      .order("date", { ascending: false })
+      .limit(120),
+  ]);
+
+  const failed = [purchases.error, consumption.error, waste.error].find(Boolean);
+  if (failed) {
+    // Named rather than swallowed: a history that quietly shows two of the
+    // three ledgers looks complete and is not, which is the failure this
+    // whole rewrite is about.
+    return {
+      moves: [],
+      error: `Could not read the full history: ${failed.message}. If this mentions a column, run migration 0069.`,
+    };
+  }
+
+  return {
+    moves: ingredientMoves({
+      purchases: (purchases.data ?? []) as PurchaseRow[],
+      consumption: (consumption.data ?? []) as ConsumptionRow[],
+      waste: ((waste.data ?? []) as Omit<WasteRow, "created_at">[]).map((w) => ({
+        ...w,
+        created_at: null,
+      })),
+    }),
+    error: null,
+  };
 }
 
 /**

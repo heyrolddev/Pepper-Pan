@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { AdminDialog } from "@/components/admin-dialog";
 import { AdminSearch } from "@/components/admin-search";
 import { telHref, type Supplier } from "@/lib/suppliers";
+import { SupplierPricesDialog } from "@/components/supplier-prices-dialog";
 import {
   deleteSupplier,
   saveSupplier,
@@ -48,15 +49,25 @@ const blank: Draft = {
 export function SupplierList({
   rows,
   canEdit,
+  canSeePrices,
   error,
 }: {
   rows: Supplier[];
   /** Owner and manager. A shift reads the list but doesn't curate it. */
   canEdit: boolean;
+  /**
+   * Whether this viewer may see what the shop paid.
+   *
+   * The same line the restock form draws — you cannot record a delivery
+   * without knowing what it cost — rather than a second, looser rule that
+   * would put the shop's buying prices on a screen the till can open.
+   */
+  canSeePrices: boolean;
   error: string | null;
 }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Supplier | null>(null);
+  const [prices, setPrices] = useState<Supplier | null>(null);
   const [busy, startBusy] = useTransition();
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -195,8 +206,21 @@ export function SupplierList({
                       </p>
                     )}
 
-                    {canEdit && (
-                      <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {/* Ahead of Edit, because it is the reason to open a
+                          supplier: the free-text "buys here" note is a
+                          label, and what somebody wants standing in front
+                          of a price rise is what they paid last time. */}
+                      {canSeePrices && (
+                        <button
+                          onClick={() => setPrices(s)}
+                          className="rounded-lg bg-ink-950 px-3 py-1.5 text-xs font-black text-gold-400 hover:bg-ink-800"
+                        >
+                          Prices &amp; history
+                        </button>
+                      )}
+                      {canEdit && (
+                        <>
                         <button
                           onClick={() =>
                             setDraft({
@@ -219,14 +243,22 @@ export function SupplierList({
                         >
                           Remove
                         </button>
-                      </div>
-                    )}
+                        </>
+                      )}
+                    </div>
                   </li>
                 );
               })}
             </ul>
           )}
         </AdminSearch>
+      )}
+
+      {prices && (
+        <SupplierPricesDialog
+          supplier={{ id: prices.id, name: prices.name }}
+          onClose={() => setPrices(null)}
+        />
       )}
 
       {draft && (
