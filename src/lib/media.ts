@@ -16,6 +16,41 @@ export const MEDIA_PREFIX = "announcements";
 /** Profile pictures. Their own folder for the same reason. */
 export const AVATAR_PREFIX = "avatars";
 
+/**
+ * Where a customer's proof of payment goes — and it is not the bucket above.
+ *
+ * A GCash receipt screenshot carries the sender's name, their mobile number,
+ * the reference, the amount and often the balance left in their wallet. That
+ * is a banking screen. It went into the public bucket for two years because
+ * uploading was one shared helper that only knew one bucket, and nothing
+ * about `uploadImage(file, "receipts/...")` looked wrong at the call site.
+ *
+ * Read back through `/admin/receipts/...`, which checks the viewer is staff.
+ * Created by migration 0067.
+ */
+export const PRIVATE_BUCKET = "pepperpan-private";
+export const RECEIPT_PREFIX = "receipts";
+
+/**
+ * Whether a stored receipt value is a path in the private bucket or one of
+ * the full public URLs written before 0067.
+ *
+ * Both have to keep working: the old orders are real orders and their proof
+ * of payment is still the only thing tying a GCash reference to a screenshot.
+ * A path never starts with a scheme, which is the whole test.
+ */
+export function isPrivateReceipt(stored: string): boolean {
+  return !/^https?:\/\//i.test(stored);
+}
+
+/** Where the shop clicks to see it, whichever kind it is. */
+export function receiptHref(stored: string | null): string | null {
+  if (!stored) return null;
+  return isPrivateReceipt(stored)
+    ? `/admin/receipts/${stored.split("/").map(encodeURIComponent).join("/")}`
+    : stored;
+}
+
 export const IMAGE_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",

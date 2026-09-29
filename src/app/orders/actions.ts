@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { repriceOrder } from "@/lib/promos-server";
-import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
+import { extensionFor, uploadPrivateImage, validateImage } from "@/lib/storage";
+import { RECEIPT_PREFIX } from "@/lib/media";
 import { syncStockForStatus } from "@/lib/stock-server";
 import { cartQuantityProblem } from "@/lib/orders";
 
@@ -248,23 +249,34 @@ export async function submitPayment(
     };
   }
 
-  let receiptUrl: string | null = null;
+  /* A path, not a URL — and that is the whole of 0067.
+  
+     These screenshots used to go into the shop's PUBLIC bucket, the one the
+     menu photos live in, and the order stored the public link. A GCash
+     receipt carries the sender's name, their number, the reference, the
+     amount and often their remaining balance; a public URL hands all of it
+     to anyone who has the link. Nothing looked wrong at this call site,
+     because uploading was one shared helper that only knew one bucket.
+  
+     Now the bytes go somewhere with no public door at all, and what is
+     stored is a name that opens nothing on its own. */
+  let receiptPath: string | null = null;
   if (hasReceipt) {
     const checked = validateImage(file);
     if ("error" in checked) return { error: checked.error };
 
-    const uploaded = await uploadImage(
+    const uploaded = await uploadPrivateImage(
       checked.file,
-      `receipts/${orderId}-${Date.now()}.${extensionFor(checked.file.type)}`
+      `${RECEIPT_PREFIX}/${orderId}-${Date.now()}.${extensionFor(checked.file.type)}`
     );
     if ("error" in uploaded) return { error: uploaded.error };
-    receiptUrl = uploaded.url;
+    receiptPath = uploaded.path;
   }
 
   const { data, error } = await supabase.rpc("submit_payment_reference", {
     p_order_id: orderId,
     p_reference: reference,
-    p_receipt_url: receiptUrl,
+    p_receipt_url: receiptPath,
   });
 
   if (error) {

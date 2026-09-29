@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { peso } from "@/lib/peso";
+import { drawerStory, drawerVerdict, type DrawerCount } from "@/lib/drawer";
 import { formatDateTime } from "@/lib/format-date";
 import { ROLE_BLURBS, ROLE_LABELS } from "@/lib/permissions";
 import { deleteStaffAccount, setStaffRole } from "@/app/admin/staff/actions";
@@ -33,8 +34,16 @@ export type ShiftReport = {
   note: string | null;
   sales: number;
   takings: number;
-  /** Cash sales only — GCash was never in the drawer. */
-  cashExpected: number;
+  /**
+   * The drawer, summed properly.
+   *
+   * This used to be `cashExpected`, which held the shift's cash SALES and
+   * was compared against the counted figure as though a drawer contained
+   * nothing else. It contains the float, and it contains whatever staff
+   * took out of it to buy gas — so an honest shift read over by the float
+   * and short by the gas, in red, on a screen their employer reads.
+   */
+  drawer: DrawerCount;
   actions: { at: string; category: string; description: string }[];
 };
 
@@ -73,9 +82,12 @@ function Money({ n, tone }: { n: number; tone?: "good" | "bad" }) {
 function ShiftCard({ r }: { r: ShiftReport }) {
   const [open, setOpen] = useState(false);
   const running = r.endedAt === null;
-  // Only meaningful once someone has actually counted. Blank is not zero.
-  const diff = r.closingCash === null ? null : r.closingCash - r.cashExpected;
-  const square = diff !== null && Math.abs(diff) < 0.005;
+  // Only meaningful once someone has counted the drawer AND counted it
+  // before — the opening figure is the last count, and without one there is
+  // no honest verdict to give.
+  const verdict = drawerVerdict(r.drawer);
+  const diff = r.drawer.diff;
+  const square = verdict === "square";
 
   return (
     <div className="overflow-hidden rounded-3xl bg-cream-100 ring-1 ring-ink-950/10">
@@ -151,7 +163,39 @@ function ShiftCard({ r }: { r: ShiftReport }) {
             </div>
             <div className="flex justify-between border-b border-ink-950/5 pb-1.5">
               <dt className="text-sm text-ink-800/60">Of that, cash</dt>
-              <dd><Money n={r.cashExpected} /></dd>
+              <dd><Money n={r.drawer.sales} /></dd>
+            </div>
+            <div className="flex justify-between border-b border-ink-950/5 pb-1.5">
+              <dt className="text-sm text-ink-800/60">Was in the drawer</dt>
+              <dd>
+                {r.drawer.opening === null ? (
+                  <span className="text-sm text-ink-800/40">never counted</span>
+                ) : (
+                  <Money n={r.drawer.opening} />
+                )}
+              </dd>
+            </div>
+            {r.drawer.paidIn > 0 && (
+              <div className="flex justify-between border-b border-ink-950/5 pb-1.5">
+                <dt className="text-sm text-ink-800/60">Put in</dt>
+                <dd><Money n={r.drawer.paidIn} /></dd>
+              </div>
+            )}
+            {r.drawer.paidOut > 0 && (
+              <div className="flex justify-between border-b border-ink-950/5 pb-1.5">
+                <dt className="text-sm text-ink-800/60">Paid out of it</dt>
+                <dd><Money n={r.drawer.paidOut} /></dd>
+              </div>
+            )}
+            <div className="flex justify-between border-b border-ink-950/5 pb-1.5">
+              <dt className="text-sm text-ink-800/60">Should be there</dt>
+              <dd>
+                {r.drawer.expected === null ? (
+                  <span className="text-sm text-ink-800/40">can&apos;t tell yet</span>
+                ) : (
+                  <Money n={r.drawer.expected} />
+                )}
+              </dd>
             </div>
             <div className="flex justify-between border-b border-ink-950/5 pb-1.5">
               <dt className="text-sm text-ink-800/60">Counted in the drawer</dt>
@@ -187,6 +231,39 @@ function ShiftCard({ r }: { r: ShiftReport }) {
               </dd>
             </div>
           </dl>
+
+          {/* The sum, written out.
+          
+              The whole failure this replaces was a number nobody could
+              argue with: a shift read ₱300 short and there was nothing on
+              the screen to say the gas had come out of the same drawer. A
+              staff member told they are short should be able to read this
+              line and point at the refill. */}
+          <p
+            className={`mt-3 rounded-xl px-4 py-2.5 text-xs leading-relaxed ${
+              r.drawer.opening === null
+                ? "bg-gold-400/20 text-ink-800/75"
+                : "bg-cream-200/70 text-ink-800/70"
+            }`}
+          >
+            {drawerStory(r.drawer)}
+          </p>
+
+          {r.drawer.movements.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-1">
+              {r.drawer.movements.map((m, i) => (
+                <li
+                  key={i}
+                  className="flex items-baseline justify-between gap-3 text-xs text-ink-800/60"
+                >
+                  <span className="min-w-0 truncate">
+                    {m.type === "out" ? "−" : "+"} {m.label ?? "Cash movement"}
+                  </span>
+                  <span className="shrink-0 tabular-nums">{peso(m.amount, 0)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
 
           {r.note && (
             <p className="mt-3 rounded-xl bg-gold-400/20 px-4 py-2.5 text-sm text-ink-950">
