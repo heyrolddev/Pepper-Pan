@@ -2,6 +2,7 @@ import { can, getViewer } from "@/lib/auth";
 import { SHOP_ROLES } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shiftLength } from "@/lib/shifts-server";
+import { drawerFor } from "@/lib/drawer";
 import { StaffView, type Person, type ShiftReport } from "@/components/staff-view";
 import { DeviceRequests, type DeviceEntry } from "@/components/device-requests";
 import { listDevices } from "@/lib/devices-server";
@@ -69,6 +70,30 @@ export default async function AdminStaffPage() {
     .select("id, shift_id, revenue, status, payment_method")
     .in("shift_id", shiftRows.map((s) => s.id).length ? shiftRows.map((s) => s.id) : ["none"]);
 
+  /* Everything that moved the DRAWER, which is not the same as everything
+     that was sold.
+  
+     The shift report used to check the counted cash against cash sales
+     alone. A stall cannot trade without barya, so every shift read as over
+     by the float; staff buy the gas and the ice out of the drawer, so every
+     one of those read as short by the price of the gas. The shop has
+     recorded all of it in `cash_ledger` since 0042 — the report simply
+     never looked.
+  
+     Reaching back to the oldest shift on screen, because the window a
+     drawer is checked over runs from the last time somebody counted it,
+     which may be several shifts ago. */
+  const oldestShift = shiftRows.length
+    ? shiftRows[shiftRows.length - 1].started_at
+    : new Date().toISOString();
+  const { data: cashMoves } = await supabase
+    .from("cash_ledger")
+    .select("id, type, amount, category, note, created_at, source")
+    .eq("account", "cash")
+    .gte("created_at", oldestShift)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
   const salesByShift = new Map<string, { count: number; total: number; cash: number }>();
   for (const o of (orders ?? []) as {
     shift_id: string | null;
@@ -97,6 +122,37 @@ export default async function AdminStaffPage() {
     ((profiles ?? []) as ProfileRow[]).map((p) => [p.id, p.full_name ?? "Someone"])
   );
 
+  const moves = ((cashMoves ?? []) as {
+    type: string;
+    amount: number;
+    category: string | null;
+    note: string | null;
+    created_at: string;
+    source: string | null;
+  }[]).map((m) => ({
+    at: m.created_at,
+    type: m.type === "out" ? ("out" as const) : ("in" as const),
+    amount: Number(m.amount) || 0,
+    label: m.category ?? m.note ?? null,
+    source: m.source,
+  }));
+
+  /* The last time anybody counted the drawer before this shift started.
+  
+     That count IS the opening figure — a drawer is continuous, and what is
+     in it when a shift begins is whatever was there when it was last
+     counted. No setting to maintain, and it bootstraps itself: count once,
+     and every shift after it can be checked. Null until that first count,
+     and null is then reported as "we do not know" rather than as zero. */
+  const counted = shiftRows
+    .filter((s) => s.closing_cash !== null && s.ended_at !== null)
+    .sort((a, b) => (a.ended_at! < b.ended_at! ? 1 : -1));
+
+  const lastCountBefore = (startedAt: string) => {
+    const prior = counted.find((s) => s.ended_at! <= startedAt);
+    return prior ? { at: prior.ended_at!, amount: Number(prior.closing_cash) } : null;
+  };
+
   const reports: ShiftReport[] = shiftRows.map((s) => {
     const sales = salesByShift.get(s.id) ?? { count: 0, total: 0, cash: 0 };
     const during = logRows.filter(
@@ -117,7 +173,26 @@ export default async function AdminStaffPage() {
       note: s.note,
       sales: sales.count,
       takings: sales.total,
-      cashExpected: sales.cash,
+      drawer: drawerFor({
+        lastCount: lastCountBefore(s.started_at),
+        cashSales: sales.cash,
+        /* Sales are added separately, from `orders`, because nothing
+           writes them to `cash_ledger` — the ledger holds what was paid
+           out of a pot and what was put into one by hand. The `source`
+           filter is therefore a no-op today and kept anyway: the day a
+           sale does land in the ledger, this sum would count it twice and
+           every drawer would read as double. Filtered on `source` rather
+           than the category text, which is a label somebody can retype. */
+        moves: moves
+          .filter(
+            (m) =>
+              m.at > (lastCountBefore(s.started_at)?.at ?? s.started_at) &&
+              (s.ended_at === null || m.at <= s.ended_at) &&
+              m.source !== "sale"
+          )
+          .map((m) => ({ at: m.at, type: m.type, amount: m.amount, label: m.label })),
+        counted: s.closing_cash === null ? null : Number(s.closing_cash),
+      }),
       actions: during.map((l) => ({
         at: l.at,
         category: l.category ?? "",
