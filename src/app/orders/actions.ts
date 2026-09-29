@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { repriceOrder } from "@/lib/promos-server";
 import { extensionFor, uploadImage, validateImage } from "@/lib/storage";
 import { syncStockForStatus } from "@/lib/stock-server";
 import { cartQuantityProblem } from "@/lib/orders";
@@ -67,7 +69,7 @@ export async function cancelMyOrder(
 export async function updateMyOrder(
   orderId: string,
   items: { lineId: number; qty: number }[]
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; notice?: string }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -105,6 +107,7 @@ export async function updateMyOrder(
 
   type LineRow = {
     id: number;
+    meal_id: string;
     price_at_sale: number;
     order_line_extras: { price_at_sale: number; qty: number }[] | null;
   };
@@ -137,21 +140,75 @@ export async function updateMyOrder(
     if (!result.data || result.data.length === 0) return { error: NOT_EDITABLE };
   }
 
-  const revenue = items.reduce(
+  const subtotal = items.reduce(
     (sum, i) => sum + i.qty * byId.get(i.lineId)!,
     0
   );
 
-  const { data: updated, error: totalError } = await supabase
+  /* The discount has to be re-decided, not carried over and not forgotten.
+  
+     This used to write `revenue` and stop, which quietly threw the promo
+     away: the order went back to full price while `discount` and
+     `promo_code` stayed on the row saying otherwise, and the receipt
+     printed "Less SULIT20 ₱100" under a subtotal that had already lost it.
+  
+     Carrying the old peso figure over would be worse in the other
+     direction — take three of four items off and a ₱100 discount on a ₱120
+     basket is most of the food free. So the promo is re-checked against
+     what is actually left, exactly as the checkout would check it. */
+  const mealById = new Map(
+    (lines as unknown as LineRow[]).map((l) => [l.id, l.meal_id])
+  );
+  const repriced = await repriceOrder({
+    orderId,
+    lines: items
+      .filter((i) => i.qty > 0)
+      .map((i) => ({
+        mealId: mealById.get(i.lineId)!,
+        // The line's own price plus its add-ons — the same figure the
+        // subtotal is built from, so the promo sees the basket the customer
+        // is actually being charged for.
+        unitPrice: byId.get(i.lineId)!,
+        qty: i.qty,
+      })),
+    customerId: user.id,
+  });
+
+  const discount = repriced.kind === "kept" ? repriced.discount : 0;
+  const promoLabel = repriced.kind === "kept" ? repriced.label : null;
+
+  /* Written as the shop. A browser session may not touch `revenue`,
+     `discount` or `promo_code` since 0066 — the guard that stops a customer
+     rewriting their own bill does not make an exception for the action that
+     happens to be asking politely. Ownership and the pending status were
+     both proved above, which is what earns this the service role. */
+  const { data: updated, error: totalError } = await createAdminClient()
     .from("orders")
-    .update({ revenue })
+    .update({
+      revenue: Math.max(0, subtotal - discount),
+      discount,
+      promo_code: promoLabel,
+    })
     .eq("id", orderId)
+    .eq("customer_id", user.id)
+    .eq("status", "pending")
     .select("id");
 
   if (totalError) return { error: totalError.message };
   if (!updated || updated.length === 0) return { error: NOT_EDITABLE };
 
   revalidateOrders();
+
+  // Not an error — the edit went through — but the customer has to be told,
+  // because the total they are about to see is not the one they expected
+  // and nothing else on the screen would explain the difference.
+  if (repriced.kind === "dropped") {
+    return {
+      error: null,
+      notice: `Your order is updated, but "${repriced.label}" no longer applies: ${repriced.why}`,
+    };
+  }
+
   return { error: null };
 }
 

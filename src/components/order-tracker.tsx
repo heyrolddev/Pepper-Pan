@@ -226,6 +226,11 @@ function OrderCard({ order }: { order: TrackedOrder }) {
       );
       if (res.error) return setError(res.error);
       setEditing(false);
+      // The edit worked, and something about it still needs saying: a promo
+      // that no longer applies to what is left. Shown in the same place an
+      // error would be, because "your total went up" is news either way and
+      // a silent change to what somebody owes is the thing to avoid.
+      if (res.notice) setError(res.notice);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update that order.");
