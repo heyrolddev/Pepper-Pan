@@ -93,7 +93,12 @@ const GROUPS: Group[] = [
       // Everyone who works here keeps this row — but it is two different
       // screens behind it. Staff get counts and a waste button; a manager gets
       // the money, the restocking and the recipes.
-      { href: "/admin/inventory", label: "Inventory", icon: "▢", needs: "stock.view" },
+      // Badged for the shelves that stopped adding up today. The warning
+      // has existed since 0060 and lived in the activity log, folded in
+      // with everything else the shop did — so "the chicken went below
+      // zero" read at the same weight as somebody clocking in. This is
+      // where you go to recount it, so this is where the count belongs.
+      { href: "/admin/inventory", label: "Inventory", icon: "▢", badge: "shelf", needs: "stock.view" },
       { href: "/admin/suppliers", label: "Suppliers", icon: "◎", needs: "stock.view" },
     ],
   },
@@ -297,7 +302,12 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const waiting =
-    badges.orders + badges.inbox + badges.payments + badges.staff + badges.errors;
+    badges.orders +
+    badges.inbox +
+    badges.payments +
+    badges.staff +
+    badges.errors +
+    badges.shelf;
 
   // Subscribed here, in the shell, so *every* HQ screen stays current — and
   // with it the counts in the rail, which are fetched by the layout this sits

@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import { countOpenErrors } from "@/lib/error-log";
+import { countShelfAlerts } from "@/lib/shelf-alerts";
 import { ACTIVE_ORDER_STATUSES } from "@/lib/orders";
 import { OUTSTANDING_PAYMENT_STATUSES } from "@/lib/payments";
 
@@ -52,9 +53,33 @@ export type AdminBadges = {
    * Counted only for whoever can act on it — see `getAdminBadges`.
    */
   errors: number;
+  /**
+   * Shelves that stopped adding up today.
+   *
+   * A sale that took a shelf below zero, or took nothing off one at all.
+   * The database has written that warning since 0060 and it landed in the
+   * activity log — three lines, folded by day, at exactly the same weight
+   * as "Ana clocked in". So the shop knew the chicken had run out
+   * mid-service and said so in a place nobody reads mid-service.
+   *
+   * Earns its place by the rule above: the answer to it is to go and
+   * recount the batch, or log the production that never got logged. Both
+   * are things to DO, and both are on the page this badge opens.
+   *
+   * Counted for anyone who can see stock, because the person who can act on
+   * it fastest is whoever is standing at the counter.
+   */
+  shelf: number;
 };
 
-const NONE: AdminBadges = { orders: 0, inbox: 0, payments: 0, staff: 0, errors: 0 };
+const NONE: AdminBadges = {
+  orders: 0,
+  inbox: 0,
+  payments: 0,
+  staff: 0,
+  errors: 0,
+  shelf: 0,
+};
 
 export async function getAdminBadges(): Promise<AdminBadges> {
   try {
@@ -88,9 +113,11 @@ export async function getAdminBadges(): Promise<AdminBadges> {
      * is the exact decoration the note above warns about, and it teaches them
      * to ignore the badges that ARE theirs: orders, and the inbox.
      */
-    const mayFixThings = can(await getViewer(), "settings");
 
-    const [orders, inbox, payments, staff, errors] = await Promise.all([
+    const viewer = await getViewer();
+    const mayCount = can(viewer, "stock.view");
+
+    const [orders, inbox, payments, staff, errors, shelf] = await Promise.all([
       count("orders", () =>
         db
           .from("orders")
@@ -128,10 +155,13 @@ export async function getAdminBadges(): Promise<AdminBadges> {
       // client, because RLS on `error_log` keeps it away from the browser
       // entirely. `countOpenErrors` already swallows its own failure and
       // returns 0, for the same reason every count here does.
-      mayFixThings ? countOpenErrors() : Promise.resolve(0),
+      can(viewer, "settings") ? countOpenErrors() : Promise.resolve(0),
+      // Same reasoning as the error log: read with the admin client, and it
+      // swallows its own failure and returns 0 rather than taking HQ down.
+      mayCount ? countShelfAlerts() : Promise.resolve(0),
     ]);
 
-    return { orders, inbox, payments, staff, errors };
+    return { orders, inbox, payments, staff, errors, shelf };
   } catch {
     // A missing migration must not take HQ down. No badges is a fair reading
     // of "we couldn't tell" — a wrong number would be worse than none.
