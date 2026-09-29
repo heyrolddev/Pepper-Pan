@@ -5,6 +5,7 @@ import { AdminDialog } from "@/components/admin-dialog";
 import { AdminSearch } from "@/components/admin-search";
 import { telHref, type Supplier } from "@/lib/suppliers";
 import { SupplierPricesDialog } from "@/components/supplier-prices-dialog";
+import { SupplierPriceList } from "@/components/supplier-price-list";
 import {
   deleteSupplier,
   saveSupplier,
@@ -296,7 +297,7 @@ export function SupplierList({
             </Field>
             <Field
               label="What you buy here"
-              hint="In your own words. Not everything a supplier sells is an ingredient — gas, bags, a repair."
+              hint="In your own words, for searching. Prices go in the list below."
             >
               <input
                 value={draft.sells}
@@ -313,6 +314,14 @@ export function SupplierList({
                 className={boxClass}
               />
             </Field>
+
+            {/* Only on a supplier that exists. A price needs something to
+                belong to, and a new supplier has no id until Save — asking
+                for prices first would mean holding them somewhere and
+                hoping the save works. */}
+            {draft.id && (
+              <SupplierPriceList supplierId={draft.id} canEdit={canSeePrices} />
+            )}
 
             <label className="flex items-center gap-3 rounded-xl bg-cream-100 px-3 py-2.5">
               <input

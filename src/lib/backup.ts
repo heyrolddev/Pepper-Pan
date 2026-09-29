@@ -71,6 +71,10 @@ const TABLES = [
   // before 0045, so for everything since there would be nothing left saying
   // where it came from.
   "suppliers",
+  // What each of them said they charge. Typed in by hand, one market trip
+  // at a time, and recorded nowhere else — losing it means asking every
+  // supplier the same questions again.
+  "supplier_prices",
   // Trading history
   "orders",
   "order_lines",

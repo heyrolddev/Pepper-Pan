@@ -54,6 +54,9 @@ export const RESTORE_ORDER = [
   // Before anything that names a supplier: the purchase log, the debts and
   // the running costs all carry `supplier_id`.
   "suppliers",
+  // After both its parents — it names a supplier, and optionally the
+  // ingredient the price is for.
+  "supplier_prices",
   // Shifts before orders: an order carries `shift_id`.
   "staff_shifts",
   "orders",
