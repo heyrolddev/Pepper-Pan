@@ -451,7 +451,19 @@ export async function placeOrder(
     };
   }
 
-  const { data: order, error: orderError } = await supabase
+  /* Written as the shop, not as the browser.
+     
+     Everything below was computed here from the shop's own prices — the
+     subtotal, the delivery fee, the discount the promo rules allowed. The
+     session client could write it too, and that is exactly the problem 0066
+     closes: if a browser session may insert `revenue` and `discount`, it may
+     insert its own figures for them, and no server action stands in the way
+     of a fetch call. So the money is written by the service role, and 0066
+     refuses it from anybody signed in who is not staff. `customer_id` is the
+     verified session's own id, never anything the request asked for. */
+  const writer = createAdminClient();
+
+  const { data: order, error: orderError } = await writer
     .from("orders")
     .insert({
       customer_id: user.id,
@@ -494,7 +506,7 @@ export async function placeOrder(
    * and a best-seller report that can no longer tell what a rice meal costs.
    * The ids come back so the extras know which line they belong to.
    */
-  const { data: insertedLines, error: linesError } = await supabase
+  const { data: insertedLines, error: linesError } = await writer
     .from("order_lines")
     .insert(
       input.items.map((i) => ({
@@ -527,7 +539,7 @@ export async function placeOrder(
       }))
     );
     if (extraRows.length > 0) {
-      const { error: extrasError } = await supabase
+      const { error: extrasError } = await writer
         .from("order_line_extras")
         .insert(extraRows);
       // Not survivable, unlike a slow notification: `revenue` already
@@ -541,7 +553,7 @@ export async function placeOrder(
       // success, removed nothing, and left exactly the half-written order
       // this branch exists to prevent.
       if (extrasError) {
-        const { error: rollbackError } = await createAdminClient()
+        const { error: rollbackError } = await writer
           .from("orders")
           .delete()
           .eq("id", order.id);
@@ -563,8 +575,9 @@ export async function placeOrder(
      After the insert, never before: a redemption pointing at an order that
      was never written is a use the customer is charged for and got nothing
      from. The unique index on `order_id` makes a double-write impossible
-     rather than unlikely, and the row cascades with the order — so
-     cancelling and deleting frees the use back up on its own. */
+     rather than unlikely. A cancelled order does not count against the
+     promo either — the usage queries in `promos-server.ts` skip them, which
+     is what makes the use come back when the shop cancels. */
   if (promoId) {
     await recordRedemption({
       promoId,

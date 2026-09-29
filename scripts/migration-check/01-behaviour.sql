@@ -2476,3 +2476,267 @@ begin
   end if;
   raise notice 'the owner records the end date';
 end $$;
+
+
+\echo '=== 0066 the bill is not the customer''s to write ==='
+-- These are the exploits themselves, run as the customer, kept as checks.
+-- Every one of them SUCCEEDED before this migration.
+select act_as_service();
+reset role;
+
+insert into auth.users (id, email) values
+  ('66666666-6666-6666-6666-666666666666','shopper@x')
+on conflict do nothing;
+insert into profiles (id, role, full_name) values
+  ('66666666-6666-6666-6666-666666666666','customer','A Shopper')
+on conflict (id) do update set role = excluded.role;
+
+insert into orders (id, customer_id, revenue, discount, status, payment_status)
+  values ('g-order', '66666666-6666-6666-6666-666666666666', 500, 0, 'pending', 'unpaid')
+on conflict (id) do update
+  set revenue = 500, discount = 0, status = 'pending', payment_status = 'unpaid',
+      customer_id = '66666666-6666-6666-6666-666666666666';
+
+create or replace function act_as_customer() returns void language plpgsql as
+$f$ begin
+  perform set_config('request.jwt.claim.role', 'authenticated', false);
+  perform set_config('request.jwt.claim.sub', '66666666-6666-6666-6666-666666666666', false);
+end $f$;
+
+\echo '--- a customer cannot discount their own order ---'
+do $$
+declare rev numeric;
+begin
+  set local role authenticated;
+  perform act_as_customer();
+  begin
+    update orders set revenue = 1, discount = 499, promo_code = 'I MADE THIS UP'
+     where id = 'g-order';
+    reset role;
+    raise exception 'FAIL: a customer rewrote a 500 peso order down to 1';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'refused: %', sqlerrm;
+  end;
+
+  select revenue into rev from orders where id = 'g-order';
+  if rev is distinct from 500 then
+    raise exception 'FAIL: the bill moved to % anyway', rev;
+  end if;
+  raise notice 'the bill held at 500';
+end $$;
+
+\echo '--- nor mark it paid without paying ---'
+do $$
+declare ps text;
+begin
+  set local role authenticated;
+  perform act_as_customer();
+  begin
+    update orders set payment_status = 'paid' where id = 'g-order';
+    reset role;
+    raise exception 'FAIL: a customer marked their own order paid';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'refused, correctly';
+  end;
+
+  select payment_status into ps from orders where id = 'g-order';
+  if ps is distinct from 'unpaid' then
+    raise exception 'FAIL: payment_status is now %', ps;
+  end if;
+  raise notice 'still unpaid, which is the truth';
+end $$;
+
+\echo '--- but they can still cancel and still edit the things that are theirs ---'
+do $$
+declare note text; st text;
+begin
+  -- The guard must not turn into "a customer can do nothing". Contact
+  -- details, notes and cancelling are theirs, and a fix that broke them
+  -- would be discovered by a customer, not by this file.
+  set local role authenticated;
+  perform act_as_customer();
+  update orders set notes = 'No onions please', contact_phone = '09171234567'
+   where id = 'g-order';
+  reset role;
+
+  select notes into note from orders where id = 'g-order';
+  if note is distinct from 'No onions please' then
+    raise exception 'FAIL: a customer cannot leave a note — got %', note;
+  end if;
+
+  set local role authenticated;
+  perform act_as_customer();
+  update orders set status = 'cancelled', cancelled_reason = 'Changed my mind'
+   where id = 'g-order';
+  reset role;
+
+  select status into st from orders where id = 'g-order';
+  if st is distinct from 'cancelled' then
+    raise exception 'FAIL: a customer can no longer cancel — status is %', st;
+  end if;
+  raise notice 'notes, phone and cancelling all still work';
+end $$;
+
+\echo '--- the shop itself is not guarded: staff set prices, that is the job ---'
+do $$
+declare rev numeric;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+  update orders set revenue = 450, discount = 50, promo_code = 'SULIT'
+   where id = 'g-order';
+  reset role;
+
+  select revenue into rev from orders where id = 'g-order';
+  if rev is distinct from 450 then
+    raise exception 'FAIL: the owner cannot correct an order — revenue is %', rev;
+  end if;
+  raise notice 'the owner prices an order, as always';
+end $$;
+
+\echo '--- and a line''s price is not the customer''s either ---'
+select act_as_service();
+reset role;
+insert into meals (id, name, price) values ('g-dish', 'G Dish', 150)
+  on conflict (id) do update set price = excluded.price;
+insert into orders (id, customer_id, revenue, status)
+  values ('g-order-2', '66666666-6666-6666-6666-666666666666', 150, 'pending')
+on conflict (id) do update set status = 'pending', revenue = 150;
+insert into order_lines (id, order_id, meal_id, qty, price_at_sale)
+  values (990001, 'g-order-2', 'g-dish', 1, 150)
+on conflict (id) do update set price_at_sale = 150, qty = 1;
+
+do $$
+declare p numeric;
+begin
+  -- Guarding the total and leaving the prices it is rebuilt from writable
+  -- would move the exploit rather than close it: set every line to a peso,
+  -- nudge a quantity, and the server recomputes the bill down for you.
+  set local role authenticated;
+  perform act_as_customer();
+  begin
+    update order_lines set price_at_sale = 1 where id = 990001;
+    reset role;
+    raise exception 'FAIL: a customer repriced a dish on their own order';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'refused, correctly';
+  end;
+
+  select price_at_sale into p from order_lines where id = 990001;
+  if p is distinct from 150 then
+    raise exception 'FAIL: the dish is now %', p;
+  end if;
+  raise notice 'the dish is still 150';
+end $$;
+
+\echo '--- but changing how many is exactly what editing an order means ---'
+do $$
+declare n numeric;
+begin
+  set local role authenticated;
+  perform act_as_customer();
+  update order_lines set qty = 3 where id = 990001;
+  reset role;
+
+  select qty into n from order_lines where id = 990001;
+  if n is distinct from 3 then
+    raise exception 'FAIL: a customer cannot change a quantity — qty is %', n;
+  end if;
+  raise notice 'the quantity is the customer''s to change';
+end $$;
+
+\echo '--- a customer cannot slip a free dish onto their own order ---'
+do $$
+begin
+  set local role authenticated;
+  perform act_as_customer();
+  begin
+    insert into order_lines (order_id, meal_id, qty, price_at_sale)
+      values ('g-order-2', 'g-dish', 1, 0);
+    reset role;
+    raise exception 'FAIL: a customer added a dish at zero pesos';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'items are added at checkout, by the shop';
+  end;
+end $$;
+
+\echo '--- the payment function still works, because it is trusted by name ---'
+do $$
+declare ok boolean; ps text;
+begin
+  -- The guard must not break the one customer-facing write that legitimately
+  -- touches a payment column. It writes 'submitted', never 'paid' — the shop
+  -- still decides that, which is the whole reason the guard exists.
+  set local role authenticated;
+  perform act_as_customer();
+  select submit_payment_reference('g-order-2', '1234567890', null) into ok;
+  reset role;
+
+  if ok is not true then
+    raise exception 'FAIL: a customer can no longer submit a GCash reference';
+  end if;
+  select payment_status into ps from orders where id = 'g-order-2';
+  if ps is distinct from 'submitted' then
+    raise exception 'FAIL: the reference went in but payment_status is %', ps;
+  end if;
+  raise notice 'a GCash reference still goes in, as submitted';
+end $$;
+
+\echo '--- and the flag it raises does not stay raised ---'
+do $$
+begin
+  -- If the trusted flag leaked past the function, every check above would
+  -- pass for the wrong reason from here on.
+  set local role authenticated;
+  perform act_as_customer();
+  begin
+    update orders set revenue = 1 where id = 'g-order-2';
+    reset role;
+    raise exception 'FAIL: the trusted flag is still on — the guard is off';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'the flag was put down again';
+  end;
+end $$;
+
+\echo '--- a cancelled order gives the promo back ---'
+select act_as_service();
+reset role;
+do $$
+declare live int;
+begin
+  -- The shop cancels orders constantly — out of stock, the customer never
+  -- showed, the wrong address — and the row stays, because the record of
+  -- what happened matters. The cascade only fires on DELETE, so a "one
+  -- each" code would stay burned for somebody who was never fed. The usage
+  -- queries count THROUGH the order for exactly this reason, and this is
+  -- the shape of the count they run.
+  delete from promo_redemptions;
+  delete from promos where id = 'p-cancel';
+  insert into promos (id, code, label, kind, value, max_per_customer)
+    values ('p-cancel', 'GIVEBACK', 'Give back', 'percent', 10, 1);
+  insert into orders (id, customer_id, revenue, status)
+    values ('p-cancelled', '66666666-6666-6666-6666-666666666666', 100, 'cancelled')
+  on conflict (id) do update set status = 'cancelled';
+  insert into promo_redemptions (promo_id, order_id, customer_id, amount)
+    values ('p-cancel', 'p-cancelled', '66666666-6666-6666-6666-666666666666', 10);
+
+  select count(*) into live
+    from promo_redemptions r join orders o on o.id = r.order_id
+   where r.promo_id = 'p-cancel' and o.status <> 'cancelled';
+  if live <> 0 then
+    raise exception 'FAIL: a cancelled order still counts % use(s) against the code', live;
+  end if;
+
+  -- And the record of it is still there, which is the other half: the shop
+  -- can still see that the code was tried on an order that fell through.
+  if (select count(*) from promo_redemptions where promo_id = 'p-cancel') <> 1 then
+    raise exception 'FAIL: the record of the attempt was thrown away';
+  end if;
+  raise notice 'the use comes back, and the history stays';
+end $$;

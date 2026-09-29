@@ -106,22 +106,33 @@ export async function resolvePromo(opts: {
   }
   const promo = toPromo(data as PromoRow);
 
-  /* Counted here rather than kept on the promo row, so cancelling an order
-     frees the use back up — `promo_redemptions` cascades with the order. A
-     counter column would have to be decremented by hand, and the day
-     somebody forgets is the day a code is used up by orders that no longer
-     exist. */
+  /* Counted here rather than kept on the promo row, and counted through the
+     ORDER rather than on its own.
+
+     A cancelled order has to give the use back. The shop cancels orders all
+     the time — out of stock, the customer never showed, the wrong address —
+     and the row stays, because the record of what happened matters. So the
+     cascade on delete is not enough: nothing deletes a cancelled order, and
+     a "one each" code would stay burned for a customer who was never fed.
+     That is a queue at the counter and an argument the staff cannot win.
+
+     The inner join is what makes it right, and it is why this is not a
+     counter column: a counter would have to be decremented by hand on
+     cancel, and the day somebody forgets is the day a code reads as used up
+     by orders nobody ever received. */
   const [{ count: total }, { count: mine }] = await Promise.all([
     db
       .from("promo_redemptions")
-      .select("id", { count: "exact", head: true })
-      .eq("promo_id", promo.id),
+      .select("id, orders!inner(status)", { count: "exact", head: true })
+      .eq("promo_id", promo.id)
+      .neq("orders.status", "cancelled"),
     opts.customerId
       ? db
           .from("promo_redemptions")
-          .select("id", { count: "exact", head: true })
+          .select("id, orders!inner(status)", { count: "exact", head: true })
           .eq("promo_id", promo.id)
           .eq("customer_id", opts.customerId)
+          .neq("orders.status", "cancelled")
       : Promise.resolve({ count: 0 }),
   ]);
 
@@ -139,18 +150,18 @@ export async function resolvePromo(opts: {
 /**
  * How many times a promo has been claimed, by anybody.
  *
- * Counted, never kept on the promo row, so cancelling and deleting an order
- * frees the use back up on its own — `promo_redemptions` cascades with the
- * order. A counter column would have to be decremented by hand, and the day
- * somebody forgets is the day a code reads as used up by orders that no
- * longer exist.
+ * Cancelled orders do not count, for the reason given above: the shop
+ * cancels orders and the rows stay, so counting them would let a code run
+ * out on food nobody ever received. Counted rather than kept on the promo
+ * row so that stays true without anybody decrementing anything.
  */
 export async function countPromoUses(promoId: string): Promise<number> {
   const db = createAdminClient();
   const { count } = await db
     .from("promo_redemptions")
-    .select("id", { count: "exact", head: true })
-    .eq("promo_id", promoId);
+    .select("id, orders!inner(status)", { count: "exact", head: true })
+    .eq("promo_id", promoId)
+    .neq("orders.status", "cancelled");
   return count ?? 0;
 }
 
@@ -182,4 +193,105 @@ export async function recordRedemption(opts: {
     customer_id: opts.customerId,
     amount: opts.amount,
   });
+}
+
+/**
+ * What the promo on an existing order is worth now that the basket changed.
+ *
+ * ── The bug this exists to close ─────────────────────────────────────────
+ *
+ * A customer may edit a pending order, and `updateMyOrder` rebuilds
+ * `revenue` from the remaining lines. It knew nothing about discounts, so
+ * the moment anybody nudged a quantity the promo silently evaporated: the
+ * order went back to full price while `discount` and `promo_code` still sat
+ * on the row saying otherwise. The receipt printed "Less SULIT20 ₱100"
+ * under a subtotal that had already lost it, and did not add up.
+ *
+ * Re-checking is the only honest answer, because an edit can genuinely
+ * invalidate a promo — take the one dish a dish-promo is for out of the
+ * basket and it does not apply to what is left, however unwelcome that is
+ * to discover. So this returns one of three things and the caller tells the
+ * customer which: there was no promo, there still is one and it is worth
+ * this much now, or it no longer applies and here is the reason in the same
+ * words the checkout would have used.
+ *
+ * The order's OWN use is excluded from the counts. Without that, re-checking
+ * a code with a one-per-customer limit would refuse it on the grounds that
+ * this very order had already claimed it.
+ */
+export async function repriceOrder(opts: {
+  orderId: string;
+  lines: BasketLine[];
+  customerId: string | null;
+}): Promise<
+  | { kind: "none" }
+  | { kind: "kept"; promoId: string; label: string; discount: number }
+  | { kind: "dropped"; label: string; why: string }
+> {
+  const db = createAdminClient();
+
+  const { data: claim } = await db
+    .from("promo_redemptions")
+    .select("id, promo_id")
+    .eq("order_id", opts.orderId)
+    .maybeSingle();
+  if (!claim) return { kind: "none" };
+
+  const { data: row } = await db
+    .from("promos")
+    .select(COLUMNS)
+    .eq("id", claim.promo_id as string)
+    .maybeSingle();
+  if (!row) {
+    // The promo was deleted while this order was still pending. The claim
+    // goes with it rather than being honoured against a rule nobody can
+    // read any more.
+    await db.from("promo_redemptions").delete().eq("id", claim.id as string);
+    return { kind: "dropped", label: "That discount", why: "It is no longer running." };
+  }
+  const promo = toPromo(row as PromoRow);
+
+  const [{ count: total }, { count: mine }] = await Promise.all([
+    db
+      .from("promo_redemptions")
+      .select("id, orders!inner(status)", { count: "exact", head: true })
+      .eq("promo_id", promo.id)
+      .neq("order_id", opts.orderId)
+      .neq("orders.status", "cancelled"),
+    opts.customerId
+      ? db
+          .from("promo_redemptions")
+          .select("id, orders!inner(status)", { count: "exact", head: true })
+          .eq("promo_id", promo.id)
+          .eq("customer_id", opts.customerId)
+          .neq("order_id", opts.orderId)
+          .neq("orders.status", "cancelled")
+      : Promise.resolve({ count: 0 }),
+  ]);
+
+  const result = checkPromo(promo, opts.lines, {
+    where: "online",
+    today: shopToday(),
+    usage: { total: total ?? 0, byCustomer: mine ?? 0 },
+    signedIn: opts.customerId !== null,
+  });
+
+  if (!result.ok) {
+    await db.from("promo_redemptions").delete().eq("id", claim.id as string);
+    return { kind: "dropped", label: promo.label, why: result.refusal.message };
+  }
+
+  // The claim is worth a different number now, and the report of what the
+  // promos cost the shop reads this column.
+  await db
+    .from("promo_redemptions")
+    .update({ amount: result.discount })
+    .eq("id", claim.id as string);
+
+  return {
+    kind: "kept",
+    promoId: promo.id,
+    label: result.label,
+    discount: result.discount,
+  };
 }
