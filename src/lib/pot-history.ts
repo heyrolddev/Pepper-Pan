@@ -20,7 +20,22 @@ export type Movement = {
   id: string;
   /** An ISO date. Only the first ten characters are ever compared. */
   date: string;
-  type: "in" | "out";
+  /**
+   * `void` is a line that did NOT move money.
+   *
+   * A cancelled sale used to be written into the history as an "out" for its
+   * full value, on the reasoning that an owner hunting a shortfall needs to
+   * see the reversal. The reasoning was right and the type was wrong: for a
+   * cash order nothing was ever collected, so nothing was ever reversed.
+   * Two cancellations on a day with no trade showed as "In ₱0 · Out ₱269 ·
+   * −₱269" — a drawer down two hundred and sixty-nine pesos that had not
+   * moved a centavo, and that no balance on the screen agreed with, because
+   * the balances had always excluded cancelled rows.
+   *
+   * So the line stays and the arithmetic goes. A `void` is listed, dated and
+   * attributed, and it adds nothing to either column.
+   */
+  type: "in" | "out" | "void";
   amount: number;
 };
 
@@ -37,17 +52,32 @@ export function movementsOn<T extends Movement>(items: T[], day: string): T[] {
   return items.filter((i) => dayOf(i.date) === day);
 }
 
-export type Tally = { in: number; out: number; net: number; count: number };
+export type Tally = {
+  in: number;
+  out: number;
+  net: number;
+  /** Lines that moved money. A cancellation is not one of them. */
+  count: number;
+  /** How many cancelled sales are listed on this day. */
+  voided: number;
+};
 
 export function tally(items: Movement[]): Tally {
   let into = 0;
   let out = 0;
+  let count = 0;
+  let voided = 0;
   for (const m of items) {
+    if (m.type === "void") {
+      voided += 1;
+      continue;
+    }
     const amount = Number.isFinite(m.amount) ? Math.abs(m.amount) : 0;
     if (m.type === "in") into += amount;
     else out += amount;
+    count += 1;
   }
-  return { in: into, out, net: into - out, count: items.length };
+  return { in: into, out, net: into - out, count, voided };
 }
 
 /**

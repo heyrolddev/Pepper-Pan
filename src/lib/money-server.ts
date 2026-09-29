@@ -58,7 +58,13 @@ export type Asset = { id: string; name: string; amount: number; boughtOn: string
 export type LedgerEntry = {
   id: string;
   date: string;
-  type: "in" | "out";
+  /**
+   * `void` moved nothing. See `Movement` in lib/pot-history.ts for the bug
+   * that put it here: a cancelled cash sale was listed as an "out" for its
+   * full value, so a day with two cancellations and no trade read "In ₱0 ·
+   * Out ₱269 · −₱269" against a drawer that had not moved.
+   */
+  type: "in" | "out" | "void";
   amount: number;
   category: string | null;
   note: string | null;
@@ -644,11 +650,19 @@ export async function loadMoney(): Promise<MoneyPicture> {
    * makes it safe: nothing is double-counted, nothing needs backfilling, and
    * orders from before today show up straight away.
    *
-   * A cancelled sale gets an "out" line rather than being left off. Leaving
-   * it off is technically consistent — the balances exclude cancelled rows —
-   * but it means money appears in a pot one day and is silently gone the
-   * next. An owner looking for a shortfall needs to see the reversal and
-   * whose till it was on.
+   * A cancelled sale is listed rather than left off, but as a `void` — a
+   * line that moved nothing. Leaving it off entirely is technically
+   * consistent, since the balances exclude cancelled rows, but then a sale
+   * somebody remembers ringing up is simply absent and nobody can tell a
+   * cancellation from a lost ticket. Listing it as an "out" was the other
+   * mistake, and the one that shipped: nothing was ever collected on a
+   * cancelled cash order, so there was nothing to pay back out. The owner met
+   * it on a day with no trade at all — two cancellations, and the day read
+   * "In ₱0 · Out ₱269 · −₱269" for a drawer that had not moved a centavo.
+   *
+   * So the line is kept, dated and attributed, and it adds nothing to either
+   * column. This has always been display only; now the display agrees with
+   * the balance it sits under.
    */
   const derivedLines: LedgerEntry[] = [];
 
@@ -731,7 +745,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
         ? {
             id: `order-void-${o.id}`,
             date: o.date,
-            type: "out",
+            type: "void",
             amount,
             account,
             category: "sale",
@@ -746,11 +760,15 @@ export async function loadMoney(): Promise<MoneyPicture> {
              * before this column existed simply have no name, and say nothing
              * rather than guessing.
              */
+            /* "cancelled — nothing collected" rather than "cancelled",
+               because the number beside it is the order's value and the one
+               thing the reader must not conclude is that it left the pot. */
             note:
               `${what} cancelled` +
               (o.cancelled_by && cancellerName.has(o.cancelled_by)
                 ? ` by ${cancellerName.get(o.cancelled_by)}`
-                : ""),
+                : "") +
+              " — nothing collected",
             derived: true,
             by: o.cancelled_by ? (cancellerName.get(o.cancelled_by) ?? null) : null,
             at: o.created_at,

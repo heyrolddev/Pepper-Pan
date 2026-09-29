@@ -48,18 +48,18 @@ test("a day that timestamps rather than dates its rows still groups", () => {
 
 test("a day adds up in both directions and nets out", () => {
   const t = tally(movementsOn(LEDGER, "2026-09-26"));
-  assert.deepEqual(t, { in: 425, out: 50, net: 375, count: 4 });
+  assert.deepEqual(t, { in: 425, out: 50, net: 375, count: 4, voided: 0 });
 });
 
 test("a negative amount on an out line does not add money back", () => {
   // Nothing should write one, which is exactly why a sign flip here would
   // survive unnoticed: −₱50 out would read as ₱50 IN on the day's net.
   const t = tally([m("x", "2026-09-26", "out", -50)]);
-  assert.deepEqual(t, { in: 0, out: 50, net: -50, count: 1 });
+  assert.deepEqual(t, { in: 0, out: 50, net: -50, count: 1, voided: 0 });
 });
 
 test("an empty day is zero, not NaN", () => {
-  assert.deepEqual(tally([]), { in: 0, out: 0, net: 0, count: 0 });
+  assert.deepEqual(tally([]), { in: 0, out: 0, net: 0, count: 0, voided: 0 });
 });
 
 test("the last day with movement is at or before the day asked for", () => {
@@ -104,4 +104,67 @@ test("a day shows three movements before it asks", () => {
   // The owner asked for three. The screen reads it off this.
   assert.equal(DAY_PREVIEW, 3);
   assert.ok(movementsOn(LEDGER, "2026-09-26").length > DAY_PREVIEW);
+});
+
+/**
+ * The drawer that went down ₱269 without anything leaving it.
+ *
+ * Sunday 29 September 2026: no trade at all, two orders cancelled. The
+ * drawer's history read
+ *
+ *     Order #0053 — Eunice cancelled by Eunice   −₱99.00
+ *     Order #0052 — Eunice cancelled by Eunice   −₱170.00
+ *     In ₱0 · Out ₱269                                −₱269
+ *
+ * and the drawer's own balance, four inches higher on the same screen, said
+ * ₱11,184.99 — unchanged, because every balance in this system has excluded
+ * cancelled orders since the beginning. Nothing was ever collected on a
+ * cancelled cash order, so there was never anything to pay back out.
+ *
+ * The owner caught it and put it exactly right: "hindi naman tayo nabawasan
+ * at hindi rin nadagdagan" — we were neither reduced nor added to. So the
+ * line stays, because a cancellation is worth seeing and worth attributing,
+ * and the arithmetic goes.
+ */
+
+const CANCELLED_DAY: Movement[] = [
+  { id: "order-void-a", date: "2026-09-29", type: "void", amount: 99 },
+  { id: "order-void-b", date: "2026-09-29", type: "void", amount: 170 },
+];
+
+test("a day of nothing but cancellations moved no money", () => {
+  const sum = tally(CANCELLED_DAY);
+  assert.equal(sum.out, 0, "a cancelled sale is not money out — nothing was collected");
+  assert.equal(sum.in, 0);
+  assert.equal(sum.net, 0, "the day the owner met read −₱269 here");
+});
+
+test("cancellations are counted separately, so the day can say what happened", () => {
+  const sum = tally(CANCELLED_DAY);
+  assert.equal(sum.voided, 2);
+  // Not movements. A day whose only lines are cancellations must not claim
+  // two movements and then add them to nothing.
+  assert.equal(sum.count, 0);
+});
+
+test("a cancellation on a trading day leaves the real figures alone", () => {
+  const sum = tally([
+    { id: "in-1", date: "2026-09-26", type: "in", amount: 500 },
+    { id: "out-1", date: "2026-09-26", type: "out", amount: 120 },
+    { id: "order-void-c", date: "2026-09-26", type: "void", amount: 900 },
+  ]);
+  assert.equal(sum.in, 500);
+  assert.equal(sum.out, 120, "the ₱900 void must not join the outgoings");
+  assert.equal(sum.net, 380);
+  assert.equal(sum.count, 2);
+  assert.equal(sum.voided, 1);
+});
+
+test("a cancelled day still counts as a day the pot has something to show", () => {
+  // Otherwise the dialog skips straight past it and the owner cannot find
+  // the cancellation they are looking for. Listing is the whole point; it is
+  // only the arithmetic that was wrong.
+  assert.deepEqual(daysWithMovement(CANCELLED_DAY), ["2026-09-29"]);
+  assert.equal(lastDayWith(CANCELLED_DAY, "2026-09-30"), "2026-09-29");
+  assert.equal(movementsOn(CANCELLED_DAY, "2026-09-29").length, 2);
 });

@@ -201,6 +201,12 @@ than it was.
 Staff → the shift. The sum is written out so it can be argued with, and the
 money paid out of the till is listed underneath.
 
+**A cancelled order is listed, but it moved nothing.** It shows with its
+amount struck through and the words *not collected*, and the day's In / Out
+columns do not include it — nothing was ever taken for a cancelled order, so
+there is nothing to pay back. The day says how many were cancelled so a quiet
+day reads as quiet rather than as a shortfall.
+
 ### Back up
 HQ → Backup → download. Keep it somewhere that is not this computer.
 
