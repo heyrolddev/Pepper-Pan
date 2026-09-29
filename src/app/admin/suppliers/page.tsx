@@ -25,13 +25,16 @@ export default async function AdminSuppliersPage() {
           Who you buy from, how to reach them, and what you get there. Once
           somebody is on this list, recording a delivery is a tap instead of
           typing their name again — which is how one supplier ended up spelled
-          three ways.
+          three ways. Every delivery you log keeps its price, so each one can
+          tell you what it costs here now, what it cost last time, and whether
+          anybody else is cheaper.
         </p>
       </div>
 
       <SupplierList
         rows={rows}
         canEdit={can(viewer, "business")}
+        canSeePrices={can(viewer, "stock.manage")}
         error={error}
       />
     </div>
