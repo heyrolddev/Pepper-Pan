@@ -7,6 +7,8 @@ import { listSuppliers } from "@/app/admin/suppliers/actions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadNutrition } from "@/lib/nutrition-server";
 import { rolloutOf } from "@/lib/nutrition-rollout";
+import { listShelfAlerts } from "@/lib/shelf-alerts";
+import { ShelfAlerts } from "@/components/shelf-alerts";
 
 // Stock moves every service. A cached shopping list is the wrong shopping list.
 export const dynamic = "force-dynamic";
@@ -35,6 +37,7 @@ export default async function AdminInventoryPage() {
   // and `business`, which is the takings. Knowing the chicken cost ₱230 is
   // not the same as knowing the shop's margin, and the person doing the
   // buying knows the first one already.
+  const shelfAlerts = await listShelfAlerts();
   const canSeeCosts = can(viewer, "stock.manage");
   const canManage = can(viewer, "stock.manage");
 
@@ -182,19 +185,31 @@ export default async function AdminInventoryPage() {
   const safeExpiring = insight.expiring.map((x) => money(x, ["cost"]));
 
   return (
-    <InventoryView
-      stock={safeStock}
-      batches={safeBatches}
-      suggestions={safeSuggestions}
-      expiring={safeExpiring}
-      usageDays={insight.lookbackDays}
-      thinHistory={insight.thin}
-      canSeeCosts={canSeeCosts}
-      canManage={canManage}
-      wastableDishes={wastableDishes}
-      rollout={rollout}
-      suppliers={suppliers}
-      failed={failed}
-    />
+    <>
+      {/* The shelves that stopped adding up today, at the top, before the
+          counts they are about.
+
+          These warnings have been written since 0060 and lived in the
+          activity log — three lines, folded by day, among everything else
+          the shop did. "The chicken went below zero" read at the same
+          weight as somebody clocking in, which is the same as not saying
+          it. This is the screen where it gets fixed, so this is where it
+          goes. */}
+      <ShelfAlerts alerts={shelfAlerts} />
+      <InventoryView
+        stock={safeStock}
+        batches={safeBatches}
+        suggestions={safeSuggestions}
+        expiring={safeExpiring}
+        usageDays={insight.lookbackDays}
+        thinHistory={insight.thin}
+        canSeeCosts={canSeeCosts}
+        canManage={canManage}
+        wastableDishes={wastableDishes}
+        rollout={rollout}
+        suppliers={suppliers}
+        failed={failed}
+      />
+    </>
   );
 }

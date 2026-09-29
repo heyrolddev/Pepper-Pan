@@ -2740,3 +2740,70 @@ begin
   end if;
   raise notice 'the use comes back, and the history stays';
 end $$;
+
+
+\echo '=== the shelf alert reaches the screen that can fix it ==='
+-- The warning has been written since 0060 and lived only in the activity
+-- log. The Inventory badge and panel read it back with an exact filter, and
+-- a filter that does not match what the database writes is a warning that
+-- still goes nowhere — which is the bug being fixed, twice.
+select act_as_service();
+reset role;
+
+do $$
+declare n int; today_rows int;
+begin
+  delete from activity_log where category = 'movement' and description like 'SA %';
+
+  insert into ingredients (id, name, unit, cost, stock)
+    values ('sa-pork', 'SA Pork', 'g', 1, 50)
+  on conflict (id) do update set stock = 50, cost = 1;
+  insert into meals (id, name, price) values ('sa-dish', 'SA Dish', 100)
+    on conflict (id) do update set price = 100;
+  delete from meal_ingredients where meal_id = 'sa-dish';
+  -- 200g a serving against 50g on the shelf: this sale must go negative.
+  insert into meal_ingredients (meal_id, ref_type, ref_id, qty)
+    values ('sa-dish', 'inv', 'sa-pork', 200);
+
+  insert into orders (id, revenue, status) values ('sa-order', 100, 'completed')
+    on conflict (id) do update set status = 'completed', stock_applied_at = null;
+  insert into order_lines (order_id, meal_id, qty, price_at_sale)
+    values ('sa-order', 'sa-dish', 1, 100);
+
+  perform apply_order_stock('sa-order');
+
+  -- Exactly the query the badge runs: category 'movement', filed under the
+  -- shop's own day. If 0060 ever files these under a different date or
+  -- category, this is where it is caught rather than on a quiet screen.
+  select count(*) into today_rows from activity_log
+   where category = 'movement' and date = shop_date();
+  if today_rows = 0 then
+    raise exception 'FAIL: the shelf went below zero and the badge query finds nothing';
+  end if;
+
+  select count(*) into n from ingredients where id = 'sa-pork' and stock < 0;
+  if n <> 1 then
+    raise exception 'FAIL: the shelf did not actually go below zero — nothing to warn about';
+  end if;
+
+  raise notice 'the shelf went negative and % movement row(s) are filed under today', today_rows;
+end $$;
+
+\echo '--- and the same sale does not warn twice ---'
+do $$
+declare before_rows int; after_rows int;
+begin
+  -- `apply_order_stock` claims the order before it deducts, so a second call
+  -- is a no-op. A badge that counted a duplicate would send somebody to
+  -- recount a shelf that was already recounted.
+  select count(*) into before_rows from activity_log
+   where category = 'movement' and date = shop_date();
+  perform apply_order_stock('sa-order');
+  select count(*) into after_rows from activity_log
+   where category = 'movement' and date = shop_date();
+  if after_rows <> before_rows then
+    raise exception 'FAIL: applying the same order twice warned again (% -> %)',
+      before_rows, after_rows;
+  end if;
+  raise notice 'one sale, one warning';
+end $$;
