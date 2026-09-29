@@ -3,9 +3,14 @@
 A Next.js + Supabase site for Pepper Pan: a public menu for customers and a
 back office for staff (inventory, batches, orders, waste, finance).
 
-See **[docs/OPERATORS-MANUAL.md](docs/OPERATORS-MANUAL.md)** for the owner's
-guide: every service and account, what happens when you change something, the
-migration rule, and what to do when something breaks.
+Two guides, and they answer different questions:
+
+- **[docs/HANDBOOK.md](docs/HANDBOOK.md)** — what the system does and how to use
+  it. Every screen, the customer's journey, the shop's day, and the ten things
+  you will actually do, with steps.
+- **[docs/OPERATORS-MANUAL.md](docs/OPERATORS-MANUAL.md)** — what it runs on.
+  Every service and account, what happens when you change something, the
+  migration rule, and what to do when something breaks.
 
 ## Setup
 
