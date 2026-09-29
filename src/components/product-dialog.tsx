@@ -114,6 +114,8 @@ export function ProductDialog({
   );
   const [ticked, setTicked] = useState<ModifierChoice>({});
   const [qty, setQty] = useState(1);
+  // Phones only: the breakdown starts folded, see the panel below.
+  const [showFacts, setShowFacts] = useState(false);
   const [added, setAdded] = useState(false);
 
   const chosen = useMemo(
@@ -208,9 +210,45 @@ export function ProductDialog({
          * scroll past the thing they had come to buy to find the way to buy
          * it.
          */
-        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl bg-cream-50 outline-none sm:grid sm:max-h-[86vh] sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] sm:grid-rows-[minmax(0,1fr)] sm:rounded-3xl"
+        /* On a phone the WHOLE sheet scrolls; on a laptop the two columns
+           scroll independently.
+
+           This is the fix for the thing that made ordering on a phone
+           miserable. The left column is `shrink-0` — it never scrolled — and
+           only the options column did. So on a 640px screen the photograph
+           (224), the name, the description and the calories (about 200) and
+           the buy bar (90) were nailed in place, and the CHOICES, which are
+           the entire reason the dish was tapped, got the 120px left over.
+           The customer scrolled a letterbox.
+
+           Letting the sheet itself scroll hands that whole height to the
+           options: the photograph moves up out of the way as soon as you
+           start choosing, which is exactly when you have finished looking at
+           it. The buy bar is pinned separately below, so the price and the
+           Add button never move. */
+        className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-y-auto overscroll-contain rounded-t-3xl bg-cream-50 outline-none sm:grid sm:max-h-[86vh] sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden sm:rounded-3xl"
       >
         <>
+          {/* Two buttons, one per breakpoint, because the right corner is a
+              different corner on each — and neither may scroll away.
+
+              On a laptop the picture is the LEFT HALF, so a close button
+              inside it sat in the middle of the dialog, floating over the
+              food rather than closing a box. On a phone the picture is the
+              full width and that same corner is correct; and there the
+              sheet itself scrolls, so a button anchored to the dialog would
+              slide off the top the moment anybody started choosing.
+
+              Each is hidden at the other's breakpoint, so only one is ever
+              in the accessibility tree. */}
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-4 top-4 z-20 hidden h-10 w-10 place-items-center rounded-full bg-cream-50/90 text-lg font-black text-ink-950 shadow-lg backdrop-blur transition-colors hover:bg-cream-50 sm:grid"
+          >
+            ✕
+          </button>
+
           {/* ---- the photograph, and what the dish is ----
               Both on this side, which is the change. The name, the stars and
               the description used to sit at the top of the right-hand column,
@@ -226,7 +264,7 @@ export function ProductDialog({
               saw of the dish they had just tapped was a picture with no name
               on it, and the options they came for were two scrolls down.
               A 224px band still shows the food. */}
-          <div className="relative h-56 w-full shrink-0 overflow-hidden bg-white sm:aspect-square sm:h-auto sm:rounded-tl-3xl">
+          <div className="relative h-44 w-full shrink-0 overflow-hidden bg-white sm:aspect-square sm:h-auto sm:rounded-tl-3xl">
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
                 // Keyed on the picture, so changing size crossfades to the
@@ -268,10 +306,11 @@ export function ProductDialog({
             <button
               onClick={onClose}
               aria-label="Close"
-              className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-cream-50/90 text-lg font-black text-ink-950 shadow-lg backdrop-blur transition-colors hover:bg-cream-50"
+              className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-cream-50/90 text-lg font-black text-ink-950 shadow-lg backdrop-blur transition-colors hover:bg-cream-50 sm:hidden"
             >
               ✕
             </button>
+
           </div>
 
             <div className="flex flex-col gap-1.5 p-5 sm:p-7">
@@ -311,9 +350,50 @@ export function ProductDialog({
                   basket, with the extra rice and the drink counted in — and
                   the reader of a calorie count is exactly the person that
                   difference matters to. */}
+              {/* Open on a laptop, one line on a phone.
+              
+                  The panel is about a hundred pixels, and on a 390px screen
+                  it sat between the dish and the choices — so the customer
+                  who tapped a dish to pick a size read a calorie count first
+                  and scrolled past it every single time. The number still
+                  has to be there; the owner asked for it and it is the
+                  reason somebody chooses one dish over another. So the
+                  headline figure stays on screen always and the breakdown is
+                  a tap away, which costs the reader who wants it one tap and
+                  gives the ninety who came to order their screen back. */}
               {facts && (
                 <div className="mt-3">
-                  <NutritionPanel n={facts} />
+                  {/* A phone shows the headline and hides the breakdown; a
+                      laptop shows all of it. `<details>` cannot do that —
+                      its open state is an attribute, not a style — so the
+                      two are separate elements and the breakpoint decides
+                      which exists. */}
+                  <button
+                    type="button"
+                    onClick={() => setShowFacts(true)}
+                    aria-expanded={showFacts}
+                    className={`w-full items-center justify-between gap-3 rounded-2xl bg-ink-950 px-4 py-2.5 text-left text-cream-50 sm:hidden ${
+                      showFacts ? "hidden" : "flex"
+                    }`}
+                  >
+                    <span className="flex items-baseline gap-1.5">
+                      <span className="font-display text-xl font-black leading-none tabular-nums">
+                        {Math.round(facts.total.kcal).toLocaleString("en-PH")}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-cream-50/50">
+                        kcal
+                      </span>
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-cream-50/50">
+                      {Math.round(facts.total.protein)}P ·{" "}
+                      {Math.round(facts.total.carbs)}C ·{" "}
+                      {Math.round(facts.total.fat)}F
+                      <span className="ml-2 text-gold-400">More</span>
+                    </span>
+                  </button>
+                  <div className={showFacts ? "block" : "hidden sm:block"}>
+                    <NutritionPanel n={facts} />
+                  </div>
                 </div>
               )}
             </div>
@@ -321,7 +401,7 @@ export function ProductDialog({
 
           {/* ---- how you want it ---- */}
           <div className="flex min-h-0 flex-1 flex-col sm:flex-initial">
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5 sm:p-7">
+            <div className="flex flex-1 flex-col gap-4 p-5 sm:overflow-y-auto sm:p-7">
 
             {/* ── which dish is this ──────────────────────────────────
                 The same panel the add-ons below sit in, so the dialog reads
@@ -367,14 +447,19 @@ export function ProductDialog({
                             pick(product.variants, s, axis.name, value)
                           )
                         }
-                        className={`rounded-xl border-2 px-4 py-2 text-sm font-bold transition-colors ${
+                        className={`inline-flex min-h-11 items-center gap-1.5 rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all ${
                           on
-                            ? "border-ink-950 bg-ink-950 text-cream-50"
+                            ? "border-ink-950 bg-ink-950 text-cream-50 shadow-sm"
                             : dead
                               ? "border-ink-950/10 bg-ink-950/[0.03] text-ink-800/35"
-                              : "border-ink-950/15 bg-cream-50 text-ink-950 hover:border-brand-600"
+                              : "border-ink-950/15 bg-cream-50 text-ink-950 hover:border-brand-600 hover:bg-brand-50"
                         }`}
                       >
+                        {/* The tick, not only the fill. Dark-on-light is a
+                            contrast somebody reads; a mark is something they
+                            see — and on a phone in sunlight that is the
+                            difference between the two. */}
+                        {on && <span aria-hidden className="text-[11px]">✓</span>}
                         {value}
                         {/* Said in words, not by being faint. The difference
                             between "gone today" and "never offered that way"
@@ -421,7 +506,7 @@ export function ProductDialog({
                 thing in it. A dish with three add-on groups is taller than a
                 laptop, and the price and the Add button are the two things
                 that must never be the reason somebody scrolls. */}
-            <div className="relative shrink-0 border-t border-ink-950/10 bg-cream-50 p-6 pt-4 sm:p-7 sm:pt-4">
+            <div className="sticky bottom-0 z-10 shrink-0 border-t border-ink-950/10 bg-cream-50 p-5 pt-4 sm:relative sm:p-7 sm:pt-4">
               {/* A soft edge above the bar, so a list that continues behind
                   it looks like it continues. Cut off by a hard line, a half
                   a row of sauces reads as the end of the sauces. */}
@@ -431,7 +516,7 @@ export function ProductDialog({
               />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-display text-3xl font-black text-brand-600">
+                <p className="font-display text-2xl font-black text-brand-600 sm:text-3xl">
                   ₱{unit.toFixed(2)}
                 </p>
                 {/* Shown as a sum, not as a single grown number. A customer
@@ -495,7 +580,7 @@ export function ProductDialog({
               <button
                 onClick={add}
                 disabled={gone || !!unanswered}
-                className={`mt-4 w-full rounded-full px-6 py-4 font-display text-lg font-black transition-colors ${
+                className={`mt-3 w-full rounded-full px-6 py-3.5 font-display text-lg font-black transition-colors sm:mt-4 sm:py-4 ${
                   gone || unanswered
                     ? "cursor-not-allowed bg-ink-950/10 text-ink-800/40"
                     : added
@@ -594,8 +679,22 @@ function AddOnGroup({
 
           return (
             <div key={option.id}>
+            {/* A row you can see the state of without reading it.
+            
+                These were bare lines with a 20px box on the left and a
+                background that only appeared on hover — so on a laptop the
+                list looked unstyled, and on a phone, which has no hover at
+                all, a ticked option and an unticked one were a tick mark
+                apart. An add-on is a decision that costs money; it should
+                look like one before and after it is made. */}
             <div
-              className="flex items-center gap-1 rounded-xl px-2 py-1 transition-colors has-[button:hover]:bg-cream-50"
+              className={`mb-1.5 flex items-center gap-1 rounded-xl px-3 ring-1 transition-all ${
+                blocked
+                  ? "bg-ink-950/[0.02] ring-ink-950/5"
+                  : on
+                    ? "bg-cream-50 ring-2 ring-ink-950/30"
+                    : "bg-cream-50/60 ring-ink-950/10 hover:bg-cream-50 hover:ring-ink-950/25"
+              }`}
             >
               <button
                 type="button"
@@ -603,7 +702,7 @@ function AddOnGroup({
                 aria-checked={on}
                 disabled={blocked}
                 onClick={() => onToggle(option.id)}
-                className={`flex min-w-0 flex-1 items-center gap-3 py-1.5 text-left ${
+                className={`flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left ${
                   blocked ? "cursor-not-allowed text-ink-800/35" : ""
                 }`}
               >
