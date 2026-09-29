@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { askAssistant, type ChatTurn } from "@/lib/assistant";
 import { notifyNeedsHuman } from "@/lib/notify";
+import { MAX_MESSAGE, replay } from "@/lib/chat-history";
 
 /**
  * Facebook Messenger webhook — "Ask Pepper Pan" on the shop's Page.
@@ -60,9 +61,52 @@ function signatureValid(raw: string, header: string | null): boolean {
 type Entry = {
   messaging?: {
     sender?: { id?: string };
-    message?: { text?: string; is_echo?: boolean };
+    /* `mid` is Meta's own id for this message, and it is the only thing
+       that tells a retry apart from a second question. */
+    message?: { mid?: string; text?: string; is_echo?: boolean };
   }[];
 };
+
+/**
+ * Whether this message is ours to answer, or one Meta is sending again.
+ *
+ * Meta re-sends any delivery it does not get a prompt 200 for, and this
+ * webhook does its whole job before acknowledging: four round trips to the
+ * database and one to Facebook's Graph API, which has an eight second
+ * timeout of its own. One slow send, one cold start, and the same message
+ * arrives twice — and nothing stopped the second run putting the customer's
+ * line in the inbox again, sending them a second identical reply, and
+ * firing the owner's push notification twice.
+ *
+ * The insert IS the claim, which is the same trick `apply_order_stock` uses
+ * for a sale: the primary key decides, atomically, and there is no window
+ * between checking and claiming for a retry to slip through. Two deliveries
+ * racing cannot both win.
+ *
+ * A message with no `mid` is answered rather than dropped — that would be
+ * Meta changing its payload, and going quiet at a customer is a worse
+ * failure than answering one twice.
+ */
+async function claim(
+  db: ReturnType<typeof createAdminClient>,
+  mid: string | undefined,
+  senderId: string
+): Promise<boolean> {
+  if (!mid) return true;
+  const { error } = await db
+    .from("messenger_events")
+    .insert({ mid, sender_id: senderId });
+  if (!error) return true;
+
+  // 23505 is the unique violation: somebody already has this one.
+  if (error.code === "23505") return false;
+
+  // Any other failure — the table missing because 0070 has not been run,
+  // a dropped connection — must not silence the shop. Answering twice is
+  // recoverable; never answering is a customer who thinks nobody is there.
+  console.error(`[messenger] could not claim ${mid}: ${error.message}`);
+  return true;
+}
 
 async function sendToMessenger(recipientId: string, text: string) {
   const token = process.env.MESSENGER_PAGE_TOKEN;
@@ -111,6 +155,10 @@ export async function POST(request: Request) {
       // Echoes are the Page's own outgoing messages coming back.
       if (!senderId || !text || event.message?.is_echo) continue;
 
+      // Before the model, before the writes, before anything that takes
+      // time — because the time is what makes Meta send it again.
+      if (!(await claim(db, event.message?.mid, senderId))) continue;
+
       const { data: existing } = await db
         .from("chat_threads")
         .select("id")
@@ -128,22 +176,30 @@ export async function POST(request: Request) {
         threadId = created.id;
       }
 
+      /* The LAST forty lines, not the first forty.
+      
+         This asked for `ascending: true` with a limit, which is the OLDEST
+         forty — so past forty messages a conversation fed the model the
+         same opening every time and never saw what had just been said. The
+         customer repeats themselves and the assistant repeats itself, and
+         from outside it looks like the assistant is simply stupid.
+      
+         Read newest-first so the limit takes the recent end, then turned
+         back the right way round, because a model reads a conversation
+         forwards. */
       const { data: past } = await db
         .from("chat_messages")
         .select("role, content")
         .eq("thread_id", threadId)
-        .order("id", { ascending: true })
+        .order("id", { ascending: false })
         .limit(40);
 
-      const history: ChatTurn[] = [
-        ...((past ?? []) as ChatTurn[]),
-        { role: "user", content: text.slice(0, 1000) },
-      ];
+      const history: ChatTurn[] = replay((past ?? []) as ChatTurn[], text);
 
       await db.from("chat_messages").insert({
         thread_id: threadId,
         role: "user",
-        content: text.slice(0, 1000),
+        content: text.slice(0, MAX_MESSAGE),
       });
 
       const reply = await askAssistant(history);
@@ -172,6 +228,14 @@ export async function POST(request: Request) {
       await sendToMessenger(senderId, reply.text);
     }
   }
+
+  /* A page running a year should not carry a year of message ids. Done
+     here rather than on a schedule so there is no cron to forget, and not
+     awaited for its result — a failed tidy-up is not worth a retry of the
+     whole delivery. */
+  void db.rpc("prune_messenger_events").then(({ error }) => {
+    if (error) console.error(`[messenger] prune: ${error.message}`);
+  });
 
   // Meta retries anything that isn't a prompt 200, which would replay the
   // whole conversation — so acknowledge even when a message was skipped.
