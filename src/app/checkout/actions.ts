@@ -16,6 +16,7 @@ import {
 import { notifyNewOrder } from "@/lib/notify";
 import { cartQuantityProblem } from "@/lib/orders";
 import { recordRedemption, resolvePromo } from "@/lib/promos-server";
+import { rateLimit } from "@/lib/rate-limit";
 import { recordOrderCost, loadAvailability } from "@/lib/costing-server";
 import { loadModifiers } from "@/lib/modifiers-server";
 import { groupsFor, resolveChoice, type ChosenExtra } from "@/lib/modifiers";
@@ -229,6 +230,29 @@ export async function placeOrder(
   let promoId: string | null = null;
   let promoLabel: string | null = null;
   if (input.promoCode?.trim()) {
+    /* A ceiling on guesses, because a refusal is an oracle.
+    
+       The codes are never listed to a customer — that is the whole reason
+       `promos` has no public read policy. But a wrong code answers "We
+       don't have that code" and a real one answers something else, and a
+       loop can tell those apart for free: an invalid code returns before
+       any order is written, so guessing costs nothing and leaves nothing
+       behind. Enough guesses and the shop's unreleased campaign is
+       somebody else's discount on launch day.
+    
+       Keyed on the signed-in customer rather than an IP. An IP is shared by
+       everyone on one mobile network, and this is the door they all check
+       out through; an account is the thing doing the guessing. Ten in ten
+       minutes is far more than a person who mistyped a code twice. */
+    const tries = rateLimit(`promo:${user.id}`, 10, 10 * 60 * 1000);
+    if (!tries.allowed) {
+      return {
+        error: `That's a few codes in a row now. Try again in ${Math.ceil(
+          tries.retryAfterMs / 60000
+        )} minute(s), or order without one.`,
+      };
+    }
+
     const result = await resolvePromo({
       code: input.promoCode,
       lines: input.items.map((i) => ({

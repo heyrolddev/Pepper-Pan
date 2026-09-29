@@ -6,6 +6,7 @@ import {
   setPaymentStatus,
 } from "@/app/admin/orders/actions";
 import { formatDateTime } from "@/lib/format-date";
+import { receiptHref } from "@/lib/media";
 import {
   METHOD_LABEL,
   PAYMENT_METHODS,
@@ -47,6 +48,13 @@ export function PaymentVerifier({
   status: PaymentStatus;
   plan: PaymentPlan;
   reference: string | null;
+  /**
+   * What the order stored: a path in the private bucket since 0067, or one
+   * of the full public URLs written before it. `receiptHref` tells them
+   * apart — both have to keep working, because the old orders are real
+   * orders and that screenshot is still the only thing tying a GCash
+   * reference to a picture of the payment.
+   */
   receiptUrl: string | null;
   total: number;
   downpayment: number;
@@ -64,6 +72,10 @@ export function PaymentVerifier({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [fixing, setFixing] = useState(false);
+
+  // A private path becomes a link to the staff-gated route; a legacy public
+  // URL is already a link. Neither is rendered as a bare stored value.
+  const href = receiptHref(receiptUrl);
 
   /**
    * Move the sale to the pot it actually went into.
@@ -139,9 +151,9 @@ export function PaymentVerifier({
         <p className="mt-1.5 font-mono text-xs text-ink-800/70">Ref: {reference}</p>
       )}
 
-      {receiptUrl && (
+      {href && (
         <a
-          href={receiptUrl}
+          href={href}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-1 inline-block text-xs font-bold text-brand-600 hover:underline"
