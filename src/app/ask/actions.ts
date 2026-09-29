@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { askAssistant, type ChatTurn } from "@/lib/assistant";
 import { rateLimit } from "@/lib/rate-limit";
 import { headers } from "next/headers";
+import { replay } from "@/lib/chat-history";
 
 const MAX_MESSAGE = 1000;
 
@@ -109,18 +110,26 @@ export async function sendChatMessage(input: {
     await db.from("chat_threads").update({ customer_id: customerId }).eq("id", threadId);
   }
 
-  // Replay the thread so the assistant has context, then add this turn.
+  /* Replay the thread so the assistant has context — the LAST forty lines
+     of it, not the first forty.
+  
+     This asked for `ascending: true` with a limit, which is the OLDEST
+     forty. So past forty messages the assistant was handed the same opening
+     every single time and never saw what had just been said: the customer
+     repeats themselves, the assistant repeats itself, and from outside it
+     simply looks stupid. The same line was wrong in the Messenger webhook,
+     which is where it was noticed.
+  
+     Read newest-first so the limit takes the recent end, then turned back
+     the right way round, because a model reads a conversation forwards. */
   const { data: past } = await db
     .from("chat_messages")
     .select("role, content")
     .eq("thread_id", threadId)
-    .order("id", { ascending: true })
+    .order("id", { ascending: false })
     .limit(40);
 
-  const history: ChatTurn[] = [
-    ...((past ?? []) as ChatTurn[]),
-    { role: "user", content: message },
-  ];
+  const history: ChatTurn[] = replay((past ?? []) as ChatTurn[], message);
 
   await db.from("chat_messages").insert({
     thread_id: threadId,

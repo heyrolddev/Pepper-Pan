@@ -3107,3 +3107,76 @@ begin
   end if;
   raise notice 'rows on one day are distinguishable in time';
 end $$;
+
+
+\echo '=== 0070 Meta sends it again, and the shop must not answer twice ==='
+-- The webhook does four round trips and a call to Facebook before it
+-- acknowledges, so a slow send is enough for Meta to re-deliver. What stops
+-- the second run is the insert itself, not a check before it — a check has a
+-- window between looking and claiming, and two deliveries race.
+select act_as_service();
+reset role;
+
+\echo '--- the same message id cannot be claimed twice ---'
+do $$
+begin
+  delete from messenger_events where mid like 'm-probe%';
+  insert into messenger_events (mid, sender_id) values ('m-probe-1', 'sender-1');
+  begin
+    insert into messenger_events (mid, sender_id) values ('m-probe-1', 'sender-1');
+    raise exception 'FAIL: the same Messenger message was claimed twice — a retry would answer again';
+  exception when unique_violation then
+    raise notice 'the second delivery is refused, which is how the retry stops';
+  end;
+end $$;
+
+\echo '--- and a different message from the same person goes through ---'
+do $$
+declare n int;
+begin
+  -- The guard must be per MESSAGE, not per sender. Somebody asking two
+  -- questions in a row is not a retry.
+  insert into messenger_events (mid, sender_id) values ('m-probe-2', 'sender-1');
+  select count(*) into n from messenger_events where sender_id = 'sender-1';
+  if n <> 2 then
+    raise exception 'FAIL: a second question from the same person was swallowed (% rows)', n;
+  end if;
+  raise notice 'two questions from one person are two messages';
+end $$;
+
+\echo '--- the log does not grow for ever ---'
+do $$
+declare left_over int;
+begin
+  insert into messenger_events (mid, sender_id, received_at)
+    values ('m-probe-old', 'sender-1', now() - interval '30 days');
+  perform prune_messenger_events();
+  select count(*) into left_over from messenger_events where mid = 'm-probe-old';
+  if left_over <> 0 then
+    raise exception 'FAIL: a month-old id is still on file';
+  end if;
+  -- And this week's must survive, or the prune would re-open the very
+  -- window it is housekeeping for.
+  if (select count(*) from messenger_events where mid = 'm-probe-1') <> 1 then
+    raise exception 'FAIL: the prune took an id Meta could still retry against';
+  end if;
+  raise notice 'a month old is gone, this week is kept';
+end $$;
+
+\echo '--- and nobody with a browser can read who messaged the Page ---'
+do $$
+declare seen int;
+begin
+  -- The conversations themselves live in `chat_threads`, behind the inbox's
+  -- own rules. This table is a list of who messaged and when, and it has no
+  -- policies at all on purpose.
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+  select count(*) into seen from messenger_events;
+  reset role;
+  if seen <> 0 then
+    raise exception 'FAIL: the owner''s own session can list % Messenger sender(s) here', seen;
+  end if;
+  raise notice 'no policies, so no rows — even for the owner';
+end $$;

@@ -165,6 +165,11 @@ export const NOT_BACKED_UP: Record<string, string> = {
   error_log: "faults in a build that is being replaced",
   // The safety copies themselves. A backup of the backups is a loop.
   restore_snapshots: "the safety copies — backing these up is a loop",
+  // Ids of Messenger messages already answered, kept a week so a retry
+  // from Meta cannot answer twice. Meta gives up retrying long before
+  // that, so a restored id can no longer prevent anything — it would be
+  // restoring a list of things that cannot happen again.
+  messenger_events: "handled-message ids — they expire in a week",
 };
 
 export type BackupTable = (typeof TABLES)[number];
