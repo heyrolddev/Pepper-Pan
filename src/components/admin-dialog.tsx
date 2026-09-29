@@ -89,7 +89,7 @@ export function AdminDialog({
       <div
         ref={panel}
         tabIndex={-1}
-        className={`relative max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-cream-50 p-6 shadow-2xl outline-none ring-1 ring-ink-950/10 sm:rounded-3xl ${
+        className={`relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-cream-50 p-6 shadow-2xl outline-none ring-1 ring-ink-950/10 sm:rounded-3xl ${
           wide ? "sm:max-w-2xl" : "sm:max-w-lg"
         }`}
       >

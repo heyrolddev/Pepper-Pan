@@ -226,7 +226,7 @@ export function ProductDialog({
            start choosing, which is exactly when you have finished looking at
            it. The buy bar is pinned separately below, so the price and the
            Add button never move. */
-        className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-y-auto overscroll-contain rounded-t-3xl bg-cream-50 outline-none short:max-h-[94vh] sm:grid sm:max-h-[86vh] sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden sm:rounded-3xl"
+        className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-y-auto overscroll-contain rounded-t-3xl bg-cream-50 outline-none short:max-h-[94dvh] short:max-sm:overflow-hidden sm:grid sm:max-h-[86dvh] sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden sm:rounded-3xl"
       >
         <>
           {/* Two buttons, one per breakpoint, because the right corner is a
@@ -263,8 +263,17 @@ export function ProductDialog({
               past the fold of a 390px sheet — so the first thing a customer
               saw of the dish they had just tapped was a picture with no name
               on it, and the options they came for were two scrolls down.
-              A 224px band still shows the food. */}
-          <div className="relative h-44 w-full shrink-0 overflow-hidden bg-white sm:aspect-square sm:h-auto sm:rounded-tl-3xl short:aspect-auto short:h-28">
+              A 224px band still shows the food.
+
+              And a belt to go with those braces: `sm:max-h-[45dvh]`. The
+              square is what a WIDTH breakpoint asks for, and no width
+              breakpoint knows how tall the screen is. Rather than trust a
+              height query to catch every device, the picture is simply told
+              it may never take more than 45% of the height the browser is
+              actually showing. It crops — the box is `overflow-hidden` and
+              the photograph is positioned inside it — which is the right
+              trade against a photograph taller than the dialog. */}
+          <div className="relative h-44 w-full shrink-0 overflow-hidden bg-white sm:aspect-square sm:h-auto sm:max-h-[45dvh] sm:rounded-tl-3xl short:aspect-auto short:h-28 short:max-sm:hidden">
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
                 // Keyed on the picture, so changing size crossfades to the
@@ -313,8 +322,8 @@ export function ProductDialog({
 
           </div>
 
-            <div className="flex flex-col gap-1.5 p-5 sm:p-7 short:p-4">
-              <h2 className="font-display text-2xl font-black leading-tight text-ink-950 sm:text-3xl short:text-2xl">
+            <div className="flex flex-col gap-1.5 p-5 sm:p-7 short:p-4 short:max-sm:gap-1 short:max-sm:p-3">
+              <h2 className="font-display text-2xl font-black leading-tight text-ink-950 sm:text-3xl short:text-2xl short:max-sm:text-lg">
                 {product.name}
               </h2>
               {product.avgRating != null && product.reviewCount > 0 && (
@@ -326,7 +335,7 @@ export function ProductDialog({
                 </span>
               )}
               {product.description && (
-                <p className="line-clamp-2 text-sm leading-relaxed text-ink-800/75 sm:line-clamp-none">
+                <p className="line-clamp-2 text-sm leading-relaxed text-ink-800/75 sm:line-clamp-none short:max-sm:hidden">
                   {product.description}
                 </p>
               )}
@@ -401,7 +410,7 @@ export function ProductDialog({
 
           {/* ---- how you want it ---- */}
           <div className="flex min-h-0 flex-1 flex-col sm:flex-initial">
-            <div className="flex flex-1 flex-col gap-4 p-5 sm:overflow-y-auto sm:p-7 short:p-4">
+            <div className="flex flex-1 flex-col gap-4 p-5 sm:overflow-y-auto sm:p-7 short:p-4 short:max-sm:min-h-0 short:max-sm:overflow-y-auto">
 
             {/* ── which dish is this ──────────────────────────────────
                 The same panel the add-ons below sit in, so the dialog reads
@@ -506,7 +515,7 @@ export function ProductDialog({
                 thing in it. A dish with three add-on groups is taller than a
                 laptop, and the price and the Add button are the two things
                 that must never be the reason somebody scrolls. */}
-            <div className="sticky bottom-0 z-10 shrink-0 border-t border-ink-950/10 bg-cream-50 p-5 pt-4 sm:relative sm:p-7 sm:pt-4 short:px-4 short:py-3">
+            <div className="sticky bottom-0 z-10 shrink-0 border-t border-ink-950/10 bg-cream-50 p-5 pt-4 sm:relative sm:p-7 sm:pt-4 short:px-4 short:py-3 short:max-sm:relative">
               {/* A soft edge above the bar, so a list that continues behind
                   it looks like it continues. Cut off by a hard line, a half
                   a row of sauces reads as the end of the sauces. */}

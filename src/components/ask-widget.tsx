@@ -227,7 +227,7 @@ export function AskWidget({ messengerUrl }: { messengerUrl: string | null }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 340, damping: 30 }}
-            className="fixed inset-x-3 bottom-3 z-50 flex max-h-[80vh] flex-col overflow-hidden rounded-3xl bg-cream-50 shadow-2xl shadow-ink-950/50 ring-1 ring-ink-950/15 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-96"
+            className="fixed inset-x-3 bottom-3 z-50 flex max-h-[80dvh] flex-col overflow-hidden rounded-3xl bg-cream-50 shadow-2xl shadow-ink-950/50 ring-1 ring-ink-950/15 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-96"
           >
             {/* Header */}
             <div className="flex items-center justify-between gap-3 bg-ink-950 px-5 py-4 text-cream-50">

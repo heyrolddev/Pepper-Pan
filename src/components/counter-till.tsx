@@ -677,7 +677,7 @@ export function CounterTill({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-cream-50 shadow-2xl sm:rounded-3xl"
+            className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-cream-50 shadow-2xl sm:rounded-3xl"
           >
             <div className="flex items-baseline justify-between gap-3 bg-ink-950 px-5 py-4">
               <p className="font-display text-lg font-black text-cream-50">
