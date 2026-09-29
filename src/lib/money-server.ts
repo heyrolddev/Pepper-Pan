@@ -3,6 +3,7 @@ import { orderLabel } from "@/lib/tickets";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { newestFirst } from "@/lib/ledger-order";
 import { shopToday } from "@/lib/format-date";
+import { supplyLife, type ItemLife } from "@/lib/supply-life";
 import {
   monthlyRunningRate,
   tankLife,
@@ -165,6 +166,8 @@ export type MoneyPicture = {
   runningForWindow: number;
   /** How long each size of gas tank actually lasts this shop. */
   tanks: TankLife[];
+  /** Every supply the shop buys, and what its own history says it lasts. */
+  supplies: ItemLife[];
   /** Sales a day needed to cover everything. Null when it can't be worked out. */
   breakEvenDaily: number | null;
   /** What the shop actually averages a day, over the same window. */
@@ -264,6 +267,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
     { data: wasteRows },
     { data: runningRows },
     { data: gasRows },
+    { data: supplyRows },
     { data: debtRows },
   ] = await Promise.all([
     supabase.from("fixed_costs").select("*").order("amount", { ascending: false }),
@@ -303,7 +307,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
     // in, so break-even adds like-for-like figures.
     supabase
       .from("running_costs")
-      .select("id, label, kind, amount, size_label, spent_on, note, ledger_id, suppliers(name)")
+      .select("id, label, kind, amount, qty, size_label, spent_on, ran_out_on, note, ledger_id, suppliers(name)")
       .gte("spent_on", since)
       .order("spent_on", { ascending: false }),
     // Gas goes back further than the break-even window on purpose: two
@@ -315,6 +319,17 @@ export async function loadMoney(): Promise<MoneyPicture> {
       .eq("kind", "gas")
       .gte("spent_on", gasSince)
       .order("spent_on", { ascending: false }),
+    /* How long things last reaches back over EVERYTHING, with no window at
+       all, and that is the point of it. A pack of tissue bought in March and
+       finished in September is one observation the shop waited six months to
+       earn; a thirty-day window would throw it away the moment it became
+       worth something. A mop still in use after two years is the same row
+       the reorder warning is about. */
+    supabase
+      .from("running_costs")
+      .select("id, label, amount, qty, size_label, spent_on, ran_out_on")
+      .order("spent_on", { ascending: false })
+      .limit(500),
     supabase
       .from("supplier_debts")
       .select("id, supplier_name, description, amount, paid, incurred_on, source, note")
@@ -401,8 +416,10 @@ export async function loadMoney(): Promise<MoneyPicture> {
       label: string;
       kind: string;
       amount: number;
+      qty: number | null;
       size_label: string | null;
       spent_on: string;
+      ran_out_on: string | null;
       note: string | null;
       ledger_id: string | null;
       suppliers: { name: string } | { name: string }[] | null;
@@ -412,8 +429,13 @@ export async function loadMoney(): Promise<MoneyPicture> {
     label: r.label,
     kind: r.kind as SpendKind,
     amount: Number(r.amount) || 0,
+    // Coalesced rather than trusted: a row written before 0065 read through
+    // an older cached schema comes back without the column, and a qty of
+    // undefined would divide a lifespan into NaN.
+    qty: Number(r.qty) > 0 ? Number(r.qty) : 1,
     sizeLabel: r.size_label,
     spentOn: r.spent_on,
+    ranOutOn: r.ran_out_on ?? null,
     supplierName: Array.isArray(r.suppliers)
       ? (r.suppliers[0]?.name ?? null)
       : (r.suppliers?.name ?? null),
@@ -438,14 +460,46 @@ export async function loadMoney(): Promise<MoneyPicture> {
       label: r.label,
       kind: "gas" as const,
       amount: Number(r.amount) || 0,
+      qty: 1,
       sizeLabel: r.size_label,
       spentOn: r.spent_on,
+      ranOutOn: null,
       supplierName: null,
       note: null,
       // The gas window reads fewer columns than the break-even one, because
       // `tankLife` only needs the dates and the sizes. No undo happens from
       // here, so the link is not fetched.
       ledgerId: null,
+    })),
+    today
+  );
+
+  /**
+   * How long each thing the shop buys actually lasts.
+   *
+   * Unlike `tanks` above, none of this is inferred from the gaps between
+   * purchases: it comes from the end dates the owner fills in when something
+   * runs out. That is why it works for a pack of tissue bought three at a
+   * time and for a bottle of Joy opened a month after it was bought, neither
+   * of which a gap can describe.
+   */
+  const supplies = supplyLife(
+    ((supplyRows ?? []) as {
+      id: string;
+      label: string;
+      amount: number;
+      qty: number | null;
+      size_label: string | null;
+      spent_on: string;
+      ran_out_on: string | null;
+    }[]).map((r) => ({
+      id: r.id,
+      label: r.label,
+      sizeLabel: r.size_label,
+      amount: Number(r.amount) || 0,
+      qty: Number(r.qty) > 0 ? Number(r.qty) : 1,
+      spentOn: r.spent_on,
+      ranOutOn: r.ran_out_on ?? null,
     })),
     today
   );
@@ -863,6 +917,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
     runningCosts,
     runningForWindow,
     tanks,
+    supplies,
     ledger,
     receivables,
     owed,

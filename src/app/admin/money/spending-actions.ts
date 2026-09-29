@@ -224,6 +224,16 @@ export async function recordSpend(input: {
   amount: number;
   /** Gas only: "22kg", "11kg". */
   sizeLabel: string;
+  /** How many of it. Three tanks in one go is one row and three lifespans. */
+  qty?: number;
+  /**
+   * The day it was bought, when that is not today.
+   *
+   * Things get recorded on the evening somebody remembers, not the afternoon
+   * they were bought, and a date that is three days out makes every lifespan
+   * built on it three days short. Blank means today.
+   */
+  spentOn?: string;
   /** Which pot it came out of, or "unpaid" for utang. */
   paidFrom: Account | "unpaid";
   supplierId: string;
@@ -242,8 +252,21 @@ export async function recordSpend(input: {
     return { error: "What kind of spend was this?" };
   }
 
+  const qty = Number(input.qty);
+  const count = Number.isFinite(qty) && qty > 0 ? qty : 1;
+
   const supabase = createAdminClient();
   const today = shopToday();
+
+  /* A typed purchase date, checked before it is trusted. The ledger line
+     below still lands on today, deliberately: the money left the pot when
+     the spend was recorded, and backdating it would make the drawer fail a
+     count it passed this morning. The purchase date is about how long the
+     thing lasts; the ledger date is about where the pesos are. */
+  const bought = /^\d{4}-\d{2}-\d{2}$/.test(input.spentOn ?? "")
+    ? (input.spentOn as string)
+    : today;
+  if (bought > today) return { error: "That date is in the future." };
 
   let supplierName: string | null = null;
   if (input.supplierId) {
@@ -265,7 +288,7 @@ export async function recordSpend(input: {
         .insert({
           name: label,
           amount,
-          bought_on: today,
+          bought_on: bought,
           note: input.note.trim() || null,
           paid_from: input.paidFrom,
         })
@@ -282,7 +305,8 @@ export async function recordSpend(input: {
           // size of its own.
           size_label:
             input.kind === "gas" && input.sizeLabel.trim() ? input.sizeLabel.trim() : null,
-          spent_on: today,
+          qty: count,
+          spent_on: bought,
           supplier_id: input.supplierId || null,
           note: input.note.trim() || null,
           created_by: viewer.profile?.id ?? null,
@@ -386,6 +410,80 @@ export async function deleteRunningCost(id: string): Promise<Result> {
 
   const { error } = await db.from("running_costs").delete().eq("id", id);
   if (error) return { error: error.message };
+  revalidate();
+  return { error: null };
+}
+
+
+/**
+ * The day it ran out.
+ *
+ * This is the whole measurement. Nobody can weigh the gas that went into one
+ * bowl or the tissue one customer used, so the only honest figure available
+ * is the pair of dates the owner is willing to record by hand — and the
+ * second one is the one that turns a purchase into knowledge.
+ *
+ * It is deliberately a separate action from recording the spend, because
+ * that is how it happens: the purchase is logged in January and the answer
+ * arrives in March. A form that asked for both at once would be asking for a
+ * guess, and a guessed end date is worse than none — it produces an average
+ * that looks exactly as confident as a measured one.
+ *
+ * The date is checked against the purchase, not merely accepted. Running out
+ * before it was bought is a typo every time, and the database refuses it too;
+ * this catches it where the owner can still see which row they were on.
+ */
+export async function markRanOut(id: string, ranOutOn: string): Promise<Result> {
+  const viewer = await mayManageMoney();
+  if (!viewer) return { error: "Only the owner or a manager can update a spend." };
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ranOutOn)) return { error: "Pick the day it ran out." };
+  const today = shopToday();
+  if (ranOutOn > today) return { error: "That date is in the future." };
+
+  const db = createAdminClient();
+  const { data: row, error: readError } = await db
+    .from("running_costs")
+    .select("label, spent_on")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) return { error: readError.message };
+  if (!row) return { error: "That spend is no longer there." };
+
+  if (ranOutOn < (row.spent_on as string)) {
+    return {
+      error: `That is before it was bought (${row.spent_on}). Check the date.`,
+    };
+  }
+
+  const { error } = await db
+    .from("running_costs")
+    .update({ ran_out_on: ranOutOn })
+    .eq("id", id);
+  if (error) return { error: error.message };
+
+  revalidate();
+  return { error: null };
+}
+
+/**
+ * It had not run out after all.
+ *
+ * For the wrong row tapped, or a date entered on the wrong one. Clearing it
+ * puts the purchase back to "still in use", which is a state and not an
+ * absence — the reorder warning starts counting from the purchase date
+ * again rather than the row simply disappearing from the estimate.
+ */
+export async function clearRanOut(id: string): Promise<Result> {
+  const viewer = await mayManageMoney();
+  if (!viewer) return { error: "Only the owner or a manager can update a spend." };
+
+  const { error } = await createAdminClient()
+    .from("running_costs")
+    .update({ ran_out_on: null })
+    .eq("id", id);
+  if (error) return { error: error.message };
+
   revalidate();
   return { error: null };
 }
