@@ -21,9 +21,9 @@ import {
   BatchHistoryDialog,
   CountBatchForm,
   EditBatchForm,
-  IngredientHistoryDialog,
   NewBatchForm,
 } from "@/components/batch-forms";
+import { IngredientHistoryDialog } from "@/components/ingredient-history-dialog";
 import type { Supplier } from "@/lib/suppliers";
 import { hqTitle } from "@/lib/hq-theme";
 import { NutritionFill } from "@/components/nutrition-fill";
