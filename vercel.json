@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "claude/pepper-pan-website-setup-3yeohq": false
+    }
+  }
+}
