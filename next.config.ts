@@ -21,6 +21,44 @@ const nextConfig: NextConfig = {
       hostname,
       pathname: "/storage/v1/object/public/**",
     })),
+
+    /* A YEAR, and it is safe for one specific reason.
+    
+       Next 16 re-transforms an image once its cache entry expires, and the
+       default is four hours — so one menu photo can be re-processed six
+       times a day for ever, whether or not anybody looked at it. On a plan
+       that counts transformations, that is the meter running on a picture
+       that has not changed since March.
+    
+       A long cache is normally dangerous: change the photo and customers
+       keep seeing the old one. It is safe HERE because every upload in this
+       codebase writes to a NEW path — `crypto.randomUUID()` for promo
+       media, `meals/<id>-<timestamp>` for a dish photo, a timestamp for a
+       receipt. A changed photo is a changed URL, so a cached transform can
+       never be a stale one: there is nothing behind the old URL to go out
+       of date. Reuse a path anywhere and this line stops being safe, which
+       is why it is written down next to it. */
+    minimumCacheTTL: 31_536_000,
+
+    /* The widths this shop's layouts actually ask for.
+    
+       Next generates a variant per width in these lists, and each one is a
+       billed transformation. The defaults carry eight device widths up to
+       3840 — a 4K desktop — for a menu photograph on a phone in a palengke.
+       Nothing here renders wider than 100vw, and the `sizes` hints across
+       the app resolve to 45vw, 33vw, 25vw, 20vw and a handful of fixed
+       pixel sizes.
+    
+       1200 is kept deliberately rather than trimmed to the round numbers: a
+       390px phone at three times the pixel density asks for 1170, and
+       without 1200 it would be handed 1920 — fewer transformations bought
+       with a bigger download for the customers who are most of the traffic
+       and least likely to be on wifi. 2048 and 3840 go, because no screen
+       that size is looking at this menu. */
+    deviceSizes: [640, 828, 1080, 1200, 1920],
+    /* Covers every fixed-width image in the app — the largest is 176px,
+       which at twice the density asks for 352 and is served the 384. */
+    imageSizes: [64, 128, 256, 384],
   },
   experimental: {
     serverActions: {
