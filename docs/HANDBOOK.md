@@ -108,7 +108,7 @@ after they bought gas from the till.
 ### Understand
 | Screen | What it is for |
 |---|---|
-| **Analytics** | Trends, best sellers, quiet days |
+| **Analytics** | Trends, best sellers, quiet days — **and a report for each month** |
 | **History** | Past days, and backfilling a day from the notebook |
 | **Reviews** | What customers said, and relaying one that came by Messenger |
 | **Customers** | Who orders, and how often |
@@ -177,6 +177,25 @@ Two places, and they answer different questions:
   the open one is on day 19.
 - **Suppliers → Prices & history** — what you actually paid over time, and
   whether somebody else is cheaper.
+
+### Read the month
+Analytics → **Month by month** → open a month.
+
+What it came to, a bar for every day, what sold, who came back, what went well,
+what did not, and a numbered list of what to do about next month — ranked by
+what it is worth, each one tied to a figure above it.
+
+> An unfinished month **says so**, and compares itself against the *same number
+> of days* of the month before. Nine days of October against thirty-one of
+> September is a shop that looks like it is collapsing, and every number in
+> that comparison is real — which is what makes it convincing and what makes it
+> dangerous.
+
+Two figures are worked out differently, and the screen says which. The month's
+own totals come from what each order actually cost at the time. **Per-dish**
+profit uses today's recipe prices, because the cost of one line was never
+stored — so if chicken went up mid-month, a chicken dish looks slightly worse
+than it was.
 
 ### Check the drawer
 Staff → the shift. The sum is written out so it can be argued with, and the

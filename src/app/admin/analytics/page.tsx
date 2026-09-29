@@ -8,6 +8,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { usualCostPct } from "@/lib/past-days";
 import { salesOutlook } from "@/lib/forecast-server";
 import { buildSnapshot } from "./snapshot";
+import { tradedMonths } from "@/lib/monthly-report-server";
+import { MonthlyReportPanel } from "@/components/monthly-report-panel";
 import { StatTile as Tile } from "@/components/stat-tile";
 import { pesoRound } from "@/lib/peso";
 import { hqTitle } from "@/lib/hq-theme";
@@ -66,10 +68,14 @@ export default async function AdminAnalyticsPage() {
     return <NotAllowed>Analytics is the owner&apos;s. What needs doing this shift is on Today, and the order board has the queue.</NotAllowed>;
   }
 
-  const [snapshot, ahead, pastDays] = await Promise.all([
+  const [snapshot, ahead, pastDays, months] = await Promise.all([
     buildSnapshot(),
     salesOutlook(),
     loadPastDayContext(),
+    // Just the list. Each report is fetched when its row is opened, because
+    // a year of them at render would be a year of queries on the heaviest
+    // page in HQ, for the eleven nobody is going to read.
+    tradedMonths(),
   ]);
 
   const weekday: Bar[] = snapshot.byWeekday.map((d) => ({
@@ -108,9 +114,29 @@ export default async function AdminAnalyticsPage() {
         <h2 className={hqTitle}>Analytics</h2>
         <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
           What your last 30 days actually say — and, when you ask for it, what
-          to post, boost and promote because of it.
+          to post, boost and promote because of it. Each finished month has its
+          own report further down.
         </p>
       </div>
+
+      {/* The month report, near the top.
+      
+          Everything else on this page is a rolling thirty days, which is the
+          right shape for "how are we doing right now" and the wrong one for
+          "what did September come to". A month is what a shop plans in, pays
+          rent in and remembers in — so it goes where somebody will see it
+          rather than at the bottom under the forecast. */}
+      <section className="flex flex-col gap-3">
+        <div>
+          <h3 className={hqTitle}>Month by month</h3>
+          <p className="mt-1 max-w-2xl text-sm text-ink-800/60">
+            The whole of a month, closed and read back: what it came to, which
+            days and dishes carried it, what went well, what did not, and what
+            to do about the next one.
+          </p>
+        </div>
+        <MonthlyReportPanel months={months} />
+      </section>
 
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile
