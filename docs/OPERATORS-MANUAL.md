@@ -7,6 +7,10 @@ for the person who owns the stall, not for a developer.
 *A formatted copy of this document is published as a private page; this is the
 copy that travels with the code.*
 
+**Looking for what the system does and how to use it?** That is
+[HANDBOOK.md](./HANDBOOK.md) — every screen, the flows, and the how-tos. This
+file is about what it runs on.
+
 ---
 
 ## 1. The three services
