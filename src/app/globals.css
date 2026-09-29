@@ -1,6 +1,29 @@
 @import "tailwindcss";
 
 /*
+ * A screen with almost no height — a phone held sideways.
+ *
+ * Every breakpoint Tailwind ships asks about WIDTH. A phone in landscape is
+ * 844px wide and 390px tall: it sails past `sm:`, `md:` and `lg:` while
+ * having a third of the height any of them assume. So the dish sheet got the
+ * laptop layout — which is the right layout, two columns is exactly what you
+ * want when the screen is wide — sized for a laptop's height. The photograph
+ * is `sm:aspect-square`, so at half of 844 it asked for a 400px square in a
+ * 335px sheet: the picture alone was taller than the whole dialog, and the
+ * dish's name, its calories and its price were all below it.
+ *
+ * The fix is not a different layout. Width still decides the columns; this
+ * variant decides how TALL things are inside them. On a short screen the
+ * photograph stops being a square and becomes a 112px band, and the padding
+ * everywhere comes down a notch. Two columns, and the name, the choices and
+ * the Add button all in the 390px there actually is.
+ *
+ * 599px is the floor: every phone in landscape is under 440px tall and takes
+ * this; an iPad in landscape is 768px and does not.
+ */
+@custom-variant short (@media (max-height: 599px));
+
+/*
  * Pepper Pan design system.
  *
  * Core brand: red #b91313 + gold #ffcf00 on warm ink / cream.
