@@ -20,6 +20,14 @@
  *
  * 599px is the floor: every phone in landscape is under 440px tall and takes
  * this; an iPad in landscape is 768px and does not.
+ *
+ * This variant is the TUNING, never the safety. A height query is a guess
+ * about the device, and the guess was wrong on Android: `vh` there is the
+ * height with the address bar hidden, so a sheet at 92vh ran under a toolbar
+ * that iOS had already scrolled away. Every sheet now measures in `dvh` —
+ * the height the browser is actually showing — and the dish photograph
+ * carries its own cap (`sm:max-h-[45dvh]`) that holds even on a screen this
+ * variant never matches.
  */
 @custom-variant short (@media (max-height: 599px));
 
