@@ -11,6 +11,7 @@ import {
   unknownTables,
 } from "@/lib/restore-order";
 import { convertLegacyBackup, detectBackupKind } from "@/lib/legacy-import";
+import { collectAuthIds, repairNote, repairRows } from "@/lib/restore-repair";
 import { automaticBackupDue, takeSafetyNet } from "@/lib/safety-net";
 import {
   emailConfigured,
@@ -43,6 +44,16 @@ export type RestoreResult =
       unusable: string[];
       /** The copy taken automatically before any of this was written. */
       safetyNet: { rows: number; bytes: number } | null;
+      /**
+       * What had to be repaired to get the rows in, table by table.
+       *
+       * Empty on a restore into the same project, which is the common case.
+       * Non-empty means the backup was put into a database that does not
+       * have the accounts it refers to — and the owner needs to know which
+       * records came back without their link and which are waiting on an
+       * account being re-created.
+       */
+      repairs: { table: string; note: string }[];
     };
 
 /**
@@ -97,13 +108,68 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
 
   const db = createAdminClient();
   const outcomes: TableOutcome[] = [];
+  const repairs: { table: string; note: string }[] = [];
+
+  /* Which of the accounts this file refers to actually exist HERE.
+  
+     A backup cannot carry `auth.users` — Supabase owns that table and it
+     holds password hashes that are not ours to copy. So a file put into a
+     fresh project is full of orders, reviews and shifts pointing at
+     accounts that exist nowhere, and Postgres refuses every one of them.
+     Asked of the database rather than assumed from the file, because the
+     common case is a restore into the SAME project, where every id is
+     found and nothing below does anything at all. */
+  const wanted = collectAuthIds(file.data);
+  const present = new Set<string>();
+  if (wanted.length > 0) {
+    const { data: found, error: authError } = await db.rpc("auth_users_present", {
+      p_ids: wanted,
+    });
+    if (authError) {
+      // Not fatal, and deliberately not silent. Treating every account as
+      // present is what the code did before 0068 and it is the safe
+      // direction to fail in: a restore into the same project still works
+      // exactly as it always did.
+      console.error(`[restore] auth_users_present: ${authError.message}`);
+      for (const id of wanted) present.add(id);
+      repairs.push({
+        table: "—",
+        note: `Could not check which accounts still exist (${authError.message}). If this is a fresh project, run migration 0068 and import again — rows belonging to deleted accounts may have been refused.`,
+      });
+    } else {
+      for (const id of (found ?? []) as (string | { id: string })[]) {
+        present.add(String(typeof id === "string" ? id : id.id).toLowerCase());
+      }
+    }
+  }
 
   for (const table of RESTORE_ORDER) {
-    const rows = file.data?.[table];
-    if (!Array.isArray(rows) || rows.length === 0) continue;
+    const original = file.data?.[table];
+    if (!Array.isArray(original) || original.length === 0) continue;
+
+    // Dangling account links dropped, rows that cannot exist without one
+    // held back and named. A no-op when every id was found.
+    const repair = repairRows(table, original, present);
+    const rows = repair.rows;
+    const note = repairNote(table, repair);
+    if (note) repairs.push({ table, note });
+    if (rows.length === 0) {
+      outcomes.push({
+        table,
+        rows: original.length,
+        restored: 0,
+        error: note ?? "every row referred to an account that no longer exists",
+      });
+      continue;
+    }
 
     let restored = 0;
     let failed: string | null = null;
+    // Rows that would not go in even one at a time, and the last reason
+    // given. Counted rather than collected: a hundred identical foreign-key
+    // messages is not a hundred pieces of information.
+    let failedRows = 0;
+    let lastFailure = "";
 
     // Child rows with no id of their own replace their parent's whole set
     // rather than adding to it — see `parentsToClear`. Without that, a second
@@ -161,8 +227,36 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
       } else {
         const { error } = await db.from(table).upsert(slice);
         if (error) {
-          failed = error.message;
-          break;
+          /* One bad row must not cost the four hundred and ninety-nine
+             travelling with it.
+          
+             PostgREST sends a chunk as a single statement, so a chunk is
+             all-or-nothing — and this used to take the failure as the
+             table's answer and `break`, abandoning every chunk after it
+             too. A single unrestorable row therefore lost the entire
+             table, which on `orders` is every sale the shop ever made.
+          
+             So a failed chunk is retried row by row. It is slow, and it is
+             slow exactly once, on the worst day, for the rows that are
+             actually broken — and it turns "the orders would not restore"
+             into "these four orders would not restore, and here is why". */
+          let lastError = error.message;
+          let salvaged = 0;
+          for (const one of slice) {
+            const { error: rowError } = await db.from(table).upsert(one);
+            if (rowError) lastError = rowError.message;
+            else salvaged += 1;
+          }
+          restored += salvaged;
+          if (salvaged < slice.length) {
+            const lost = slice.length - salvaged;
+            failedRows += lost;
+            lastFailure = lastError;
+          }
+          // Deliberately no `break`: the next chunk may be perfectly good,
+          // and there is no reason the rest of the shop's history should
+          // depend on these particular rows.
+          continue;
         }
       }
       restored += slice.length;
@@ -190,7 +284,20 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     // usually `profiles`, whose rows point at auth users that do not exist in
     // a fresh project — must not stop the recipes and the sales history from
     // coming back.
-    outcomes.push({ table, rows: rows.length, restored, error: failed });
+    /* The table's verdict, in the order that matters: a hard failure
+       first, then rows that individually refused, then a repair note. All
+       three can be true at once, and the most alarming one is the one the
+       owner needs at the front. */
+    const refused =
+      failedRows > 0
+        ? `${failedRows} row${failedRows === 1 ? "" : "s"} would not go in (${lastFailure})`
+        : null;
+    outcomes.push({
+      table,
+      rows: original.length,
+      restored,
+      error: [failed, refused, note].filter(Boolean).join(". ") || null,
+    });
   }
 
   /**
@@ -235,6 +342,7 @@ export async function restoreFromBackup(text: string): Promise<RestoreResult> {
     dropped: converted?.report.dropped ?? [],
     unusable: converted?.report.skipped ?? [],
     safetyNet: { rows: net.rows, bytes: net.bytes },
+    repairs,
   };
 }
 
