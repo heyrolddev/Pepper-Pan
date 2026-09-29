@@ -58,7 +58,7 @@ Two guides, and they answer different questions:
 ## Checks
 
 ```bash
-npm test             # 48 tests, Node's own runner — no framework, no deps
+npm test             # 994 tests, Node's own runner — no framework, no deps
 npx tsc --noEmit
 npm run lint
 npm run build        # the same check Vercel runs
@@ -67,6 +67,30 @@ npm run build        # the same check Vercel runs
 `tests/` covers the pure logic where being wrong costs money: delivery
 pricing, receipt rendering, dish margins, the permission table, and the
 upload guards. No database is needed — they are arithmetic and rules.
+
+## Deployments
+
+Production is Vercel, built from `claude/analysis-ryrmqm`.
+
+`vercel.json` switches off automatic deployments for the working branch
+`claude/pepper-pan-website-setup-3yeohq`. Every merge used to produce three
+builds where one was wanted:
+
+| | branch | what it was |
+| --- | --- | --- |
+| 1 | `claude/pepper-pan-…` | preview of the commit about to be merged |
+| 2 | `claude/analysis-…` | **production — the only one anybody visits** |
+| 3 | `claude/pepper-pan-…` | preview of the *merged* commit, because the working branch is force-reset onto it afterwards — byte for byte the same build as 2 |
+
+Two thirds of every build minute, and two thirds of a deployment list that
+had to be cleared out by hand, went on previews nobody opened.
+
+The rule names that one branch in full rather than matching `claude/*`.
+Vercel resolves conflicting patterns by "any rule that says true wins", so a
+wildcard plus an exception for the production branch would also work — and
+would put the live site one typo away from never deploying again. A branch
+that is not named here still deploys, which is the safe direction to be
+wrong in.
 
 ## Notifications
 
