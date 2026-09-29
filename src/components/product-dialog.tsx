@@ -428,7 +428,13 @@ export function ProductDialog({
                 className="min-w-0 rounded-2xl bg-cream-100 p-4 ring-1 ring-ink-950/10"
               >
                 <legend className="flex items-center gap-2 px-1">
-                  <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/60">
+                  {/* Brand red, not a grey. This is the QUESTION being asked
+                      — "Spice", "Choose your drinks" — and at ink-800/60 it
+                      sat at 4.4:1 on the cream panel, quieter than the chips
+                      that answer it. brand-700 is 8.1:1 on the same ground,
+                      so it reads as the heading it is and stays well clear
+                      of the contrast floor for 11px type. */}
+                  <span className="text-[11px] font-black uppercase tracking-widest text-brand-700">
                     {axis.name}
                   </span>
                   <span className="rounded-full bg-ink-950 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-cream-50">
@@ -649,7 +655,9 @@ function AddOnGroup({
   return (
     <fieldset className="min-w-0 rounded-2xl bg-cream-100 p-4 ring-1 ring-ink-950/10">
       <legend className="flex items-center gap-2 px-1">
-        <span className="text-[11px] font-black uppercase tracking-widest text-ink-800/60">
+        {/* The same brand red as the variant legend above, and for the same
+            reason: the group's name is the question, not a caption. */}
+        <span className="text-[11px] font-black uppercase tracking-widest text-brand-700">
           {group.name}
         </span>
         <span

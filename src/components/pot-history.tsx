@@ -167,7 +167,13 @@ export function PotHistory({
                   className="flex items-start justify-between gap-3 rounded-2xl bg-cream-100 px-4 py-3 ring-1 ring-ink-950/[0.07]"
                 >
                   <span className="min-w-0 text-sm text-ink-800/75">
-                    {l.note ?? l.category ?? (l.type === "in" ? "Money in" : "Money out")}
+                    {l.note ??
+                      l.category ??
+                      (l.type === "void"
+                        ? "Cancelled"
+                        : l.type === "in"
+                          ? "Money in"
+                          : "Money out")}
                     {/* Which kind of line it is. A sale follows its order —
                         cancel the order and this turns into a reversal —
                         while a typed entry stays exactly as entered. Somebody
@@ -178,14 +184,30 @@ export function PotHistory({
                       </span>
                     )}
                   </span>
-                  <span
-                    className={`shrink-0 font-display font-black tabular-nums ${
-                      l.type === "in" ? "text-jade-700" : "text-brand-600"
-                    }`}
-                  >
-                    {l.type === "in" ? "+" : "−"}
-                    {peso(l.amount)}
-                  </span>
+                  {/* A cancellation carries no sign and no colour, because
+                      it carries no money. It still shows the amount — an
+                      owner wants to know a ₱900 order was cancelled, not just
+                      that one was — but as the order's VALUE, with the word
+                      that says so, never as a figure in the day's columns. */}
+                  {l.type === "void" ? (
+                    <span className="shrink-0 text-right">
+                      <span className="block font-display font-black tabular-nums text-ink-800/45 line-through">
+                        {peso(l.amount)}
+                      </span>
+                      <span className="block text-[10px] font-black uppercase tracking-wide text-ink-800/40">
+                        not collected
+                      </span>
+                    </span>
+                  ) : (
+                    <span
+                      className={`shrink-0 font-display font-black tabular-nums ${
+                        l.type === "in" ? "text-jade-700" : "text-brand-600"
+                      }`}
+                    >
+                      {l.type === "in" ? "+" : "−"}
+                      {peso(l.amount)}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -211,6 +233,17 @@ export function PotHistory({
                 <span className="text-jade-700">In {exact(sum.in)}</span>
                 <span className="mx-2 text-ink-800/25">·</span>
                 <span className="text-brand-600">Out {exact(sum.out)}</span>
+                {/* Said out loud, so a day whose only lines are cancellations
+                    reads as a day nothing moved rather than as a day the
+                    screen forgot to add up. */}
+                {sum.voided > 0 && (
+                  <>
+                    <span className="mx-2 text-ink-800/25">·</span>
+                    <span className="text-ink-800/45">
+                      {sum.voided} cancelled, nothing moved
+                    </span>
+                  </>
+                )}
               </span>
               <span className="font-display text-lg font-black tabular-nums text-ink-950">
                 {sum.net >= 0 ? "+" : "−"}

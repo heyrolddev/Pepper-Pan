@@ -116,7 +116,9 @@ function Row({
 }: {
   label: string;
   value: string;
-  tone?: "bad" | "good";
+  /** `void` is a line that moved nothing — a cancelled sale. It is struck
+   *  through and quiet, so it can never be read as money leaving a pot. */
+  tone?: "bad" | "good" | "void";
   /** A quiet word on where the line came from. */
   badge?: string;
   onDelete?: () => void;
@@ -134,7 +136,13 @@ function Row({
       <span className="flex shrink-0 items-center gap-2">
         <span
           className={`font-display font-black tabular-nums ${
-            tone === "bad" ? "text-brand-600" : tone === "good" ? "text-jade-700" : "text-ink-950"
+            tone === "bad"
+              ? "text-brand-600"
+              : tone === "good"
+                ? "text-jade-700"
+                : tone === "void"
+                  ? "text-ink-800/45 line-through"
+                  : "text-ink-950"
           }`}
         >
           {value}
@@ -770,9 +778,20 @@ export function MoneyView({
                 empty="Nothing yet — no sales, and nothing put in or taken out."
                 render={(l) => (
                   <Row
-                    label={`${formatDate(l.date)} · ${l.note ?? l.category ?? (l.type === "in" ? "Money in" : "Money out")}`}
-                    value={`${l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
-                    tone={l.type === "in" ? "good" : "bad"}
+                    label={`${formatDate(l.date)} · ${
+                      l.note ??
+                      l.category ??
+                      (l.type === "void"
+                        ? "Cancelled"
+                        : l.type === "in"
+                          ? "Money in"
+                          : "Money out")
+                    }`}
+                    /* No sign on a cancellation. The amount is the order's
+                       value, shown so the owner knows whether a ₱900 or a ₱90
+                       ticket was voided — never a movement of the pot. */
+                    value={`${l.type === "void" ? "" : l.type === "in" ? "+" : "−"}${peso(l.amount)}`}
+                    tone={l.type === "void" ? "void" : l.type === "in" ? "good" : "bad"}
                     /* Which pot, on every line.
 
                        One stream across three pots is only readable if each
@@ -780,7 +799,9 @@ export function MoneyView({
                        ₱200 out on the same day look like they cancel, and they
                        do not if one was the drawer and the other was GCash.
                        This badge is load-bearing, not decoration. */
-                    badge={`${ACCOUNT_SHORT[l.account]}${l.derived ? " · sale" : ""}`}
+                    badge={`${ACCOUNT_SHORT[l.account]}${
+                      l.type === "void" ? " · cancelled" : l.derived ? " · sale" : ""
+                    }`}
                   />
                 )}
               />
