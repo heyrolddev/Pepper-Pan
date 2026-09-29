@@ -185,7 +185,7 @@ export function ProductDialog({
       exit={{ opacity: 0 }}
       transition={{ duration: still ? 0 : 0.18 }}
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink-950/60 backdrop-blur-sm sm:items-center sm:p-6"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink-950/60 backdrop-blur-sm sm:items-center sm:p-6 short:p-3"
     >
       <motion.div
         ref={panel}
@@ -226,7 +226,7 @@ export function ProductDialog({
            start choosing, which is exactly when you have finished looking at
            it. The buy bar is pinned separately below, so the price and the
            Add button never move. */
-        className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-y-auto overscroll-contain rounded-t-3xl bg-cream-50 outline-none sm:grid sm:max-h-[86vh] sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden sm:rounded-3xl"
+        className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-y-auto overscroll-contain rounded-t-3xl bg-cream-50 outline-none short:max-h-[94vh] sm:grid sm:max-h-[86vh] sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] sm:grid-rows-[minmax(0,1fr)] sm:overflow-hidden sm:rounded-3xl"
       >
         <>
           {/* Two buttons, one per breakpoint, because the right corner is a
@@ -264,7 +264,7 @@ export function ProductDialog({
               saw of the dish they had just tapped was a picture with no name
               on it, and the options they came for were two scrolls down.
               A 224px band still shows the food. */}
-          <div className="relative h-44 w-full shrink-0 overflow-hidden bg-white sm:aspect-square sm:h-auto sm:rounded-tl-3xl">
+          <div className="relative h-44 w-full shrink-0 overflow-hidden bg-white sm:aspect-square sm:h-auto sm:rounded-tl-3xl short:aspect-auto short:h-28">
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div
                 // Keyed on the picture, so changing size crossfades to the
@@ -313,8 +313,8 @@ export function ProductDialog({
 
           </div>
 
-            <div className="flex flex-col gap-1.5 p-5 sm:p-7">
-              <h2 className="font-display text-2xl font-black leading-tight text-ink-950 sm:text-3xl">
+            <div className="flex flex-col gap-1.5 p-5 sm:p-7 short:p-4">
+              <h2 className="font-display text-2xl font-black leading-tight text-ink-950 sm:text-3xl short:text-2xl">
                 {product.name}
               </h2>
               {product.avgRating != null && product.reviewCount > 0 && (
@@ -401,7 +401,7 @@ export function ProductDialog({
 
           {/* ---- how you want it ---- */}
           <div className="flex min-h-0 flex-1 flex-col sm:flex-initial">
-            <div className="flex flex-1 flex-col gap-4 p-5 sm:overflow-y-auto sm:p-7">
+            <div className="flex flex-1 flex-col gap-4 p-5 sm:overflow-y-auto sm:p-7 short:p-4">
 
             {/* ── which dish is this ──────────────────────────────────
                 The same panel the add-ons below sit in, so the dialog reads
@@ -506,7 +506,7 @@ export function ProductDialog({
                 thing in it. A dish with three add-on groups is taller than a
                 laptop, and the price and the Add button are the two things
                 that must never be the reason somebody scrolls. */}
-            <div className="sticky bottom-0 z-10 shrink-0 border-t border-ink-950/10 bg-cream-50 p-5 pt-4 sm:relative sm:p-7 sm:pt-4">
+            <div className="sticky bottom-0 z-10 shrink-0 border-t border-ink-950/10 bg-cream-50 p-5 pt-4 sm:relative sm:p-7 sm:pt-4 short:px-4 short:py-3">
               {/* A soft edge above the bar, so a list that continues behind
                   it looks like it continues. Cut off by a hard line, a half
                   a row of sauces reads as the end of the sauces. */}
