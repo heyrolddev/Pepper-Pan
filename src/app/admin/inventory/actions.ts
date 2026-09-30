@@ -473,7 +473,12 @@ export async function adjustStock(input: {
   });
 
   await log(
-    "movement",
+    // `inventory`, not `movement`. A cycle count is ordinary work — the same
+    // shelf-editing the two lines above are filed under. It sat in `movement`
+    // beside the database's below-zero warnings, and the shelf alert, which
+    // can only filter by category, reported each one as a shelf that had
+    // stopped adding up. See lib/shelf-alerts.ts.
+    "inventory",
     `Counted "${ing.name}": ${ing.stock} → ${input.countedQty} ${ing.unit} (${
       variance > 0 ? "+" : ""
     }${variance.toFixed(2)})`,
@@ -526,7 +531,9 @@ export async function produceBatch(input: {
 
   const made = Number(batch.yield_qty) * input.multiplier;
   await log(
-    "movement",
+    // Producing a batch is the most ordinary thing this screen does. Filed
+    // under `movement` it was read as a fault — see the note on the count above.
+    "inventory",
     `Made ${input.multiplier}× "${batch.name}" — ${made.toLocaleString("en-PH")} ${batch.yield_unit}, cost ₱${Number(data ?? 0).toFixed(2)}`,
     viewer.profile?.id ?? null
   );
@@ -1425,7 +1432,8 @@ export async function adjustBatchStock(input: {
   if (error) return { error: error.message };
 
   await log(
-    "movement",
+    // Same again for a batch recount.
+    "inventory",
     `Counted "${batch.name}" — ${was.toLocaleString("en-PH")} → ` +
       `${input.countedQty.toLocaleString("en-PH")} ${batch.yield_unit} ` +
       `(${variance > 0 ? "+" : ""}${variance.toLocaleString("en-PH")})` +

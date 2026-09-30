@@ -13,6 +13,23 @@ import { shopToday } from "@/lib/format-date";
  * actually has have come apart. More was sold than was recorded as made,
  * or a dish has no recipe and has been quietly costing nothing.
  *
+ * ── The category has one author now ──────────────────────────────────────
+ *
+ * It had two. The inventory screen filed every batch produced and every
+ * cycle count under `movement` as well, and this query cannot tell a writer
+ * apart — only a category. So a morning of ordinary work came back as
+ * "8 shelves stopped adding up today", listing two batches and six counts,
+ * with not one real shortfall among them.
+ *
+ * Worse, the banner's own advice is "Recount it below", and a recount wrote
+ * another `movement` row. The alert counted UP for every person who did what
+ * it asked.
+ *
+ * 0072 moved the application's writes to `inventory` and backfilled the rows
+ * already misfiled. This filter is correct only while `movement` stays the
+ * database's alone — `tests/shelf-alerts-category.test.ts` fails if any
+ * TypeScript source writes to it again.
+ *
  * ── Why this file exists ─────────────────────────────────────────────────
  *
  * That warning was already being written, and it landed in the activity

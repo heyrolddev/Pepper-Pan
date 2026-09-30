@@ -33,6 +33,17 @@ export type Activity = {
  * by the inventory screen, which is why it survived the cull; the database now
  * writes to it too when a shelf goes below zero.
  *
+ * That last sentence was the bug, written down and shipped anyway. Two
+ * unrelated things shared one category: the database's below-zero warnings,
+ * and every batch made or shelf counted on the inventory screen. The shelf
+ * alert filters by category and nothing else, so a day's ordinary work came
+ * back as a day of failures — eight batches and counts reported as "8 shelves
+ * stopped adding up" — and following the alert's own advice to recount wrote
+ * another row into the same category and made the number worse.
+ *
+ * `movement` is the database's alone now, and its label says so. Ordinary
+ * shelf work is filed under `inventory`, beside "Edited ingredient".
+ *
  * If you add a category, add it here. The check in `tests/activity-categories`
  * reads the source of every `activity_log` insert and fails if the two lists
  * have drifted apart again.
@@ -52,7 +63,7 @@ export const ACTIVITY_CATEGORIES = [
 export const CATEGORY_LABEL: Record<string, string> = {
   orders: "Orders",
   inventory: "Inventory",
-  movement: "Stock moved",
+  movement: "Shelf short",
   waste: "Waste",
   menu: "Menu",
   money: "Money",

@@ -11,6 +11,13 @@ import type { ShelfAlert } from "@/lib/shelf-alerts";
  * give the shop two versions of the same sentence, and the day they drift
  * the one on screen is the one nobody can trace.
  *
+ * The two steps below the list are new, and they are there because the
+ * banner used to name a problem and stop. "Recount it below" is only an
+ * instruction if you already know that "below" means the shelf list on this
+ * page, and that the other way out is to log a batch somebody made without
+ * logging it. Both are now written where the alarm is, not somewhere the
+ * reader is expected to already be.
+ *
  * No dismiss button, and that is the design. The alert is news; the problem
  * it points at is the stock count directly underneath, which stays wrong
  * until somebody fixes it. A tick-off box would let the news be cleared
@@ -28,9 +35,8 @@ export function ShelfAlerts({ alerts }: { alerts: ShelfAlert[] }) {
           : `${alerts.length} shelves stopped adding up today`}
       </h2>
       <p className="mt-1 text-sm leading-relaxed text-cream-50/80">
-        More was sold than the shop had recorded as made. Recount it below, or
-        log the batch that was produced without being logged — until one of
-        those happens, every count on this page is out by the same amount.
+        More was sold than the shop had recorded as made. Until this is put
+        right, every count on this page is out by the same amount.
       </p>
 
       <ul className="mt-3 flex flex-col gap-2">
@@ -46,6 +52,31 @@ export function ShelfAlerts({ alerts }: { alerts: ShelfAlert[] }) {
           </li>
         ))}
       </ul>
+
+      {/* What to do, in the order worth trying. Written as two choices rather
+          than a checklist because they are alternatives: one of them is what
+          happened, and the shop knows which. */}
+      <div className="mt-3 rounded-2xl bg-ink-950/20 px-4 py-3">
+        <p className="text-xs font-black uppercase tracking-widest text-cream-50/60">
+          How to put it right
+        </p>
+        <ol className="mt-1.5 flex flex-col gap-1.5 text-sm leading-relaxed text-cream-50/85">
+          <li>
+            <b>1 · Somebody made a batch without logging it?</b> Log it now —
+            Inventory → the batch → <b>Make</b>. The shelf catches up and this
+            clears by itself.
+          </li>
+          <li>
+            <b>2 · No, the count was just wrong?</b> Recount the shelf named
+            above and enter what is actually there — Inventory → the
+            ingredient → <b>Count</b>.
+          </li>
+          <li className="text-cream-50/60">
+            Either one fixes it. Doing neither leaves every cost and margin on
+            this page wrong by the same amount, quietly.
+          </li>
+        </ol>
+      </div>
     </section>
   );
 }
