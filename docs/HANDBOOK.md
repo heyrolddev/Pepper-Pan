@@ -217,6 +217,16 @@ HQ → Backup → download. Keep it somewhere that is not this computer.
 Inbox, for anything the assistant handed over. Messenger and the website land
 in the same place.
 
+### A shelf that stopped adding up
+Inventory, orange band at the top. It means more was sold than the shop
+recorded as made, so every cost on that page is out by the same amount until
+it is fixed. Two ways out, and the band now names both: **log the batch**
+somebody made without logging it (Inventory → the batch → Make), or
+**recount the shelf** and enter what is actually there.
+
+It only ever lists real shortfalls. Making a batch and counting a shelf are
+ordinary work and are filed under Inventory in History, not here.
+
 ### Find out why a number looks wrong
 **Ask HQ.** It explains the shop's own figures by calling the same function the
 screen did, so the two cannot disagree. It says when it does not know rather
