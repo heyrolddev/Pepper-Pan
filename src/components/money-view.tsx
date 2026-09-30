@@ -27,6 +27,8 @@ import { ACCOUNT_LABELS, ACCOUNT_SHORT, type Account } from "@/lib/money-account
 import { SupplierDebts } from "@/components/supplier-debts";
 import { PotHistory } from "@/components/pot-history";
 import { SpendPanel } from "@/components/spend-panel";
+import { OwnerPayPanel } from "@/components/owner-pay-panel";
+import type { OwnerPay } from "@/lib/owner-pay-server";
 import { MonthlyBills } from "@/components/monthly-bills";
 import { BILL_KINDS, BILL_KIND_HINT, BILL_KIND_LABEL, type BillKindName } from "@/lib/monthly-bills";
 import type { Supplier } from "@/lib/suppliers";
@@ -326,10 +328,13 @@ function useAction() {
 export function MoneyView({
   money,
   suppliers = [],
+  pay,
 }: {
   money: MoneyPicture;
   /** For the Spend dialog's "who from" chips. */
   suppliers?: Supplier[];
+  /** This month's owner pay. Optional so the page renders without 0073. */
+  pay?: OwnerPay;
 }) {
   const [dialog, setDialog] = useState<
     "cost" | "cash-start" | "gcash-start" | "bank-start" | "cash-entry" | "utang" | "asset" | null
@@ -809,6 +814,24 @@ export function MoneyView({
           )}
         </Panel>
       </section>
+
+      {/* ---- the owner's own pay ----
+
+          Directly under the pots, because a draw comes out of one of them and
+          the question it answers — "can I take money out of this drawer right
+          now" — is asked while looking at exactly those figures. Above Owed,
+          because what the shop owes other people is a different question and
+          putting a wage among debts invites it to be read as one. */}
+      {pay && (
+        <section className="flex flex-col gap-5">
+          <SectionHead
+            eyebrow="Your pay"
+            title="What you take for yourself"
+            hint="Money out of a pot, measured against the wage you budgeted — and never counted as a cost of the shop. Your own pay is not an expense the business is carrying; it is profit you already planned to take."
+          />
+          <OwnerPayPanel pay={pay} openPots={openPots.length > 0 ? openPots : ["cash"]} />
+        </section>
+      )}
 
       <section className="flex flex-col gap-5">
         <SectionHead eyebrow="Owed" title="Money owed, both directions" hint="One of these is money coming back to you and the other is money already spoken for. They are kept together so neither gets read as the other." />

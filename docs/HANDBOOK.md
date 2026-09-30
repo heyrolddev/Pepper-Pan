@@ -197,6 +197,26 @@ profit uses today's recipe prices, because the cost of one line was never
 stored — so if chicken went up mid-month, a chicken dish looks slightly worse
 than it was.
 
+### Take your own pay
+Money → **Your pay**. Tap **Take pay**, say how much and out of which pot.
+
+It comes out of the drawer (or GCash, or the bank) so your count still
+agrees, and shows in that pot's history as **Owner's pay** — so whoever
+counts the drawer tonight is not left short with no explanation.
+
+**It is never counted as a cost of the shop.** Your own pay is not an expense
+the business carries; it is profit you already planned to take. Logging it as
+gastos would make profit read lower than it is and push break-even up.
+
+**To see how much is left**, first tell it which standing cost is your wage:
+**Change the budget** → pick it. Add it under Break-even first if you have
+not. The panel then reads "₱12,000 left of ₱15,000" and warns you before the
+month's pay runs out, not after. Going over is allowed and says so — the
+extra is profit taken early, not wages.
+
+Every entry can be edited or removed. Removing one puts the money back in the
+pot it came from.
+
 ### Check the drawer
 Staff → the shift. The sum is written out so it can be argued with, and the
 money paid out of the till is listed underneath.
