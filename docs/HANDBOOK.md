@@ -164,6 +164,26 @@ whether it works online, at the counter, or both.
 Staff can never type an amount. A free-text discount box is how money leaves a
 drawer without a story.
 
+### Make a free-delivery code
+Promos & news → **Add a code** → pick **The delivery** as what it comes off.
+
+| What you want | Set it to |
+|---|---|
+| Libreng padala | The delivery · **percent** · `100` |
+| Half off the padala | The delivery · **percent** · `50` |
+| ₱20 off the padala | The delivery · **amount** · `20` |
+
+Add a **minimum spend** and you have *"libreng padala sa ₱500 pataas"* — the
+best promo a stall can run, because it does not cut the price of the food,
+it makes the order bigger.
+
+**The minimum always measures the food**, never the food plus the padala —
+otherwise a far delivery would unlock the code an order has not earned.
+
+A pickup order that tries the code is told it is for deliveries. Walk-ins at
+the counter never see it. The customer's order page shows **Free delivery
+−₱50** as its own line, so the promise is visibly kept.
+
 ### Log waste
 Inventory → **Log waste**. An ingredient, a batch, **or a whole dish** — a staff
 meal, or something dropped during service. A wasted dish is costed at what it

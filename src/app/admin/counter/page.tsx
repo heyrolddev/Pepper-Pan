@@ -104,7 +104,13 @@ export default async function AdminCounterPage() {
     .filter(
       (p) =>
         (!p.starts_on || p.starts_on <= onDay) &&
-        (!p.ends_on || p.ends_on >= onDay)
+        (!p.ends_on || p.ends_on >= onDay) &&
+        /* A walk-in is not being delivered, so a delivery code can never
+           apply here. Filtered out rather than shown and refused — and it
+           also removes a trap: the mapping below used to read "anything
+           that is not meal is order", which would have turned a code meant
+           for the padala into one that comes off the FOOD. */
+        p.scope !== "delivery"
     )
     .map((p) => ({
       id: p.id,
@@ -112,6 +118,8 @@ export default async function AdminCounterPage() {
       label: p.label,
       kind: p.kind === "amount" ? "amount" : "percent",
       value: Number(p.value),
+      // Delivery is filtered out above, so the two remaining values are the
+      // only ones this can be. Written out rather than inferred.
       scope: p.scope === "meal" ? "meal" : "order",
       mealId: p.meal_id,
       minSpend: Number(p.min_spend) || 0,

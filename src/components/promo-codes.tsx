@@ -205,6 +205,13 @@ export function PromoCodes({
                         {dishName(p.meal_id)} only
                       </span>
                     )}
+                    {/* Said on the card, because "100% off" on a list of
+                        codes is alarming until you know it is the padala. */}
+                    {p.scope === "delivery" && (
+                      <span className="rounded-full bg-jade-600/15 px-2.5 py-1 text-[11px] font-bold text-jade-700">
+                        Delivery only
+                      </span>
+                    )}
                   </p>
 
                   {/* The terms, in one line, in the order somebody asks
@@ -453,21 +460,40 @@ function Editor({
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {(["order", "meal"] as PromoScope[]).map((sc) => (
+            {(["order", "meal", "delivery"] as PromoScope[]).map((sc) => (
               <button
                 key={sc}
                 type="button"
                 aria-pressed={draft.scope === sc}
-                onClick={() => set({ scope: sc, mealId: sc === "order" ? null : draft.mealId })}
+                /* A delivery code has no dish, and the database refuses one
+                   (`promos_delivery_scope_has_no_meal`). Clearing it here
+                   means switching scope cannot leave a stale dish behind to
+                   be rejected on save with a constraint name nobody reads. */
+                onClick={() =>
+                  set({ scope: sc, mealId: sc === "meal" ? draft.mealId : null })
+                }
                 className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
                   draft.scope === sc
                     ? "bg-brand-600 text-cream-50"
                     : "bg-cream-50 text-ink-800/70 ring-1 ring-ink-950/10 hover:bg-cream-200"
                 }`}
               >
-                {sc === "order" ? "The whole order" : "One dish"}
+                {sc === "order"
+                  ? "The whole order"
+                  : sc === "meal"
+                    ? "One dish"
+                    : "The delivery"}
               </button>
             ))}
+            {draft.scope === "delivery" && (
+              <p className="w-full text-xs leading-relaxed text-ink-800/60">
+                Comes off the <strong className="text-ink-950">padala</strong>, never the
+                food. <strong className="text-ink-950">100% is free delivery.</strong> Set a
+                minimum spend below and you have &ldquo;libreng padala sa ₱500 pataas&rdquo;
+                — the minimum always measures the food, so a far delivery cannot unlock it
+                on its own. A pickup order is told the code is for deliveries.
+              </p>
+            )}
             {draft.scope === "meal" && (
               <div className="min-w-0 flex-1">
                 <Combobox

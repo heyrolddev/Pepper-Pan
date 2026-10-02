@@ -18,7 +18,19 @@
  */
 
 export type PromoKind = "percent" | "amount";
-export type PromoScope = "order" | "meal";
+/**
+ * What a code comes off.
+ *
+ * `delivery` is the third, and it exists because checkout read
+ *
+ *   orderTotal = max(0, subtotal - discount) + deliveryFee
+ *
+ * — every discount against the food, the padala added afterwards, so no
+ * promo could reach it. "Libreng padala sa ₱500 pataas" could not be
+ * expressed at all, and for a stall that is the most useful promo there is:
+ * it does not cut the price of the food, it raises the size of the order.
+ */
+export type PromoScope = "order" | "meal" | "delivery";
 
 export type Promo = {
   id: string;
@@ -61,6 +73,8 @@ export type PromoRefusal =
   | { why: "already-used"; message: string }
   | { why: "min-spend"; message: string }
   | { why: "not-in-basket"; message: string }
+  /** A delivery code on an order nobody is delivering. */
+  | { why: "not-delivery"; message: string }
   | { why: "nothing-off"; message: string };
 
 export type PromoResult =
@@ -80,7 +94,14 @@ export const basketTotal = (lines: BasketLine[]) =>
  * ₱20 off the Ji Pai and not off the order — and a percent one takes its
  * share of that dish alone.
  */
-export function applicableTotal(promo: Promo, lines: BasketLine[]): number {
+export function applicableTotal(
+  promo: Promo,
+  lines: BasketLine[],
+  /** The padala on this order. Zero for pickup, and zero by default so every
+   *  existing caller keeps the behaviour it had. */
+  deliveryFee = 0
+): number {
+  if (promo.scope === "delivery") return Math.max(0, deliveryFee);
   if (promo.scope === "order") return basketTotal(lines);
   return basketTotal(lines.filter((l) => l.mealId === promo.mealId));
 }
@@ -92,8 +113,12 @@ export function applicableTotal(promo: Promo, lines: BasketLine[]): number {
  * basket takes ₱150, never ₱200, because the alternative is an order the
  * shop owes the customer money on.
  */
-export function discountFor(promo: Promo, lines: BasketLine[]): number {
-  const base = applicableTotal(promo, lines);
+export function discountFor(
+  promo: Promo,
+  lines: BasketLine[],
+  deliveryFee = 0
+): number {
+  const base = applicableTotal(promo, lines, deliveryFee);
   if (base <= 0) return 0;
 
   let off =
@@ -124,9 +149,18 @@ export type Usage = {
 export function checkPromo(
   promo: Promo | null,
   lines: BasketLine[],
-  opts: { where: Where; today: string; usage: Usage; signedIn: boolean }
+  opts: {
+    where: Where;
+    today: string;
+    usage: Usage;
+    signedIn: boolean;
+    /** The padala on this order. Absent or zero means nobody is delivering
+     *  it, which is the whole question a delivery-scope code turns on. */
+    deliveryFee?: number;
+  }
 ): PromoResult {
   const no = (refusal: PromoRefusal): PromoResult => ({ ok: false, refusal });
+  const fee = Number.isFinite(opts.deliveryFee) ? Math.max(0, opts.deliveryFee!) : 0;
 
   if (!promo) {
     return no({ why: "unknown", message: "We don't have that code." });
@@ -175,6 +209,10 @@ export function checkPromo(
     });
   }
 
+  /* The food, always — never the food plus the padala. "Free delivery over
+     ₱500" means ₱500 of food, and counting the fee towards its own
+     threshold would let a far delivery unlock the code the order has not
+     earned. */
   const whole = basketTotal(lines);
   if (promo.minSpend > 0 && whole < promo.minSpend) {
     return no({
@@ -188,8 +226,18 @@ export function checkPromo(
       message: `"${promo.label}" is for a dish that isn't in your order.`,
     });
   }
+  /* Before the generic "takes nothing off" below, which would be true here
+     and useless: somebody typing a free-delivery code into a pickup order
+     needs to be told it is for delivery, not that their code is worthless.
+     That difference is the whole reason this refusal has its own name. */
+  if (promo.scope === "delivery" && !(fee > 0)) {
+    return no({
+      why: "not-delivery",
+      message: `"${promo.label}" takes money off the delivery charge, and this order isn't being delivered.`,
+    });
+  }
 
-  const discount = discountFor(promo, lines);
+  const discount = discountFor(promo, lines, fee);
   if (discount <= 0) {
     /* Reached when the basket is empty, or a dish promo's dish is free.
        Refused rather than applied at zero, so nothing on the receipt claims
@@ -217,7 +265,15 @@ export const normalizeCode = (raw: string): string =>
 export function discountLine(promo: Promo, discount: number): string {
   const what =
     promo.kind === "percent" ? `${promo.value}% off` : `₱${promo.value.toFixed(2)} off`;
-  const scope = promo.scope === "meal" ? " (one dish)" : "";
+  /* Named, because "50% off: −₱25" beside a ₱300 bill is a line somebody
+     will query. On a delivery code the 50% is of the padala, not the food,
+     and the receipt has to say which. */
+  const scope =
+    promo.scope === "meal"
+      ? " (one dish)"
+      : promo.scope === "delivery"
+        ? " (delivery)"
+        : "";
   return `${promo.label} — ${what}${scope}: −₱${discount.toFixed(2)}`;
 }
 
@@ -236,9 +292,16 @@ export function discountLine(promo: Promo, discount: number): string {
  * cannot be used simply shows nothing off — and the till says so in words
  * beside it.
  */
-export function estimateDiscount(promo: Promo, lines: BasketLine[]): number {
+export function estimateDiscount(
+  promo: Promo,
+  lines: BasketLine[],
+  /** Zero by default, which is also the truth at the counter: a walk-in is
+   *  not being delivered, so a delivery code correctly estimates nothing. */
+  deliveryFee = 0
+): number {
   if (!promo.isActive) return 0;
   if (promo.minSpend > 0 && basketTotal(lines) < promo.minSpend) return 0;
   if (promo.scope === "meal" && applicableTotal(promo, lines) <= 0) return 0;
-  return discountFor(promo, lines);
+  if (promo.scope === "delivery" && !(deliveryFee > 0)) return 0;
+  return discountFor(promo, lines, deliveryFee);
 }

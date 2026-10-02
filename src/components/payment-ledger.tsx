@@ -38,6 +38,11 @@ export type LedgerRow = {
   contact_phone: string | null;
   revenue: number;
   delivery_fee: number;
+  /** What a delivery promo took off the fee. Declared rather than left
+   *  to the optional field on `Billable`: a row type that does not
+   *  mention it is a query somebody can drop the column from without
+   *  the compiler minding, and the bill then charges the full padala. */
+  delivery_discount: number;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
   payment_plan: PaymentPlan;

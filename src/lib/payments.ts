@@ -1,3 +1,7 @@
+/* Relative, with its extension: this module is run directly by
+   `node --test`, which does not resolve the `@/` alias. */
+import { orderTotal } from "./order-total.ts";
+
 export const PAYMENT_STATUSES = [
   "unpaid",
   "submitted",
@@ -159,9 +163,14 @@ export function moneyState(o: {
   payment_plan: PaymentPlan;
   revenue: number;
   delivery_fee: number;
+  /** What a delivery promo took off the fee. Declared rather than left
+   *  to the optional field on `Billable`: a row type that does not
+   *  mention it is a query somebody can drop the column from without
+   *  the compiler minding, and the bill then charges the full padala. */
+  delivery_discount: number;
   downpayment_amount: number;
 }): MoneyState {
-  const total = Number(o.revenue) + Number(o.delivery_fee);
+  const total = orderTotal(o);
   const down = Number(o.downpayment_amount) || 0;
 
   const paid =

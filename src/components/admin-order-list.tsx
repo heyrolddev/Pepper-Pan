@@ -15,6 +15,7 @@ import { moneyLine, moneyState, type PaymentMethod, type PaymentPlan, type Payme
 import { formatDateTimeFull } from "@/lib/format-date";
 import { EtaCountdown } from "@/components/eta-countdown";
 import { peso } from "@/lib/peso";
+import { orderTotal } from "@/lib/order-total";
 
 export type AdminOrder = {
   id: string;
@@ -38,6 +39,11 @@ export type AdminOrder = {
   delivery_lng: number | null;
   delivery_distance_km: number | null;
   delivery_fee: number;
+  /** What a delivery promo took off the fee. Declared rather than left
+   *  to the optional field on `Billable`: a row type that does not
+   *  mention it is a query somebody can drop the column from without
+   *  the compiler minding, and the bill then charges the full padala. */
+  delivery_discount: number;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
   payment_reference: string | null;
@@ -226,7 +232,7 @@ function OrderCard({ order: o, canFix }: { order: AdminOrder; canFix: boolean })
         reference={o.payment_reference}
         receiptUrl={o.payment_receipt_url}
         plan={o.payment_plan}
-        total={Number(o.revenue) + Number(o.delivery_fee)}
+        total={orderTotal(o)}
         downpayment={Number(o.downpayment_amount)}
         downpaymentConfirmedAt={o.downpayment_confirmed_at}
         canFix={canFix}

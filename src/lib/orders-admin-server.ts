@@ -29,7 +29,7 @@ import {
 export const BOARD_LIMIT = 200;
 
 const COLUMNS =
-  "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale, qty))";
+  "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, delivery_discount, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale, qty))";
 
 type OrderRow = {
   id: string;
@@ -51,6 +51,7 @@ type OrderRow = {
   delivery_lng: number | null;
   delivery_distance_km: number | null;
   delivery_fee: number;
+  delivery_discount: number;
   payment_method: string;
   payment_status: string;
   payment_reference: string | null;
@@ -134,6 +135,7 @@ async function hydrate(rows: OrderRow[]): Promise<AdminOrder[]> {
       delivery_lng: o.delivery_lng,
       delivery_distance_km: o.delivery_distance_km,
       delivery_fee: Number(o.delivery_fee ?? 0),
+      delivery_discount: Number(o.delivery_discount ?? 0),
       payment_method: (o.payment_method === "gcash" ? "gcash" : "cod") as PaymentMethod,
       payment_status: (PAYMENT_STATUSES as readonly string[]).includes(o.payment_status)
         ? (o.payment_status as PaymentStatus)

@@ -39,6 +39,7 @@ type Order = {
   cancelled_reason: string | null;
   delivery_address: string | null;
   delivery_fee: number;
+  delivery_discount: number;
   payment_method: string;
   payment_status: string;
   payment_reference: string | null;
@@ -91,7 +92,7 @@ export default async function OrdersPage() {
   const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, scheduled_for, delivery_address, delivery_fee, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale, qty))"
+      "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, eta_set_at, scheduled_for, delivery_address, delivery_fee, delivery_discount, payment_method, payment_status, payment_reference, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(id, meal_id, qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale, qty))"
     )
     .eq("customer_id", user.id)
     .order("created_at", { ascending: false });
@@ -173,6 +174,7 @@ export default async function OrdersPage() {
     scheduled_for: o.scheduled_for,
     delivery_address: o.delivery_address,
     delivery_fee: Number(o.delivery_fee ?? 0),
+    delivery_discount: Number(o.delivery_discount ?? 0),
     payment_method: (o.payment_method === "gcash" ? "gcash" : "cod") as PaymentMethod,
     payment_status: (PAYMENT_STATUSES as readonly string[]).includes(o.payment_status)
       ? (o.payment_status as PaymentStatus)

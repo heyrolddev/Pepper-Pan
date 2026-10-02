@@ -9,7 +9,7 @@ import { isOutstanding, moneyState } from "@/lib/payments";
 import { hqTitle } from "@/lib/hq-theme";
 
 const COLUMNS =
-  "id, created_at, status, contact_name, contact_phone, revenue, delivery_fee, payment_method, payment_status, payment_plan, payment_reference, payment_receipt_url, downpayment_amount, downpayment_confirmed_at";
+  "id, created_at, status, contact_name, contact_phone, revenue, delivery_fee, delivery_discount, payment_method, payment_status, payment_plan, payment_reference, payment_receipt_url, downpayment_amount, downpayment_confirmed_at";
 
 async function getLedger(): Promise<{ rows: LedgerRow[]; error: string | null }> {
   try {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ticketOf } from "@/lib/tickets";
+import { deliveryDue, deliverySaved, orderTotal } from "@/lib/order-total";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { useOrderRealtime } from "@/lib/use-order-realtime";
@@ -45,6 +46,11 @@ export type TrackedOrder = {
   cancelled_reason: string | null;
   delivery_address: string | null;
   delivery_fee: number;
+  /** What a delivery promo took off the fee. Declared rather than left
+   *  to the optional field on `Billable`: a row type that does not
+   *  mention it is a query somebody can drop the column from without
+   *  the compiler minding, and the bill then charges the full padala. */
+  delivery_discount: number;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
   payment_reference: string | null;
@@ -192,7 +198,7 @@ function OrderCard({ order }: { order: TrackedOrder }) {
   const editable = order.status === "pending";
   const balanceDue = Math.max(
     0,
-    order.revenue + Number(order.delivery_fee) - order.downpayment_amount
+    orderTotal(order) - order.downpayment_amount
   );
   // Add-ons included, or dropping one rice meal from a three-meal order would
   // take ₱120 off a total that had ₱135 of it in.
@@ -355,12 +361,26 @@ function OrderCard({ order }: { order: TrackedOrder }) {
               <span>Delivery</span>
               <span>{peso(order.delivery_fee)}</span>
             </div>
+            {/* The saving as its own line, in the jade the rest of the site
+                uses for good news. A customer promised free delivery should
+                see the promise KEPT — a quietly smaller total is not the
+                same thing, and is the version they ring up to query. */}
+            {deliverySaved(order) > 0 && (
+              <div className="flex justify-between text-sm font-bold text-jade-700">
+                <span>
+                  {deliverySaved(order) >= Number(order.delivery_fee)
+                    ? "Free delivery"
+                    : "Off the delivery"}
+                </span>
+                <span>−{peso(deliverySaved(order))}</span>
+              </div>
+            )}
           </>
         )}
         <div className="flex items-center justify-between">
           <span className="font-display font-bold text-ink-950">Total</span>
           <span className="font-display text-lg font-black text-brand-600">
-            {peso((editing ? draftTotal : order.revenue) + Number(order.delivery_fee))}
+            {peso((editing ? draftTotal : Number(order.revenue)) + deliveryDue(order))}
           </span>
         </div>
       </div>

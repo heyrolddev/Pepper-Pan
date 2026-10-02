@@ -1,5 +1,6 @@
 import "server-only";
 import { ticketOf } from "@/lib/tickets";
+import { orderTotal } from "@/lib/order-total";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { STATUS_LABELS, type OrderStatus } from "@/lib/orders";
 import { pushConfigured, pushToStaff, pushToUser } from "@/lib/push";
@@ -258,14 +259,14 @@ export async function notifyNewOrder(orderId: string): Promise<void> {
     const { data: order } = await db
       .from("orders")
       .select(
-        "id, contact_name, fulfillment, revenue, delivery_fee, scheduled_for"
+        "id, contact_name, fulfillment, revenue, delivery_fee, delivery_discount, scheduled_for"
       )
       .eq("id", orderId)
       .maybeSingle();
     if (!order) return;
 
     const total =
-      Number(order.revenue ?? 0) + Number(order.delivery_fee ?? 0);
+      orderTotal(order);
     const who = (order.contact_name ?? "").trim() || "Walk-in";
     const how = order.fulfillment === "delivery" ? "Delivery" : "Pickup";
 
