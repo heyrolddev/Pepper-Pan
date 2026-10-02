@@ -2,6 +2,7 @@ import { can, getViewer } from "@/lib/auth";
 import { loadCostBook } from "@/lib/costing-server";
 import { isLow, stockValue } from "@/lib/costing";
 import { InventoryView, type BatchRow, type StockRow } from "@/components/inventory-view";
+import { shopToday } from "@/lib/format-date";
 import { loadInsight, loadPriceMoves } from "@/lib/inventory-insight";
 import { listSuppliers } from "@/app/admin/suppliers/actions";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -208,6 +209,7 @@ export default async function AdminInventoryPage() {
         wastableDishes={wastableDishes}
         rollout={rollout}
         suppliers={suppliers}
+        today={shopToday()}
         failed={failed}
       />
     </>

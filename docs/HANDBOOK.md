@@ -169,6 +169,22 @@ Inventory → **Log waste**. An ingredient, a batch, **or a whole dish** — a s
 meal, or something dropped during service. A wasted dish is costed at what it
 *cost to make*, never at what it sells for.
 
+### See what went in the bin
+Inventory → **What went in the bin**, at the bottom. Tap it open and pick the
+days: Today, Last 7 days, This month, Last month, or two dates of your own.
+
+**Spoilage and staff meals are counted apart, never added together.** Both
+cost money and only one of them is a problem — one blended figure is either
+unfair to the kitchen or a hiding place for real spoilage, depending which
+way the mix runs.
+
+**What cost the most** ranks spoilage by money, so the answer is "the pork,
+four times, ₱720" rather than only "₱1,420 of waste". That is the part you
+can do something about.
+
+Everything written off shows here — a shelf ingredient, a prepped batch, or a
+whole dish.
+
 ### Know when to buy more
 Two places, and they answer different questions:
 

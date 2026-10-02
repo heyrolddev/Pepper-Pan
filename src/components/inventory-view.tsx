@@ -15,6 +15,7 @@ import {
   type RecipeOption,
 } from "@/components/recipe-editor";
 import { WasteForm } from "@/components/waste-form";
+import { WasteHistory } from "@/components/waste-history";
 import type { Wastable } from "@/lib/waste-lines";
 import {
   AddBatchButton,
@@ -203,10 +204,15 @@ export function InventoryView({
   wastableDishes = [],
   rollout = null,
   suppliers = [],
+  today,
   failed,
 }: {
   stock: StockRow[];
   batches: BatchRow[];
+  /** The shop's own day, from the server. The browser's would be a day out
+   *  for anyone whose phone is set to another zone, and the waste history's
+   *  presets are all measured from it. */
+  today: string;
   suggestions: SuggestionRow[];
   expiring: ExpiringRow[];
   /** Days of consumption history the averages are built on. */
@@ -234,6 +240,9 @@ export function InventoryView({
   const [query, setQuery] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
   const [editing, setEditing] = useState<Editing>(null);
+  /* Folded by default. Unfolding is what triggers the read, so a visit that
+     never asks about the bin never pays for the query. */
+  const [wasteOpen, setWasteOpen] = useState(false);
 
   // Offered as suggestions rather than a fixed list: the shop's own units and
   // tags are the right vocabulary, and a dropdown of ours would just be one
@@ -1085,6 +1094,44 @@ export function InventoryView({
         </ul>
         </div>
       )}
+
+      {/* ---- what went in the bin ----
+
+          Folded, and at the bottom, because it is a question asked weekly
+          rather than a thing worked from during service — the top of this
+          page belongs to what is running out right now. Unfolding it is what
+          triggers the read, so a page nobody asks about the bin on never
+          pays for the query. */}
+      <section className="rounded-3xl bg-cream-50 p-5 ring-1 ring-ink-950/10 sm:p-6">
+        <button
+          onClick={() => setWasteOpen((v) => !v)}
+          aria-expanded={wasteOpen}
+          className="flex w-full items-center justify-between gap-3 text-left"
+        >
+          <span className="min-w-0">
+            <span className="block font-display text-xl font-black text-ink-950">
+              What went in the bin
+            </span>
+            <span className="mt-0.5 block text-sm text-ink-800/60">
+              Every line logged, over any stretch of days — spoilage and staff
+              meals counted apart, because only one of them is a problem.
+            </span>
+          </span>
+          <span
+            aria-hidden
+            className={`shrink-0 rounded-full bg-ink-950/5 px-3 py-2 text-xs font-black text-ink-800/60 transition-transform ${
+              wasteOpen ? "rotate-180" : ""
+            }`}
+          >
+            ▾
+          </span>
+        </button>
+        {wasteOpen && (
+          <div className="mt-5">
+            <WasteHistory today={today} />
+          </div>
+        )}
+      </section>
 
       {/* Keyed on the row so opening a second ingredient's form resets every
           field — a restock dialog carrying the last one's quantity is how a
