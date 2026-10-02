@@ -2,7 +2,17 @@
    module in this folder uses: `node --test` runs these files directly and
    does not resolve the `@/` alias, so a path alias here makes the module
    untestable — and the arithmetic in it is exactly the part worth testing. */
-import { shiftDay } from "./pot-history.ts";
+/* The day-range vocabulary is shared with the stock-accuracy screen, which
+   asks the same question of a different ledger. One copy, so "Last month"
+   cannot come to mean two things. */
+export {
+  PRESET_LABEL,
+  normaliseRange,
+  preset,
+  rangeDays,
+  type PresetId,
+  type Range,
+} from "./day-range.ts";
 
 /**
  * What the shop threw away, over a stretch of days it chooses.
@@ -45,70 +55,6 @@ export type WasteRow = {
   kind: WasteKind | null;
   loggedBy: string | null;
 };
-
-/** A stretch of days, inclusive at both ends. */
-export type Range = { from: string; to: string };
-
-export type PresetId = "today" | "week" | "month" | "last-month" | "custom";
-
-/**
- * The ranges worth one tap.
- *
- * Built from the shop's own today rather than the browser's, and entirely in
- * string arithmetic — Manila is UTC+8, and a range built from local getters
- * puts the 1st of the month in the previous month for anyone west of
- * Greenwich while being perfectly right when tested from here.
- */
-export function preset(id: Exclude<PresetId, "custom">, today: string): Range {
-  switch (id) {
-    case "today":
-      return { from: today, to: today };
-    case "week":
-      // The last seven days INCLUDING today, which is what somebody means by
-      // "this week" at a stall — not the days since Monday.
-      return { from: shiftDay(today, -6), to: today };
-    case "month":
-      return { from: `${today.slice(0, 7)}-01`, to: today };
-    case "last-month": {
-      const firstOfThis = `${today.slice(0, 7)}-01`;
-      const lastOfPrev = shiftDay(firstOfThis, -1);
-      return { from: `${lastOfPrev.slice(0, 7)}-01`, to: lastOfPrev };
-    }
-  }
-}
-
-export const PRESET_LABEL: Record<Exclude<PresetId, "custom">, string> = {
-  today: "Today",
-  week: "Last 7 days",
-  month: "This month",
-  "last-month": "Last month",
-};
-
-/**
- * A range the database can be handed.
- *
- * Reversed dates are swapped rather than refused. Somebody filling in two
- * date fields puts them in the wrong order often enough that refusing is just
- * a worse way of doing the obvious thing — and an empty result on a range the
- * shop believes it typed correctly reads as "we wasted nothing", which is the
- * one wrong answer this screen must never give.
- */
-export function normaliseRange(from: string, to: string): Range {
-  const a = from.slice(0, 10);
-  const b = to.slice(0, 10);
-  return a <= b ? { from: a, to: b } : { from: b, to: a };
-}
-
-/** Whole days covered, counting both ends. */
-export function rangeDays(r: Range): number {
-  let n = 1;
-  let day = r.from;
-  while (day < r.to && n < 4000) {
-    day = shiftDay(day, 1);
-    n += 1;
-  }
-  return n;
-}
 
 export type WasteTotals = {
   /** Spoilage, spills, burnt — the part that is a problem. */

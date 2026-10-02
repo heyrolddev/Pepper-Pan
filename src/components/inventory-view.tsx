@@ -16,6 +16,7 @@ import {
 } from "@/components/recipe-editor";
 import { WasteForm } from "@/components/waste-form";
 import { WasteHistory } from "@/components/waste-history";
+import { StockAccuracy } from "@/components/stock-accuracy";
 import type { Wastable } from "@/lib/waste-lines";
 import {
   AddBatchButton,
@@ -243,6 +244,7 @@ export function InventoryView({
   /* Folded by default. Unfolding is what triggers the read, so a visit that
      never asks about the bin never pays for the query. */
   const [wasteOpen, setWasteOpen] = useState(false);
+  const [countsOpen, setCountsOpen] = useState(false);
 
   // Offered as suggestions rather than a fixed list: the shop's own units and
   // tags are the right vocabulary, and a dropdown of ours would just be one
@@ -1132,6 +1134,45 @@ export function InventoryView({
           </div>
         )}
       </section>
+
+      {/* ---- what the counts say is missing ----
+
+          Beside the bin and not inside it, because they are different
+          questions with different answers: waste is what the shop KNOWS it
+          threw away, and this is what it cannot account for. Owner only —
+          a count's value is a cost figure. */}
+      {canSeeCosts && (
+        <section className="rounded-3xl bg-cream-50 p-5 ring-1 ring-ink-950/10 sm:p-6">
+          <button
+            onClick={() => setCountsOpen((v) => !v)}
+            aria-expanded={countsOpen}
+            className="flex w-full items-center justify-between gap-3 text-left"
+          >
+            <span className="min-w-0">
+              <span className="block font-display text-xl font-black text-ink-950">
+                What the counts say is missing
+              </span>
+              <span className="mt-0.5 block text-sm text-ink-800/60">
+                Every recount since the shop opened, and what the shortfalls cost
+                — measured against what you sold in the same days.
+              </span>
+            </span>
+            <span
+              aria-hidden
+              className={`shrink-0 rounded-full bg-ink-950/5 px-3 py-2 text-xs font-black text-ink-800/60 transition-transform ${
+                countsOpen ? "rotate-180" : ""
+              }`}
+            >
+              ▾
+            </span>
+          </button>
+          {countsOpen && (
+            <div className="mt-5">
+              <StockAccuracy today={today} />
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Keyed on the row so opening a second ingredient's form resets every
           field — a restock dialog carrying the last one's quantity is how a
