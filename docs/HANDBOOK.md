@@ -185,6 +185,25 @@ can do something about.
 Everything written off shows here — a shelf ingredient, a prepped batch, or a
 whole dish.
 
+### See what the counts say is missing
+Inventory → **What the counts say is missing**, owner only. Same date
+presets as the bin. This had been recorded on every recount since the shop
+opened and no screen had ever shown it.
+
+**Short and over are never added together.** Short is loss — it went
+somewhere nobody recorded. Over is not a windfall: it usually means a recipe
+takes off more than the dish really uses, or a delivery was logged twice.
+Two different faults, two different fixes.
+
+**Judged against what you sold**, because ₱900 is nothing on ₱90,000 of
+trade and serious on ₱9,000. Under 1% is ordinary handling, 1–3% is worth
+chasing, over 3% means somebody is taking it or a recipe is badly wrong.
+
+> **Not yet in your profit or break-even.** Waste is counted in both; a shelf
+> that simply comes up short is counted in neither. Your Money figures read
+> better than the truth by about this much — see the size of it first, then
+> we change the numbers.
+
 ### Know when to buy more
 Two places, and they answer different questions:
 
