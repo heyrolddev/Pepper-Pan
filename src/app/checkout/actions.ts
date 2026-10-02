@@ -226,54 +226,16 @@ export async function placeOrder(
      Refused loudly rather than dropped: a customer who typed a code and
      watched it silently vanish assumes the shop cheated them, and the
      message names which of the six reasons it was. */
-  let discount = 0;
-  let promoId: string | null = null;
-  let promoLabel: string | null = null;
-  if (input.promoCode?.trim()) {
-    /* A ceiling on guesses, because a refusal is an oracle.
-    
-       The codes are never listed to a customer — that is the whole reason
-       `promos` has no public read policy. But a wrong code answers "We
-       don't have that code" and a real one answers something else, and a
-       loop can tell those apart for free: an invalid code returns before
-       any order is written, so guessing costs nothing and leaves nothing
-       behind. Enough guesses and the shop's unreleased campaign is
-       somebody else's discount on launch day.
-    
-       Keyed on the signed-in customer rather than an IP. An IP is shared by
-       everyone on one mobile network, and this is the door they all check
-       out through; an account is the thing doing the guessing. Ten in ten
-       minutes is far more than a person who mistyped a code twice. */
-    const tries = rateLimit(`promo:${user.id}`, 10, 10 * 60 * 1000);
-    if (!tries.allowed) {
-      return {
-        error: `That's a few codes in a row now. Try again in ${Math.ceil(
-          tries.retryAfterMs / 60000
-        )} minute(s), or order without one.`,
-      };
-    }
-
-    const result = await resolvePromo({
-      code: input.promoCode,
-      lines: input.items.map((i) => ({
-        mealId: i.mealId,
-        qty: i.qty,
-        unitPrice:
-          priceById.get(i.mealId)! +
-          extrasOfItem(i).reduce((n, e) => n + e.price * e.qty, 0),
-      })),
-      where: "online",
-      customerId: user.id,
-    });
-    if (!result.ok) return { error: result.refusal.message };
-    discount = result.discount;
-    promoId = result.promo.id;
-    promoLabel = result.label;
-  }
-
   // --- Delivery ----------------------------------------------------------
   // The fee is recomputed here from the shop's own settings. Whatever the
   // browser thought the fee was is discarded.
+  //
+  // ABOVE the promo block, and that order is load-bearing: a delivery-scope
+  // code has nothing to come off until the fee exists. The fee does not
+  // depend on the discount in return — `quoteDelivery` is given the
+  // pre-discount subtotal, because the shop's own "free over ₱X" rule is
+  // about the size of the order placed, not the size after a code — so
+  // there is no cycle, only this sequence.
   let deliveryFee = 0;
   let distanceKm: number | null = null;
   let address: string | null = null;
@@ -316,6 +278,62 @@ export async function placeOrder(
 
     deliveryFee = quote.fee;
     distanceKm = quote.km;
+  }
+
+  /* Two discounts, never one.
+ 
+     `discount` comes off the food; `deliveryDiscount` comes off the padala.
+     Adding them together would be simpler and would lose the only thing the
+     month wants to know afterwards — what free delivery actually cost the
+     shop. They are stored in two columns for the same reason. */
+  let discount = 0;
+  let deliveryDiscount = 0;
+  let promoId: string | null = null;
+  let promoLabel: string | null = null;
+  if (input.promoCode?.trim()) {
+    /* A ceiling on guesses, because a refusal is an oracle.
+    
+       The codes are never listed to a customer — that is the whole reason
+       `promos` has no public read policy. But a wrong code answers "We
+       don't have that code" and a real one answers something else, and a
+       loop can tell those apart for free: an invalid code returns before
+       any order is written, so guessing costs nothing and leaves nothing
+       behind. Enough guesses and the shop's unreleased campaign is
+       somebody else's discount on launch day.
+    
+       Keyed on the signed-in customer rather than an IP. An IP is shared by
+       everyone on one mobile network, and this is the door they all check
+       out through; an account is the thing doing the guessing. Ten in ten
+       minutes is far more than a person who mistyped a code twice. */
+    const tries = rateLimit(`promo:${user.id}`, 10, 10 * 60 * 1000);
+    if (!tries.allowed) {
+      return {
+        error: `That's a few codes in a row now. Try again in ${Math.ceil(
+          tries.retryAfterMs / 60000
+        )} minute(s), or order without one.`,
+      };
+    }
+
+    const result = await resolvePromo({
+      code: input.promoCode,
+      lines: input.items.map((i) => ({
+        mealId: i.mealId,
+        qty: i.qty,
+        unitPrice:
+          priceById.get(i.mealId)! +
+          extrasOfItem(i).reduce((n, e) => n + e.price * e.qty, 0),
+      })),
+      where: "online",
+      customerId: user.id,
+      deliveryFee,
+    });
+    if (!result.ok) return { error: result.refusal.message };
+    // Which pot the money comes out of is the promo's scope, decided by the
+    // shop when the code was made — never by anything the browser sent.
+    if (result.promo.scope === "delivery") deliveryDiscount = result.discount;
+    else discount = result.discount;
+    promoId = result.promo.id;
+    promoLabel = result.label;
   }
 
   // --- Payment ------------------------------------------------------------
@@ -377,7 +395,12 @@ export async function placeOrder(
      Not off the fee: a rider is paid the same whatever coupon the customer
      had, and a promo that quietly ate the delivery fee would be the shop
      paying for its marketing out of somebody else's petrol. */
-  const orderTotal = Math.max(0, subtotal - discount) + deliveryFee;
+  /* Each discount is clamped against its own side of the bill, so neither
+     can spill into the other. A ₱500-off food code on a ₱200 order takes
+     ₱200 and leaves the padala alone; a ₱80-off delivery code on a ₱50
+     padala takes ₱50 and does not start paying for noodles. */
+  const orderTotal =
+    Math.max(0, subtotal - discount) + Math.max(0, deliveryFee - deliveryDiscount);
   const downpaymentAmount =
     plan === "downpayment"
       ? amountDueNow(orderTotal, "downpayment", Number(paymentSettings.downpayment_percent))
@@ -516,6 +539,11 @@ export async function placeOrder(
       delivery_lng: lng,
       delivery_distance_km: distanceKm,
       delivery_fee: deliveryFee,
+      /* Stored beside the fee, never subtracted from it: the fee is what the
+         trip cost and this is what the shop chose to absorb. Collapsed into
+         one figure, "what did free delivery cost us last month" becomes
+         unanswerable — the ₱50 would read as though it never existed. */
+      delivery_discount: deliveryDiscount,
     })
     .select("id")
     .single();

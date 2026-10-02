@@ -89,7 +89,11 @@ export async function updateMyOrder(
   // anything, so a rejected edit can explain itself.
   const { data: order } = await supabase
     .from("orders")
-    .select("id, status, customer_id")
+    /* `delivery_fee` because the promo is re-checked below and a
+       delivery-scope code has nothing to come off without it — without this
+       column, editing an order would silently DROP a free-delivery code and
+       hand the customer back a padala they were promised. */
+    .select("id, status, customer_id, delivery_fee")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -173,9 +177,17 @@ export async function updateMyOrder(
         qty: i.qty,
       })),
     customerId: user.id,
+    deliveryFee: Number(order.delivery_fee ?? 0),
   });
 
-  const discount = repriced.kind === "kept" ? repriced.discount : 0;
+  /* Split by scope, exactly as checkout does. A delivery code's money
+     belongs in `delivery_discount`; putting it in `discount` would take it
+     off the FOOD and leave the padala charged in full — the customer would
+     pay the same total and the shop's books would say it discounted the
+     wrong thing. */
+  const onDelivery = repriced.kind === "kept" && repriced.scope === "delivery";
+  const discount = repriced.kind === "kept" && !onDelivery ? repriced.discount : 0;
+  const deliveryDiscount = onDelivery ? repriced.discount : 0;
   const promoLabel = repriced.kind === "kept" ? repriced.label : null;
 
   /* Written as the shop. A browser session may not touch `revenue`,
@@ -188,6 +200,7 @@ export async function updateMyOrder(
     .update({
       revenue: Math.max(0, subtotal - discount),
       discount,
+      delivery_discount: deliveryDiscount,
       promo_code: promoLabel,
     })
     .eq("id", orderId)

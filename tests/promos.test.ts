@@ -9,6 +9,7 @@ import {
   normalizeCode,
   type BasketLine,
   type Promo,
+  discountLine,
 } from "../src/lib/promos.ts";
 
 /**
@@ -270,4 +271,120 @@ test("the estimate cannot see usage, which is why the server checks again", () =
     why(checkPromo(spent, BASKET, { ...FINE, usage: { total: 1, byCustomer: 0 } })),
     "used-up"
   );
+});
+
+/* ── the padala ─────────────────────────────────────────────────────── */
+
+/**
+ * "Libreng padala sa ₱500 pataas" — the promo the shop could not make.
+ *
+ * Checkout read `max(0, subtotal - discount) + deliveryFee`: every discount
+ * against the food, the fee added afterwards, so no code could reach it. A
+ * ₱500-off code on a ₱200 order still charged the ₱50 padala.
+ *
+ * The rules that matter here are that `min_spend` measures the FOOD, and
+ * that a delivery code on a pickup order is refused by name rather than
+ * falling through to "takes nothing off" — which is true, useless, and the
+ * kind of message that generates a phone call.
+ */
+
+const FREE_DELIVERY = promo({
+  code: "LIBRENGPADALA",
+  label: "Libreng padala",
+  kind: "percent",
+  value: 100,
+  scope: "delivery",
+});
+
+test("free delivery takes the whole padala and not a peso of the food", () => {
+  const r = ok(checkPromo(FREE_DELIVERY, BASKET, { ...FINE, deliveryFee: 50 }));
+  assert.equal(r.discount, 50);
+  assert.equal(
+    discountFor(FREE_DELIVERY, BASKET, 50),
+    50,
+    "100% of the padala, never 100% of the ₱457 basket"
+  );
+});
+
+test("a percent delivery code takes its share of the padala only", () => {
+  const half = promo({ scope: "delivery", kind: "percent", value: 50 });
+  assert.equal(discountFor(half, BASKET, 50), 25);
+});
+
+test("a peso delivery code is capped at the padala, never more", () => {
+  // Otherwise a ₱80-off code on a ₱50 delivery hands back ₱30 of food.
+  const twenty = promo({ scope: "delivery", kind: "amount", value: 20 });
+  assert.equal(discountFor(twenty, BASKET, 50), 20);
+  const eighty = promo({ scope: "delivery", kind: "amount", value: 80 });
+  assert.equal(discountFor(eighty, BASKET, 50), 50);
+});
+
+test("a delivery code on a pickup order is refused by name", () => {
+  // Not "takes nothing off this order", which is true and tells somebody
+  // holding a valid code nothing about why it did not work.
+  const r = checkPromo(FREE_DELIVERY, BASKET, { ...FINE, deliveryFee: 0 });
+  assert.equal(why(r), "not-delivery");
+  assert.match(
+    r.ok ? "" : r.refusal.message,
+    /isn't being delivered/i,
+    "the message must name the reason, not the symptom"
+  );
+});
+
+test("a missing fee is treated as no delivery, not as a crash", () => {
+  assert.equal(why(checkPromo(FREE_DELIVERY, BASKET, FINE)), "not-delivery");
+});
+
+test("min spend on a delivery promo measures the food, never the padala", () => {
+  // The classic: free delivery over ₱500. Counting the fee towards its own
+  // threshold would let a far delivery unlock the code the order has not
+  // earned — the further you are, the cheaper it gets, which is backwards.
+  const over500 = promo({ scope: "delivery", kind: "percent", value: 100, minSpend: 500 });
+
+  // ₱457 of food plus a ₱60 padala is ₱517 — and still short.
+  assert.equal(why(checkPromo(over500, BASKET, { ...FINE, deliveryFee: 60 })), "min-spend");
+
+  const bigger = [{ mealId: "m-noodles", qty: 3, unitPrice: 179 }]; // 537
+  assert.equal(ok(checkPromo(over500, bigger, { ...FINE, deliveryFee: 60 })).discount, 60);
+});
+
+test("every other rule still applies to a delivery code", () => {
+  assert.equal(
+    why(checkPromo(promo({ scope: "delivery", isActive: false }), BASKET, { ...FINE, deliveryFee: 50 })),
+    "off"
+  );
+  assert.equal(
+    why(checkPromo(promo({ scope: "delivery", endsOn: "2026-09-01" }), BASKET, { ...FINE, deliveryFee: 50 })),
+    "expired"
+  );
+  assert.equal(
+    why(
+      checkPromo(promo({ scope: "delivery", maxUses: 1 }), BASKET, {
+        ...FINE,
+        deliveryFee: 50,
+        usage: { total: 1, byCustomer: 0 },
+      })
+    ),
+    "used-up"
+  );
+});
+
+test("the receipt line says the money came off the delivery", () => {
+  // "50% off: −₱25" beside a ₱300 bill is a line somebody will query.
+  assert.match(discountLine(FREE_DELIVERY, 50), /delivery/i);
+  assert.ok(!/delivery/i.test(discountLine(promo(), 50)), "and an order code does not claim it");
+});
+
+test("the till's estimate shows nothing for a delivery code at the counter", () => {
+  // A walk-in is not being delivered. Showing "−₱50" on the till and then
+  // refusing it at the server is the worst of both.
+  assert.equal(estimateDiscount(FREE_DELIVERY, BASKET), 0);
+  assert.equal(estimateDiscount(FREE_DELIVERY, BASKET, 50), 50);
+});
+
+test("a negative fee cannot pay the customer", () => {
+  // Nothing should produce one. Which is why a sign slipping through would
+  // go unnoticed: it would ADD to the discount.
+  assert.equal(discountFor(FREE_DELIVERY, BASKET, -50), 0);
+  assert.equal(why(checkPromo(FREE_DELIVERY, BASKET, { ...FINE, deliveryFee: -50 })), "not-delivery");
 });

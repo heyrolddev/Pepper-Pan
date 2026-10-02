@@ -8,6 +8,7 @@ import {
   type Promo,
   type PromoResult,
   type Where,
+  type PromoScope,
 } from "@/lib/promos";
 
 /**
@@ -58,7 +59,12 @@ function toPromo(r: PromoRow): Promo {
     label: r.label,
     kind: r.kind === "amount" ? "amount" : "percent",
     value: Number(r.value),
-    scope: r.scope === "meal" ? "meal" : "order",
+    /* Mapped explicitly rather than "anything that isn't meal is order".
+       That older shape would have turned a delivery promo into a basket-wide
+       one the moment 0075 allowed the value — a code meant to take ₱50 off
+       the padala taking ₱50 off the food instead, silently. */
+    scope:
+      r.scope === "meal" ? "meal" : r.scope === "delivery" ? "delivery" : "order",
     mealId: r.meal_id,
     minSpend: Number(r.min_spend) || 0,
     maxDiscount: r.max_discount === null ? null : Number(r.max_discount),
@@ -85,6 +91,9 @@ export async function resolvePromo(opts: {
   lines: BasketLine[];
   where: Where;
   customerId: string | null;
+  /** The padala on this order, so a delivery-scope code has something to
+   *  come off. Absent means pickup, and such a code is refused by name. */
+  deliveryFee?: number;
 }): Promise<PromoResult> {
   const code = normalizeCode(opts.code);
   if (!code) {
@@ -144,6 +153,7 @@ export async function resolvePromo(opts: {
     today: shopToday(),
     usage: { total: total ?? 0, byCustomer: mine ?? 0 },
     signedIn: opts.customerId !== null,
+    deliveryFee: opts.deliveryFee,
   });
 }
 
@@ -223,9 +233,21 @@ export async function repriceOrder(opts: {
   orderId: string;
   lines: BasketLine[];
   customerId: string | null;
+  /** The padala the order carries, so a delivery code survives an edit. */
+  deliveryFee?: number;
 }): Promise<
   | { kind: "none" }
-  | { kind: "kept"; promoId: string; label: string; discount: number }
+  | {
+      kind: "kept";
+      promoId: string;
+      label: string;
+      discount: number;
+      /* Which side of the bill the money comes off. Returned rather than
+         looked up again by the caller: the caller would have to re-read the
+         promo to find out, and a second read is a second chance to answer
+         differently from the check that just ran. */
+      scope: PromoScope;
+    }
   | { kind: "dropped"; label: string; why: string }
 > {
   const db = createAdminClient();
@@ -274,6 +296,9 @@ export async function repriceOrder(opts: {
     today: shopToday(),
     usage: { total: total ?? 0, byCustomer: mine ?? 0 },
     signedIn: opts.customerId !== null,
+    // Repricing an edited order has to see the same padala the order
+    // carries, or a free-delivery code silently drops on the first edit.
+    deliveryFee: opts.deliveryFee,
   });
 
   if (!result.ok) {
@@ -290,6 +315,7 @@ export async function repriceOrder(opts: {
 
   return {
     kind: "kept",
+    scope: promo.scope,
     promoId: promo.id,
     label: result.label,
     discount: result.discount,
