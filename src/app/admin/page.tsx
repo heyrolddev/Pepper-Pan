@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { can, getViewer } from "@/lib/auth";
 import { wasCalledOff } from "@/lib/order-void";
 import { onlyBranch, scopeBranch } from "@/lib/branch-scope";
+import { listBranches } from "@/lib/branches-server";
+import { needsScopeLabel, scopeLabel as scopeLabelFor } from "@/lib/branches";
 import { openShiftFor } from "@/lib/shifts-server";
 import { loadAvailability } from "@/lib/costing-server";
 import { StaffToday, type ServiceOrder, type ShortDish } from "@/components/staff-today";
@@ -147,6 +149,7 @@ export default async function AdminDashboard({
      these — the filter has to be here or the dashboard blends two branches
      while looking like one. */
   const pinned = await scopeBranch(viewer);
+  const allBranches = await listBranches();
 
   const [ordersRes, openRes, customersRes, leadsRes] = await Promise.all([
     onlyBranch(
@@ -345,6 +348,14 @@ export default async function AdminDashboard({
         // both are Manila's — and formatting the label off a separate clock
         // is precisely how they came apart in the first place.
         dateLabel={bandDate.format(middayOf(todayStr))}
+        /* Says "All branches" the moment there is more than one to blend,
+           and says nothing at all when there is only one — a label nobody
+           needs is a label people stop reading. */
+        scopeLabel={
+          needsScopeLabel(allBranches, { branchId: pinned })
+            ? scopeLabelFor(allBranches, { branchId: pinned }, pinned)
+            : null
+        }
         takings={sum(todays)}
         yesterday={sum(yesterdays)}
         orderCount={todays.length}

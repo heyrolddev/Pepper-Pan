@@ -22,6 +22,7 @@ import { pesoRound as peso } from "@/lib/peso";
  */
 export function TodayBand({
   dateLabel,
+  scopeLabel,
   takings,
   yesterday,
   orderCount,
@@ -34,6 +35,15 @@ export function TodayBand({
 }: {
   /** The shop's own day, named — "Saturday, 26 September". */
   dateLabel: string;
+  /**
+   * Which branches these figures cover, or null when there is nothing to
+   * say — one branch in the business, or one this person may see.
+   *
+   * This is the whole mitigation for the single failure the branch work can
+   * produce: a figure that looks like one branch's takings and is quietly
+   * two. An unlabelled total is the trap; a labelled one is just a total.
+   */
+  scopeLabel?: string | null;
   takings: number;
   yesterday: number;
   orderCount: number;
@@ -46,7 +56,7 @@ export function TodayBand({
   waitingLeads: number;
 }) {
   return (
-    <HeroBand eyebrow={dateLabel}>
+    <HeroBand eyebrow={scopeLabel ? `${dateLabel} · ${scopeLabel}` : dateLabel}>
       <div className="mt-1 flex flex-wrap items-end justify-between gap-x-8 gap-y-5">
         {/* The figure carries its own working.
 
