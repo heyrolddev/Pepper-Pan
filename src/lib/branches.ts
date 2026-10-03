@@ -106,3 +106,58 @@ export function scopeLabel(all: Branch[], viewer: BranchViewer, branchId?: strin
 export function needsScopeLabel(all: Branch[], viewer: BranchViewer): boolean {
   return visibleBranches(all, viewer).length > 1;
 }
+
+/**
+ * Which branch this till is ringing up for.
+ *
+ * ── Why this is not simply the viewer's pin ──────────────────────────────
+ *
+ * Most of the time it is. The person at the booth is pinned to the booth and
+ * there is nothing to decide. But the owner is pinned to nothing, and the
+ * owner works a Friday night at El Mercado — so "the sale belongs to whoever
+ * rang it up's branch" would file that night's takings at Apalit, which is
+ * the exact failure this whole feature exists to prevent, arriving through
+ * the back door.
+ *
+ * So an unpinned person chooses, and the choice sticks to the DEVICE rather
+ * than to the sale. A dropdown on every ticket is a dropdown that is wrong by
+ * lunchtime; the tablet at the booth is at the booth all night.
+ *
+ * A pinned person cannot choose at all, and a request to the contrary is
+ * refused rather than ignored — a till that quietly files a sale somewhere
+ * other than where it was asked to is worse than one that says no.
+ */
+export type TillBranch =
+  | { branchId: string; error: null }
+  | { branchId: null; error: string };
+
+export function resolveTillBranch(
+  viewer: BranchViewer,
+  requested: string | null | undefined,
+  all: Branch[]
+): TillBranch {
+  const pin = pinnedBranchId(viewer);
+
+  if (pin !== null) {
+    if (requested && requested !== pin) {
+      return {
+        branchId: null,
+        error: "You can only ring up sales for your own branch.",
+      };
+    }
+    return { branchId: pin, error: null };
+  }
+
+  // Unpinned: the device's choice, falling back to the commissary. Falling
+  // back rather than refusing, because the shop at Apalit has rung up sales
+  // with no branch in mind since long before branches existed.
+  const wanted = requested || MAIN_BRANCH_ID;
+  const branch = all.find((b) => b.id === wanted);
+  if (!branch) {
+    return { branchId: null, error: "That branch does not exist." };
+  }
+  if (!branch.active) {
+    return { branchId: null, error: `${branch.name} is closed.` };
+  }
+  return { branchId: branch.id, error: null };
+}

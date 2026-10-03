@@ -9,6 +9,7 @@ import {
   needsScopeLabel,
   pinnedBranchId,
   scopeLabel,
+  resolveTillBranch,
   visibleBranches,
   type Branch,
 } from "../src/lib/branches.ts";
@@ -108,4 +109,47 @@ test("the label is only shown to someone who has more than one branch", () => {
   // One branch in the whole business — the shop as it is today. Nothing to
   // label, and labelling it anyway trains people to stop reading the label.
   assert.equal(needsScopeLabel([main], owner), false);
+});
+
+/**
+ * Which branch a till is ringing up for.
+ *
+ * The failure guarded against here is specific and it is the one that would
+ * hurt: the owner works a Friday night at the booth, and the night's takings
+ * are filed at Apalit because the owner's account is pinned to nothing.
+ */
+
+test("a pinned person's till is their own branch, always", () => {
+  assert.equal(resolveTillBranch(booth, null, all).branchId, "express-el-mercado");
+  assert.equal(resolveTillBranch(booth, "express-el-mercado", all).branchId, "express-el-mercado");
+});
+
+test("a pinned person asking for another branch is refused, not ignored", () => {
+  // Quietly filing it at their own branch would be a till that files a sale
+  // somewhere other than where it was asked to, which is worse than a no.
+  const r = resolveTillBranch(booth, "main", all);
+  assert.equal(r.branchId, null);
+  assert.ok(r.error);
+});
+
+test("the owner at the booth rings up for the booth", () => {
+  assert.equal(
+    resolveTillBranch(owner, "express-el-mercado", all).branchId,
+    "express-el-mercado"
+  );
+});
+
+test("the owner with nothing chosen falls back to the commissary", () => {
+  // Apalit has rung up walk-ins since long before branches existed; refusing
+  // would break the till that works today to protect one that does not.
+  assert.equal(resolveTillBranch(owner, null, all).branchId, "main");
+  assert.equal(resolveTillBranch(owner, "", all).branchId, "main");
+});
+
+test("a branch that does not exist, or is closed, is refused", () => {
+  assert.ok(resolveTillBranch(owner, "gone-branch", all).error);
+  const shut = [{ ...express, active: false }, main];
+  const r = resolveTillBranch(owner, "express-el-mercado", shut);
+  assert.equal(r.branchId, null);
+  assert.ok(r.error?.includes("closed"));
 });

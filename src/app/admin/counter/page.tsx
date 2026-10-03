@@ -1,4 +1,5 @@
 import { getViewer, isStaff } from "@/lib/auth";
+import { listBranches } from "@/lib/branches-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CounterTill, type CounterMeal } from "@/components/counter-till";
 import { shopToday } from "@/lib/format-date";
@@ -171,6 +172,10 @@ export default async function AdminCounterPage() {
   );
   const salesToday = (today ?? []).length;
 
+  // The places this till could be selling for. Two rows; read once here
+  // rather than inside the client component, which has no database.
+  const branches = await listBranches();
+
   return (
     <CounterTill
       known={categories}
@@ -182,6 +187,8 @@ export default async function AdminCounterPage() {
       nutritionByMeal={nutritionByMeal}
       showNutrition={settingsRow?.show_nutrition === true}
       promos={counterPromos}
+      branches={branches}
+      pinnedBranch={viewer!.profile?.branch_id ?? null}
     />
   );
 }

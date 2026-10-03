@@ -36,6 +36,8 @@ import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
 import { ticketOf } from "@/lib/tickets";
 import { ReceiptPrinter } from "@/components/receipt-printer";
+import { TillBranchBar, useTillBranch } from "@/components/till-branch-bar";
+import { type Branch } from "@/lib/branches";
 import { PrinterReady } from "@/components/printer-ready";
 import { printSale } from "@/lib/printer-store";
 import {
@@ -118,6 +120,8 @@ export function CounterTill({
   nutritionByMeal = {},
   showNutrition = false,
   promos = [],
+  branches = [],
+  pinnedBranch = null,
 }: {
   meals: CounterMeal[];
   loadError: string | null;
@@ -136,6 +140,10 @@ export function CounterTill({
   nutritionByMeal?: Record<string, Nutrition>;
   /** The owner's switch. Off keeps calories off the paper as well. */
   showNutrition?: boolean;
+  /** Where this shop sells. Empty while there is only one place. */
+  branches?: Branch[];
+  /** The cashier's own branch, or null for somebody who roams. */
+  pinnedBranch?: string | null;
   /**
    * The discounts the cashier may apply, as the OWNER defined them.
    *
@@ -146,6 +154,10 @@ export function CounterTill({
    */
   promos?: Promo[];
 }) {
+  /* Which branch this till is selling for. Settled before anything else on
+     this screen, because every sale written below carries it. */
+  const { branchId, choose, choices, locked } = useTillBranch(branches, pinnedBranch);
+
   const [ticket, setTicket] = useState<Ticket>({});
   /** The dish whose add-ons are being picked. Null when nothing is open. */
   const [choosing, setChoosing] = useState<CounterMeal | null>(null);
@@ -496,6 +508,7 @@ export function CounterTill({
         dineIn,
         note,
         customerName: customer,
+        branchId,
       });
       // Checked against null rather than truthiness: an error type of
       // `string` includes "", so a plain `if (result.error)` doesn't narrow
@@ -584,6 +597,17 @@ export function CounterTill({
           </p>
         </div>
       </div>
+
+      {/* Where this sale is going, above everything it could be confused
+          with. A cashier who cannot see which branch the till is set to has
+          no way to notice the morning somebody hands them the wrong tablet,
+          and a whole night's takings lands at the wrong shop. */}
+      <TillBranchBar
+        branchId={branchId}
+        choices={choices}
+        locked={locked}
+        onChoose={choose}
+      />
 
       {/* Before the till, because it is the thing to do before the till — and
           because a strip that only appears once something is wrong is a strip

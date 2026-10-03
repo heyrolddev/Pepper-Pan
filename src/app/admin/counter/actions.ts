@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { can, getViewer } from "@/lib/auth";
+import { resolveTillBranch } from "@/lib/branches";
+import { listBranches } from "@/lib/branches-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { recordOrderCost } from "@/lib/costing-server";
 import { syncStockForStatus } from "@/lib/stock-server";
@@ -71,6 +73,16 @@ export type CounterResult =
  * needing to know where it came from.
  */
 type SaleInput = {
+  /**
+   * Which branch this till is ringing up for.
+   *
+   * Sent by the counter screen rather than taken from the account, because
+   * the owner is pinned to no branch and does work a Friday night at the
+   * booth. `resolveTillBranch` is what decides: a pinned cashier gets their
+   * own branch and is refused any other, an unpinned one gets what the
+   * device chose. See `lib/branches.ts`.
+   */
+  branchId?: string | null;
   lines: CounterLine[];
   method: TillMethod;
   reference?: string;
@@ -316,9 +328,21 @@ async function ringUp(input: SaleInput): Promise<CounterResult> {
   const staffId = viewer!.profile?.id ?? null;
   const shift = staffId ? await openShiftFor(staffId) : null;
 
+  /* Where the sale happened, settled before anything is written.
+     A walk-in with no branch is a walk-in nobody can attribute, and the
+     column defaults to main — so getting this wrong is silent, and would
+     file a night at El Mercado against Apalit's takings. */
+  const till = resolveTillBranch(
+    { branchId: viewer!.profile?.branch_id ?? null },
+    input.branchId,
+    await listBranches()
+  );
+  if (till.error) return { error: till.error };
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
+      branch_id: till.branchId,
       customer_id: null,
       shift_id: shift?.id ?? null,
       // Who was on the counter. The column has existed since the first
