@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { can, getViewer } from "@/lib/auth";
 import { wasCalledOff } from "@/lib/order-void";
+import { onlyBranch, scopeBranch } from "@/lib/branch-scope";
 import { openShiftFor } from "@/lib/shifts-server";
 import { loadAvailability } from "@/lib/costing-server";
 import { StaffToday, type ServiceOrder, type ShortDish } from "@/components/staff-today";
@@ -141,14 +142,23 @@ export default async function AdminDashboard({
    */
   const earliest = [fromDate, prevFrom, shopDay(-13, now), yesterdayStr].sort()[0];
 
+  /* Which branch's figures this is. Null for the owner, who sees them all.
+     Read with the service role below, so row-level security does not scope
+     these — the filter has to be here or the dashboard blends two branches
+     while looking like one. */
+  const pinned = await scopeBranch(viewer);
+
   const [ordersRes, openRes, customersRes, leadsRes] = await Promise.all([
-    supabase
+    onlyBranch(
+      supabase
       .from("orders")
       .select(
         "id, created_at, date, status, voided_at, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
       )
       .gte("date", earliest)
       .order("created_at", { ascending: false }),
+      pinned
+    ),
     /**
      * Open orders, whatever day they are from.
      *
@@ -158,13 +168,16 @@ export default async function AdminDashboard({
      * what needs doing. Small by definition: if this list is ever long, that
      * is itself the thing to look at.
      */
-    supabase
-      .from("orders")
-      .select(
-        "id, created_at, date, status, voided_at, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
-      )
-      .in("status", ["pending", "confirmed", "preparing", "ready"])
-      .lt("date", earliest),
+    onlyBranch(
+      supabase
+        .from("orders")
+        .select(
+          "id, created_at, date, status, voided_at, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
+        )
+        .in("status", ["pending", "confirmed", "preparing", "ready"])
+        .lt("date", earliest),
+      pinned
+    ),
     supabase.from("profiles").select("id", { count: "exact", head: true }).eq("role", "customer"),
     // Chat leads waiting on a person. Errors (before migration 0011) count
     // as zero — a missing inbox shouldn't take the dashboard down with it.

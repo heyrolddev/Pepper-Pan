@@ -106,6 +106,10 @@ const GROUPS: Group[] = [
     title: "Understand",
     items: [
       { href: "/admin/analytics", label: "Analytics", icon: "◈", needs: "business" },
+      // Every place the shop sells from, side by side. Sits with the other
+      // "how are we doing" screens rather than with the settings, because
+      // that is the question it answers.
+      { href: "/admin/branches", label: "Branches", icon: "⌂", needs: "business" },
       { href: "/admin/history", label: "History", icon: "◵", needs: "business" },
       { href: "/admin/reviews", label: "Reviews", icon: "★", needs: "chat" },
       { href: "/admin/customers", label: "Customers", icon: "◑", needs: "business" },

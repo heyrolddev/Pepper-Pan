@@ -1,5 +1,6 @@
 import { getViewer, isStaff } from "@/lib/auth";
 import { listBranches } from "@/lib/branches-server";
+import { onlyBranch, scopeBranch } from "@/lib/branch-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CounterTill, type CounterMeal } from "@/components/counter-till";
 import { shopToday } from "@/lib/format-date";
@@ -48,12 +49,18 @@ export default async function AdminCounterPage() {
     // What this till has already taken today, so whoever is on the counter can
     // see their own shift adding up rather than having to leave for the
     // dashboard and come back.
-    supabase
-      .from("orders")
-      .select("revenue")
-      .eq("tag", "walk-in")
-      .eq("date", shopToday())
-      .neq("status", "cancelled"),
+    /* This till's own takings, not the whole business's. A cashier at the
+       booth watching Apalit's counter add up would be reading somebody
+       else's shift. */
+    onlyBranch(
+      supabase
+        .from("orders")
+        .select("revenue")
+        .eq("tag", "walk-in")
+        .eq("date", shopToday())
+        .neq("status", "cancelled"),
+      await scopeBranch(viewer)
+    ),
     supabase
       .from("menu_categories")
       .select("name, colour, sort_order")
