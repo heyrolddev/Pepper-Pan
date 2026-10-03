@@ -19,6 +19,7 @@ import {
 const order = (over: Partial<OrderRow> = {}): OrderRow => ({
   date: "2026-09-05",
   status: "completed",
+  voidedAt: null,
   revenue: 200,
   cogs: 80,
   discount: 0,

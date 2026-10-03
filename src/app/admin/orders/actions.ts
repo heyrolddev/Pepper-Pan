@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { can, getViewer } from "@/lib/auth";
 import { notifyOrderStatus } from "@/lib/notify";
@@ -17,30 +16,18 @@ import {
 } from "@/lib/payments";
 import { NOT_ON_SHIFT, offShift } from "@/lib/shift-guard";
 import { cleanReason } from "@/lib/cancellation";
-import { orderLabel } from "@/lib/tickets";
 import { findOrders } from "@/lib/orders-admin-server";
 import type { AdminOrder } from "@/components/admin-order-list";
+import {
+  labelOf,
+  nameOf,
+  recordOrderEvent,
+  revalidateOrders,
+  type NamedOrder,
+} from "@/lib/orders-admin-write";
 
 const BLOCKED_MESSAGE =
   "The database didn't accept that change. Re-run the latest migration (0004) in the Supabase SQL Editor.";
-
-/**
- * Every screen an order appears on.
- *
- * `/admin/payments` is in here because the payment verifier is rendered twice
- * — once inside the order list and once in the ledger — and marking a receipt
- * checked from either place changes both. Left out, the ledger kept showing a
- * payment as unverified until something else happened to refresh it.
- *
- * Marking a path the viewer is not currently on costs nothing: it is flagged
- * stale and rebuilt when somebody next opens it.
- */
-function revalidateOrders() {
-  revalidatePath("/admin/orders");
-  revalidatePath("/admin");
-  revalidatePath("/admin/payments");
-  revalidatePath("/orders");
-}
 
 /**
  * Once the food is ready, the ETA has done its job and becomes a lie.
@@ -58,47 +45,6 @@ const ETA_IS_OVER: OrderStatus[] = [
   "completed",
   "cancelled",
 ];
-
-/**
- * Who did this, on the record.
- *
- * Counter sales already carried `logged_by`, so a walk-in has always had a
- * name on it. An online order did not: moving one to "completed", or marking
- * a customer's GCash payment as received, changed the row and left nothing
- * saying who decided it. Those are the two moments most worth being able to
- * ask about later — one hands over food, the other says money arrived — and
- * "the system says it was paid" is not an answer when the drawer is short.
- *
- * Written with the admin client and never fatal: losing the log line is bad,
- * losing the status change it describes because the log failed is worse.
- */
-async function record(
-  description: string,
-  actorId: string | null
-): Promise<void> {
-  const { error } = await createAdminClient()
-    .from("activity_log")
-    .insert({ category: "orders", description, actor: actorId });
-  if (error) console.error(`[orders] log: ${error.message}`);
-}
-
-/** A person, as they should read on the activity page. */
-function nameOf(viewer: Awaited<ReturnType<typeof getViewer>>): string {
-  return viewer?.profile?.full_name?.trim() || viewer?.email || "someone";
-}
-
-/**
- * How the order should be named in the record.
- *
- * These lines used to carry the raw uuid — "set order 3f9c1a8e-… to
- * completed" — which is a record of something the owner cannot look up. The
- * ticket is what the receipt says, what the board shows and what the search
- * box on Orders matches, so it is what goes here, with the customer's name
- * beside it when there is one.
- */
-type Named = { ticket: number | null; contact_name: string | null };
-const labelOf = (row: Named | undefined) =>
-  row ? orderLabel(row.ticket, row.contact_name) : "an order";
 
 export async function setOrderStatus(
   orderId: string,
@@ -150,6 +96,18 @@ export async function setOrderStatus(
             cancelled_at: new Date().toISOString(),
           }
         : { cancelled_reason: null, cancelled_by: null, cancelled_at: null }),
+      // The void mark is cleared whatever the new status is, because
+      // `voidOrder` is its only writer and every path through here is
+      // somebody saying this is an ordinary status change.
+      //
+      // Clearing it is not tidiness, it is the only way out: 0076 constrains
+      // a voided row to stay cancelled, so moving one back to 'completed'
+      // WITHOUT clearing the stamp is refused by the database outright. And
+      // re-cancelling a voided ticket through the dropdown has to drop the
+      // mark too, or the row ends up a void carrying a cancellation's reason
+      // — two answers to "what happened here" on one order.
+      voided_at: null,
+      void_reason: null,
     })
     .eq("id", orderId)
     .select("id, ticket, contact_name");
@@ -168,8 +126,8 @@ export async function setOrderStatus(
   // change can't be held up by a mail problem.
   await notifyOrderStatus(orderId);
 
-  await record(
-    `${nameOf(viewer)} set ${labelOf((data as Named[])[0])} to ${status}` +
+  await recordOrderEvent(
+    `${nameOf(viewer)} set ${labelOf((data as NamedOrder[])[0])} to ${status}` +
       (why?.reason ? ` — ${why.reason}` : ""),
     viewer?.profile?.id ?? null
   );
@@ -278,8 +236,8 @@ export async function setOrderPaymentMethod(
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
-  await record(
-    `${nameOf(viewer)} corrected ${labelOf(before as Named)} — paid by ` +
+  await recordOrderEvent(
+    `${nameOf(viewer)} corrected ${labelOf(before as NamedOrder)} — paid by ` +
       `${METHOD_LABEL[method]}, not ${METHOD_LABEL[was]}. ` +
       `₱${(Number(before.revenue) || 0).toFixed(2)} moves from ${METHOD_LABEL[was]} ` +
       `to ${METHOD_LABEL[method]} in Pepper Pan Bank.`,
@@ -323,8 +281,8 @@ export async function setPaymentStatus(
   if (error) return { error: error.message };
   if (!data || data.length === 0) return { error: BLOCKED_MESSAGE };
 
-  await record(
-    `${nameOf(viewer)} marked payment for ${labelOf((data as Named[])[0])} as ${status}`,
+  await recordOrderEvent(
+    `${nameOf(viewer)} marked payment for ${labelOf((data as NamedOrder[])[0])} as ${status}`,
     viewer?.profile?.id ?? null
   );
 

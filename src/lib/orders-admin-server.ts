@@ -29,13 +29,15 @@ import {
 export const BOARD_LIMIT = 200;
 
 const COLUMNS =
-  "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, delivery_discount, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale, qty))";
+  "id, ticket, created_at, status, fulfillment, revenue, eta_minutes, cancelled_reason, cancelled_by, cancelled_at, voided_at, void_reason, eta_set_at, contact_name, contact_phone, notes, customer_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_fee, delivery_discount, payment_method, payment_status, payment_reference, payment_receipt_url, scheduled_for, payment_plan, downpayment_amount, downpayment_confirmed_at, order_lines(qty, price_at_sale, meals(name), order_line_extras(label, price_at_sale, qty))";
 
 type OrderRow = {
   id: string;
   ticket: number | null;
   cancelled_by: string | null;
   cancelled_at: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
   created_at: string;
   status: OrderStatus;
   fulfillment: string;
@@ -124,6 +126,8 @@ async function hydrate(rows: OrderRow[]): Promise<AdminOrder[]> {
       cancelled_by_name: o.cancelled_by
         ? (profiles.get(o.cancelled_by)?.full_name ?? null)
         : null,
+      voided_at: o.voided_at,
+      void_reason: o.void_reason,
       eta_set_at: o.eta_set_at,
       scheduled_for: o.scheduled_for,
       contact_name: o.contact_name,

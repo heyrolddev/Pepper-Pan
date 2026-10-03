@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ticketOf } from "@/lib/tickets";
 import { alertEtaElapsed } from "@/app/admin/orders/actions";
 import { OrderStatusPicker } from "@/components/order-status-picker";
+import { VoidOrderButton } from "@/components/void-order-button";
+import { closureLabel, isVoided } from "@/lib/order-void";
 import { EtaPicker } from "@/components/eta-picker";
 import { AdminSearch } from "@/components/admin-search";
 import { searchAllOrders } from "@/app/admin/orders/actions";
@@ -27,6 +29,9 @@ export type AdminOrder = {
   eta_minutes: number | null;
   cancelled_reason: string | null;
   cancelled_at: string | null;
+  /** Struck out as a mistake rather than called off. See `lib/order-void`. */
+  voided_at: string | null;
+  void_reason: string | null;
   /** Who cancelled it — resolved on the server, since staff names are not in this list. */
   cancelled_by_name: string | null;
   ticket: number | null;
@@ -268,14 +273,42 @@ function OrderCard({ order: o, canFix }: { order: AdminOrder; canFix: boolean })
         </p>
       )}
 
+      {/* How this one ended, in the right word.
+
+          A void and a cancellation are both `status = 'cancelled'` in the
+          row — that is what keeps a void out of every money query already
+          written — so the screen is the only place the difference can be
+          seen. Voids are drawn in ink rather than the brand red: a
+          cancellation is a customer the shop lost, which is worth a flash of
+          colour, and a void is a correction to the till, which is not. */}
       {o.status === "cancelled" && (o.cancelled_reason || o.cancelled_by_name) && (
-        <p className="mt-3 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
-          <span className="font-bold">Cancelled</span>
+        <p
+          className={`mt-3 rounded-xl px-4 py-3 text-sm ${
+            isVoided(o)
+              ? "bg-ink-950/[0.06] text-ink-800/80 ring-1 ring-ink-950/10"
+              : "bg-brand-50 text-brand-700"
+          }`}
+        >
+          <span className="font-bold">{closureLabel(o)}</span>
           {o.cancelled_by_name ? ` by ${o.cancelled_by_name}` : ""}
           {o.cancelled_at ? ` · ${formatDateTimeFull(o.cancelled_at)}` : ""}
           {o.cancelled_reason ? ` — ${o.cancelled_reason}` : ""}
+          {isVoided(o) && (
+            <span className="mt-1 block text-xs text-ink-800/55">
+              Struck out as a wrong entry — it counts as neither a sale nor a
+              cancellation.
+            </span>
+          )}
         </p>
       )}
+
+      {/* Voiding lives down here, away from the controls used every service:
+          it is findable when a ticket is wrong and not reachable by accident
+          mid-rush. Hidden once it has been used — a voided ticket has nothing
+          left to void. */}
+      <div className="mt-4 flex justify-end border-t border-ink-950/[0.07] pt-3 empty:hidden">
+        <VoidOrderButton orderId={o.id} total={money.total} voided={isVoided(o)} />
+      </div>
     </div>
   );
 }
@@ -301,18 +334,23 @@ function OrderRow({ order: o, canFix }: { order: AdminOrder; canFix: boolean }) 
   const owed = money.balance > 0;
   const tone = STATUS_TONES[o.status];
   const who = o.contact_name || o.customer?.full_name || ticketOf(o.ticket);
+  /* A void is `status = 'cancelled'` in the row, so the label has to be
+     asked for rather than looked up — otherwise a struck-out till entry
+     reads on the board as a customer the shop lost. */
+  const ended = o.status === "cancelled" ? closureLabel(o) : STATUS_LABELS[o.status];
+  const chip = isVoided(o) ? "bg-ink-950/10 text-ink-800/70" : tone.chip;
 
   return (
     <Foldable
-      chip={tone.chip}
+      chip={chip}
       rail={tone.rail}
-      title={STATUS_LABELS[o.status]}
+      title={ended}
       folded={
         <>
           <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${tone.chip}`}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${chip}`}
           >
-            {STATUS_LABELS[o.status]}
+            {ended}
           </span>
           <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink-950">
             {who}
