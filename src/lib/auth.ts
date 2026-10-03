@@ -17,6 +17,13 @@ export type Profile = {
   is_blocked: boolean;
   /** A role the owner has offered and this person has not accepted yet. */
   pending_role: "owner" | "manager" | "staff" | null;
+  /**
+   * The one branch this person may see and write, or null for all of them.
+   *
+   * Orthogonal to `role`, and kept that way on purpose: role says WHAT they
+   * may do, this says WHERE. See `lib/branches.ts`.
+   */
+  branch_id: string | null;
 };
 
 export type Viewer = { email: string; profile: Profile | null } | null;
@@ -75,7 +82,7 @@ export const getViewer = cache(async function getViewer(): Promise<Viewer> {
     const { data: profile } = await supabase
       .from("profiles")
       .select(
-        "id, role, full_name, phone, avatar_url, address, address_lat, address_lng, is_verified, is_blocked, pending_role"
+        "id, role, full_name, phone, avatar_url, address, address_lat, address_lng, is_verified, is_blocked, pending_role, branch_id"
       )
       .eq("id", user.id)
       .maybeSingle();
@@ -85,6 +92,17 @@ export const getViewer = cache(async function getViewer(): Promise<Viewer> {
     return null;
   }
 });
+
+/**
+ * Which branch's rows this viewer may touch, or null for all of them.
+ *
+ * The server-side companion to `lib/branches.ts`, in the same shape the pure
+ * helpers there expect — so a page can hand a viewer straight to
+ * `visibleBranches` or `canSeeBranch` without unpacking a profile first.
+ */
+export function viewerBranch(viewer: Viewer): { branchId: string | null } {
+  return { branchId: viewer?.profile?.branch_id ?? null };
+}
 
 /** Does this person work here at all? The door, not the permission. */
 export function isStaff(viewer: Viewer) {

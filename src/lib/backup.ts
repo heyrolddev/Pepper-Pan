@@ -35,6 +35,10 @@ const BACKUP_VERSION = 2;
  * like one.
  */
 const TABLES = [
+  // Where the shop sells. Small, and the most load-bearing small table there
+  // is: every order carries a `branch_id` that points here, so a restore that
+  // put the orders back without the branches would refuse every one of them.
+  "branches",
   // The business itself — the recipes and what they cost, which is the part
   // that took months of real work to enter and exists nowhere else.
   "settings",

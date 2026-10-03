@@ -15,6 +15,11 @@
  * JSON keys happened to be in.
  */
 export const RESTORE_ORDER = [
+  // First of everything, including the settings. Both `profiles.branch_id`
+  // and `orders.branch_id` point here, and a foreign key refuses a branch
+  // that is not back yet — so a restore that put the people back before the
+  // places would fail on the very first profile.
+  "branches",
   "settings",
   "shop_settings",
   "shop_hours",
