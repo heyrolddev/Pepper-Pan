@@ -2927,42 +2927,43 @@ begin
   (13,'menu_products'),
   (14,'meals'),
   (15,'chat_settings'),
-  (16,'meal_ingredients'),
-  (17,'meal_components'),
-  (18,'meal_packaging'),
-  (19,'order_packaging'),
-  (20,'modifier_groups'),
-  (21,'modifier_options'),
-  (22,'modifier_option_prices'),
-  (23,'meal_modifier_groups'),
-  (24,'product_modifier_groups'),
-  (25,'suppliers'),
-  (26,'supplier_prices'),
-  (27,'staff_shifts'),
-  (28,'orders'),
-  (29,'order_lines'),
-  (30,'order_line_extras'),
-  (31,'promos'),
-  (32,'promo_redemptions'),
-  (33,'purchase_log'),
-  (34,'consumption_log'),
-  (35,'waste_log'),
-  (36,'cash_ledger'),
-  (37,'receivables'),
-  (38,'cycle_counts'),
-  (39,'oe_templates'),
-  (40,'fixed_costs'),
-  (41,'monthly_bills'),
-  (42,'assets'),
-  (43,'supplier_debts'),
-  (44,'running_costs'),
-  (45,'marketing_campaigns'),
-  (46,'reviews'),
-  (47,'chat_threads'),
-  (48,'chat_messages'),
-  (49,'faq_entries'),
-  (50,'activity_log'),
-  (51,'announcements');
+  (16,'meal_branches'),
+  (17,'meal_ingredients'),
+  (18,'meal_components'),
+  (19,'meal_packaging'),
+  (20,'order_packaging'),
+  (21,'modifier_groups'),
+  (22,'modifier_options'),
+  (23,'modifier_option_prices'),
+  (24,'meal_modifier_groups'),
+  (25,'product_modifier_groups'),
+  (26,'suppliers'),
+  (27,'supplier_prices'),
+  (28,'staff_shifts'),
+  (29,'orders'),
+  (30,'order_lines'),
+  (31,'order_line_extras'),
+  (32,'promos'),
+  (33,'promo_redemptions'),
+  (34,'purchase_log'),
+  (35,'consumption_log'),
+  (36,'waste_log'),
+  (37,'cash_ledger'),
+  (38,'receivables'),
+  (39,'cycle_counts'),
+  (40,'oe_templates'),
+  (41,'fixed_costs'),
+  (42,'monthly_bills'),
+  (43,'assets'),
+  (44,'supplier_debts'),
+  (45,'running_costs'),
+  (46,'marketing_campaigns'),
+  (47,'reviews'),
+  (48,'chat_threads'),
+  (49,'chat_messages'),
+  (50,'faq_entries'),
+  (51,'activity_log'),
+  (52,'announcements');
 
   select string_agg(format('%%s (at %%s) needs %%s (at %%s)',
                            c.relname, cp.pos, p.relname, pp.pos), ', ')
@@ -3327,4 +3328,61 @@ begin
     raise exception 'FAIL: the shift rewrote a supplier price';
   end if;
   raise notice 'staff see % price(s) and changed none of them', seen;
+end $$;
+
+\echo '--- every table says where it stands on the branch question ---'
+/* The standing version of the check 0078 introduced.
+ *
+ * 0078 asserts it at the moment it runs, which catches nothing added
+ * afterwards — `meal_branches` arrived in 0080 and that check had long
+ * since passed. Here it runs after EVERY migration, every time, so a table
+ * added in 0081 fails on the day it is added.
+ *
+ * The question it forces is the one that matters: do this table's rows
+ * belong to a branch? A table that never answers silently means "the whole
+ * business", which is right for the menu and wrong for the cash drawer, and
+ * nothing else in the system would ever mention it. */
+do $$
+declare
+  v_missing text[] := '{}';
+  v_wrong text[] := '{}';
+  r record;
+begin
+  for r in
+    select c.table_name::text as t
+      from information_schema.tables c
+     where c.table_schema = 'public' and c.table_type = 'BASE TABLE'
+  loop
+    if not exists (select 1 from branch_table_ledger() l where l.tbl = r.t) then
+      v_missing := array_append(v_missing, r.t);
+    end if;
+  end loop;
+
+  if array_length(v_missing, 1) > 0 then
+    raise exception
+      'FAIL: % is in no branch list. Add it to branch_table_ledger() as scoped, pending or shared.',
+      array_to_string(v_missing, ', ');
+  end if;
+
+  for r in select l.tbl, l.standing from branch_table_ledger() l loop
+    if r.standing = 'scoped' and not exists (
+      select 1 from information_schema.columns
+       where table_schema = 'public' and table_name = r.tbl and column_name = 'branch_id'
+    ) then
+      v_wrong := array_append(v_wrong, r.tbl || ' is listed scoped but has no branch_id');
+    end if;
+    if r.standing = 'pending' and exists (
+      select 1 from information_schema.columns
+       where table_schema = 'public' and table_name = r.tbl and column_name = 'branch_id'
+    ) then
+      v_wrong := array_append(v_wrong, r.tbl || ' has branch_id but is still listed pending');
+    end if;
+  end loop;
+
+  if array_length(v_wrong, 1) > 0 then
+    raise exception 'FAIL: the branch ledger disagrees with the schema — %',
+      array_to_string(v_wrong, '; ');
+  end if;
+
+  raise notice 'every table stands somewhere, and the ledger matches the schema';
 end $$;

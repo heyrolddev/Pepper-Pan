@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { AdminSearch } from "@/components/admin-search";
 import { setMealAvailability } from "@/app/admin/menu/actions";
 import type { AdminMeal } from "@/components/meal-editor";
+import { OfferedAt } from "@/components/offered-at";
+import { type Branch } from "@/lib/branches";
 
 /**
  * The menu, for someone who may only say what has run out.
@@ -17,7 +19,17 @@ import type { AdminMeal } from "@/components/meal-editor";
  * asked to keep them off the staff side, and a disabled input still displays
  * the number.
  */
-export function MenuAvailability({ meals }: { meals: AdminMeal[] }) {
+export function MenuAvailability({
+  meals,
+  branches = [],
+  offeredAt = {},
+}: {
+  meals: AdminMeal[];
+  /** Every place the shop sells from. Empty while there is only one. */
+  branches?: Branch[];
+  /** Branch ids per dish id. A dish missing from the map is offered nowhere. */
+  offeredAt?: Record<string, string[]>;
+}) {
   return (
     <AdminSearch
       rows={meals}
@@ -42,7 +54,11 @@ export function MenuAvailability({ meals }: { meals: AdminMeal[] }) {
           <ul className="grid gap-2 sm:grid-cols-2">
             {filtered.map((m) => (
               <li key={m.id}>
-                <Row meal={m} />
+                <Row
+                  meal={m}
+                  branches={branches}
+                  offered={offeredAt[m.id] ?? []}
+                />
               </li>
             ))}
           </ul>
@@ -52,7 +68,15 @@ export function MenuAvailability({ meals }: { meals: AdminMeal[] }) {
   );
 }
 
-function Row({ meal }: { meal: AdminMeal }) {
+function Row({
+  meal,
+  branches,
+  offered,
+}: {
+  meal: AdminMeal;
+  branches: Branch[];
+  offered: string[];
+}) {
   // Held locally as well as on the server so the tap lands immediately. A
   // toggle that waits for a round trip during service gets pressed twice.
   const [on, setOn] = useState(meal.is_available);
@@ -94,6 +118,12 @@ function Row({ meal }: { meal: AdminMeal }) {
               ? "On the menu"
               : "Sold out — customers can't order it"}
         </span>
+        {/* Where it is sold, under what it is. Only once there is more
+            than one place to sell it — with a single branch this is a row
+            of chips that can only say one thing. */}
+        {branches.length > 1 && (
+          <OfferedAt mealId={meal.id} branches={branches} offered={offered} />
+        )}
         {error && (
           <span className="mt-1 block text-xs font-semibold text-brand-700">
             {error}

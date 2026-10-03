@@ -44,6 +44,8 @@ export const RESTORE_ORDER = [
   // recommendation fail to restore — the foreign key refusing a dish that had
   // not been put back yet.
   "chat_settings",
+  // After both its parents: the dish and the branch offering it.
+  "meal_branches",
   "meal_ingredients",
   "meal_components",
   "meal_packaging",

@@ -6,6 +6,8 @@ import { drawerStory, drawerVerdict, type DrawerCount } from "@/lib/drawer";
 import { formatDateTime } from "@/lib/format-date";
 import { ROLE_BLURBS, ROLE_LABELS } from "@/lib/permissions";
 import { deleteStaffAccount, setStaffRole } from "@/app/admin/staff/actions";
+import { setStaffBranch } from "@/app/admin/staff/branch-actions";
+import { type Branch } from "@/lib/branches";
 import { setStaffEmail } from "@/app/admin/me/actions";
 import { HistoryList } from "@/components/history-list";
 import { AdminDialog, Field, inputClass } from "@/components/admin-dialog";
@@ -16,6 +18,8 @@ export type Person = {
   name: string | null;
   phone: string | null;
   role: "owner" | "manager" | "staff" | "customer";
+  /** The one branch they may see, or null for somebody who roams. */
+  branchId: string | null;
   joined: string;
   onShift: boolean;
   shiftsWorked: number;
@@ -289,6 +293,75 @@ function ShiftCard({ r }: { r: ShiftReport }) {
   );
 }
 
+/**
+ * Where somebody works.
+ *
+ * A row of branch chips rather than a dropdown, because the set is small and
+ * the current answer should be readable without opening anything — "who is
+ * at the booth" is a question the owner asks at a glance.
+ *
+ * "Every branch" is offered explicitly and is not a blank. It is a real
+ * answer, and the one the owner and every account from before branches
+ * existed already has; leaving it unlabelled would read as "not set yet"
+ * and invite somebody to fix what is not broken.
+ */
+function BranchPicker({
+  person,
+  branches,
+  disabled,
+}: {
+  person: Person;
+  branches: Branch[];
+  disabled: boolean;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  const set = (branchId: string | null) =>
+    startTransition(async () => {
+      setError(null);
+      const r = await setStaffBranch({ profileId: person.id, branchId });
+      if (r.error !== null) setError(r.error);
+    });
+
+  const chip = (active: boolean) =>
+    `rounded-lg px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-50 ${
+      active
+        ? "bg-ink-950 text-cream-50"
+        : "bg-ink-950/[0.06] text-ink-800/70 hover:bg-ink-950/10"
+    }`;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <span className="text-[10px] font-black uppercase tracking-widest text-ink-800/40">
+        Works at
+      </span>
+      <button
+        disabled={busy || disabled}
+        onClick={() => set(null)}
+        aria-pressed={person.branchId === null}
+        className={chip(person.branchId === null)}
+      >
+        Every branch
+      </button>
+      {branches.map((b) => (
+        <button
+          key={b.id}
+          disabled={busy || disabled}
+          onClick={() => set(b.id)}
+          aria-pressed={person.branchId === b.id}
+          className={chip(person.branchId === b.id)}
+        >
+          {b.name}
+        </button>
+      ))}
+      {error && (
+        <span className="w-full text-xs font-semibold text-brand-600">{error}</span>
+      )}
+    </div>
+  );
+}
+
 function RoleButton({
   person,
   to,
@@ -534,11 +607,14 @@ export function StaffView({
   candidates,
   reports,
   ownerId,
+  branches = [],
 }: {
   people: Person[];
   candidates: Person[];
   reports: ShiftReport[];
   ownerId: string;
+  /** Every place the shop sells from, for the branch picker. */
+  branches?: Branch[];
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [who, setWho] = useState<string>("all");
@@ -612,6 +688,12 @@ export function StaffView({
                   <p className="mt-0.5 max-w-md text-xs text-ink-800/40">
                     {ROLE_BLURBS[p.role]}
                   </p>
+                )}
+                {/* Where they work, separate from what they may do. Only
+                    shown once there is more than one place to work: with a
+                    single branch it is a row of text saying nothing. */}
+                {p.role !== "customer" && branches.length > 1 && (
+                  <BranchPicker person={p} branches={branches} disabled={p.id === ownerId} />
                 )}
               </div>
               {/* The whole ladder, not one toggle. With only "make staff" and

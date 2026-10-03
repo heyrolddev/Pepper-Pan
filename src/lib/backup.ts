@@ -53,6 +53,10 @@ const TABLES = [
   // seventy-odd loose cards, and the owner rebuilds it all by hand.
   "menu_products",
   "meals",
+  // Which branch offers which dish. Tiny, and losing it would take every
+  // dish off every menu: a row is what marks a dish as offered, so an empty
+  // table reads as a shop with nothing to sell.
+  "meal_branches",
   "meal_ingredients",
   "meal_components",
   "modifier_groups",

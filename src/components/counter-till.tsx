@@ -83,6 +83,8 @@ export type CounterMeal = {
   groups?: ModifierGroup[];
   /** The kitchen's shorthand — "C1". Printed on the receipt for the cook. */
   code?: string | null;
+  /** Which branches offer this dish. Empty means nobody has answered yet. */
+  branchIds?: string[];
 };
 
 /**
@@ -158,6 +160,21 @@ export function CounterTill({
      this screen, because every sale written below carries it. */
   const { branchId, choose, choices, locked } = useTillBranch(branches, pinnedBranch);
 
+  /* Only what this branch offers. The booth's menu is shorter than Apalit's
+     and may carry a dish Apalit does not — a till showing a dish the kitchen
+     beside it cannot make is a till that takes an order nobody can fill.
+
+     Empty `branchIds` means a dish nobody has answered for yet, which
+     happens only between a migration and the owner ticking a box; showing it
+     is the safer of the two wrongs. */
+  const onMenu = useMemo(
+    () =>
+      meals.filter(
+        (m) => m.branchIds === undefined || m.branchIds.length === 0 || m.branchIds.includes(branchId)
+      ),
+    [meals, branchId]
+  );
+
   const [ticket, setTicket] = useState<Ticket>({});
   /** The dish whose add-ons are being picked. Null when nothing is open. */
   const [choosing, setChoosing] = useState<CounterMeal | null>(null);
@@ -209,7 +226,7 @@ export function CounterTill({
   // the TILES were still in whatever order the query returned, which is by
   // name. So the two screens agreed about where the Drinks pill was and
   // disagreed about everything under it. Both now read the one list.
-  const order = useMemo(() => categoriesUsed(meals, known), [meals, known]);
+  const order = useMemo(() => categoriesUsed(onMenu, known), [onMenu, known]);
   const categories = useMemo(() => ["All", ...order], [order]);
 
   /**
@@ -218,7 +235,7 @@ export function CounterTill({
    * disagree about what colour Drinks is.
    */
   const palette = useMemo(() => paletteFor(order, colours), [order, colours]);
-  const sorted = useMemo(() => orderForMenu(meals, order), [meals, order]);
+  const sorted = useMemo(() => orderForMenu(onMenu, order), [onMenu, order]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -785,7 +802,7 @@ export function CounterTill({
 
           {shown.length === 0 ? (
             <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-              Nothing here. {meals.length === 0 && "Every dish is marked sold out."}
+              Nothing here. {onMenu.length === 0 && "Nothing is offered at this branch yet."}
             </p>
           ) : (
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">

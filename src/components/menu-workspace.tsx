@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CategoryBar } from "@/components/category-bar";
+import { type Branch } from "@/lib/branches";
 import { AdminMenuList } from "@/components/admin-menu-list";
 import type { AdminMeal } from "@/components/meal-editor";
 import type { MenuCategory } from "@/lib/categories";
@@ -28,10 +29,16 @@ export function MenuWorkspace({
   meals,
   categories,
   counts,
+  branches = [],
+  offeredAt = {},
 }: {
   meals: AdminMeal[];
   categories: MenuCategory[];
   counts: Record<string, number>;
+  /** Every place the shop sells from. Empty while there is only one. */
+  branches?: Branch[];
+  /** Branch ids per dish id. Missing means offered nowhere. */
+  offeredAt?: Record<string, string[]>;
 }) {
   const [active, setActive] = useState<string | null>(null);
 
@@ -48,6 +55,8 @@ export function MenuWorkspace({
         categories={categories}
         activeCategory={active}
         onClearCategory={() => setActive(null)}
+        branches={branches}
+        offeredAt={offeredAt}
       />
     </div>
   );

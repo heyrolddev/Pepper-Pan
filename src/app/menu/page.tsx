@@ -87,11 +87,18 @@ async function getMenu(): Promise<{
       inside,
       { data: nutritionSetting },
     ] = await Promise.all([
+      /* The website orders from Apalit, so the public menu is Apalit's.
+         A dish offered only at the booth must not appear here: nobody at the
+         commissary could cook it, and the order would be taken anyway. The
+         inner join on `meal_branches` is what enforces that — and it means a
+         dish nobody has placed at any branch shows nowhere, which is the
+         safe direction for a menu the public can order from. */
       supabase
       .from("meals")
       .select(
-        "id, name, price, description, categories, image_url, is_available, product_id, options, variant_sort, code"
+        "id, name, price, description, categories, image_url, is_available, product_id, options, variant_sort, code, meal_branches!inner(branch_id)"
       )
+      .eq("meal_branches.branch_id", "main")
       .eq("is_public", true)
       /**
        * Sold-out dishes are READ now, where they used to be filtered out.

@@ -4,6 +4,8 @@ import { useCallback, useMemo } from "react";
 import { AdminSearch } from "@/components/admin-search";
 import { BulkCategory } from "@/components/bulk-category";
 import { MealEditor, type AdminMeal } from "@/components/meal-editor";
+import { OfferedAt } from "@/components/offered-at";
+import { type Branch } from "@/lib/branches";
 import type { MenuCategory } from "@/lib/categories";
 
 export function AdminMenuList({
@@ -11,12 +13,18 @@ export function AdminMenuList({
   categories,
   activeCategory = null,
   onClearCategory,
+  branches = [],
+  offeredAt = {},
 }: {
   meals: AdminMeal[];
   categories: MenuCategory[];
   /** Set by the category bar above. Null shows everything. */
   activeCategory?: string | null;
   onClearCategory?: () => void;
+  /** Every place the shop sells from. Empty while there is only one. */
+  branches?: Branch[];
+  /** Branch ids per dish id. Missing means offered nowhere. */
+  offeredAt?: Record<string, string[]>;
 }) {
   const searchText = useCallback(
     (m: AdminMeal) =>
@@ -100,8 +108,21 @@ export function AdminMenuList({
           ) : (
             <ul className="flex flex-col gap-4">
               {filtered.map((meal) => (
-                <li key={meal.id}>
+                <li key={meal.id} className="flex flex-col gap-1.5">
                   <MealEditor meal={meal} categories={categories} />
+                  {/* Where it is sold, under the dish rather than inside its
+                      editor: the recipe, the price and the photo are the
+                      commissary's, and this one line is the branches'. Only
+                      shown once there is more than one branch. */}
+                  {branches.length > 1 && (
+                    <div className="px-4">
+                      <OfferedAt
+                        mealId={meal.id}
+                        branches={branches}
+                        offered={offeredAt[meal.id] ?? []}
+                      />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

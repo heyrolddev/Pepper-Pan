@@ -152,6 +152,20 @@ export default async function AdminCounterPage() {
   // that only ever surfaces as an argument at the counter.
   const addOns = await loadModifiers(supabase, makeable);
 
+  /* Which dishes each branch offers. Sent with the meals rather than used
+     to filter them here, because the branch is chosen on the DEVICE: the
+     owner switching the till from Apalit to the booth has to see the booth's
+     menu without the page being fetched again. */
+  const { data: offeredRows } = await supabase
+    .from("meal_branches")
+    .select("meal_id, branch_id");
+  const branchesByMeal = new Map<string, string[]>();
+  for (const r of (offeredRows ?? []) as { meal_id: string; branch_id: string }[]) {
+    const list = branchesByMeal.get(r.meal_id) ?? [];
+    list.push(r.branch_id);
+    branchesByMeal.set(r.meal_id, list);
+  }
+
   const rows: CounterMeal[] = ((meals ?? []) as (CounterMeal & {
     product_id: string | null;
   })[])
@@ -165,6 +179,7 @@ export default async function AdminCounterPage() {
       // read a ticket without reading every name to the end.
       code: m.code ?? null,
       groups: groupsFor(m.id, m.product_id, addOns.byMeal, addOns.byProduct),
+      branchIds: branchesByMeal.get(m.id) ?? [],
     }))
     .filter(
     // Sold out is sold out at the counter too — the whole point of 86ing
@@ -182,6 +197,7 @@ export default async function AdminCounterPage() {
   // The places this till could be selling for. Two rows; read once here
   // rather than inside the client component, which has no database.
   const branches = await listBranches();
+
 
   return (
     <CounterTill
