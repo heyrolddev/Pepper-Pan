@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { can, getViewer } from "@/lib/auth";
+import { wasCalledOff } from "@/lib/order-void";
 import { openShiftFor } from "@/lib/shifts-server";
 import { loadAvailability } from "@/lib/costing-server";
 import { StaffToday, type ServiceOrder, type ShortDish } from "@/components/staff-today";
@@ -49,6 +50,8 @@ type OrderRow = {
   created_at: string;
   date: string;
   status: string;
+  /** Struck out as a wrong entry. Not a cancellation — see `lib/order-void`. */
+  voided_at: string | null;
   fulfillment: string;
   revenue: number;
   cogs: number;
@@ -142,7 +145,7 @@ export default async function AdminDashboard({
     supabase
       .from("orders")
       .select(
-        "id, created_at, date, status, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
+        "id, created_at, date, status, voided_at, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
       )
       .gte("date", earliest)
       .order("created_at", { ascending: false }),
@@ -158,7 +161,7 @@ export default async function AdminDashboard({
     supabase
       .from("orders")
       .select(
-        "id, created_at, date, status, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
+        "id, created_at, date, status, voided_at, fulfillment, revenue, cogs, delivery_fee, payment_status, payment_method, contact_name"
       )
       .in("status", ["pending", "confirmed", "preparing", "ready"])
       .lt("date", earliest),
@@ -229,8 +232,14 @@ export default async function AdminDashboard({
   const completed = inRange.filter((o) => o.status === "completed");
   const avgOrder = completed.length > 0 ? sum(completed) / completed.length : 0;
 
-  const rangeAll = orders.filter((o) => o.date >= fromDate && o.date <= toDate);
-  const cancelled = rangeAll.filter((o) => o.status === "cancelled");
+  /* Voids are not orders, so they are in neither half of this rate.
+     
+     A ticket punched twice is the till being wrong, and the shop reads this
+     figure to ask how often it let a customer down. */
+  const rangeAll = orders.filter(
+    (o) => o.date >= fromDate && o.date <= toDate && !o.voided_at
+  );
+  const cancelled = rangeAll.filter(wasCalledOff);
   const cancelRate =
     rangeAll.length > 0 ? Math.round((cancelled.length / rangeAll.length) * 100) : 0;
 
@@ -327,7 +336,7 @@ export default async function AdminDashboard({
         yesterday={sum(yesterdays)}
         orderCount={todays.length}
         cancelledToday={
-          orders.filter((o) => o.date === todayStr && o.status === "cancelled").length
+          orders.filter((o) => o.date === todayStr && wasCalledOff(o)).length
         }
         spark={salesByDay.map((d) => d.value)}
         toCook={needsAction.length}

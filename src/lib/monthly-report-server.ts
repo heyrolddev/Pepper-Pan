@@ -60,7 +60,7 @@ async function ordersIn(month: string): Promise<OrderRow[]> {
   const { from, to } = bounds(month);
   const { data, error } = await createAdminClient()
     .from("orders")
-    .select("date, status, revenue, cogs, discount, customer_id, fulfillment")
+    .select("date, status, voided_at, revenue, cogs, discount, customer_id, fulfillment")
     .gte("date", from)
     .lte("date", to);
   if (error) {
@@ -70,6 +70,7 @@ async function ordersIn(month: string): Promise<OrderRow[]> {
   return ((data ?? []) as Record<string, unknown>[]).map((o) => ({
     date: String(o.date),
     status: String(o.status),
+    voidedAt: (o.voided_at as string | null) ?? null,
     revenue: Number(o.revenue) || 0,
     cogs: Number(o.cogs) || 0,
     discount: Number(o.discount) || 0,

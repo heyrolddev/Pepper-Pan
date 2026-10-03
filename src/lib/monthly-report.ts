@@ -30,10 +30,17 @@
  * Deliberately free of imports so `node --test` can read it directly.
  */
 
+/* Relative, with the extension: `node --test` runs this module directly and
+   cannot resolve `@/`, so an aliased import here stops the entire test file
+   loading while tsc and the build stay green. */
+import { wasCalledOff } from "./order-void.ts";
+
 export type OrderRow = {
   /** Shop day, YYYY-MM-DD. */
   date: string;
   status: string;
+  /** Struck out as a wrong entry, and so never an order. See `order-void`. */
+  voidedAt: string | null;
   revenue: number;
   cogs: number;
   discount: number;
@@ -200,6 +207,10 @@ export function daysElapsed(month: string, today: string): number {
   return Math.min(size, Number(today.slice(8, 10)));
 }
 
+/* Both a cancellation and a void are `status = 'cancelled'` in the row, and
+   neither is money the shop took — so this one line is right for both and
+   needs no edit. That is the whole point of a void being a cancellation
+   underneath: every revenue filter in the system already excludes it. */
 const sold = (o: OrderRow) => o.status !== "cancelled";
 
 export function buildMonthlyReport(input: MonthInput): Report {
@@ -249,8 +260,15 @@ export function buildMonthlyReport(input: MonthInput): Report {
     ? trading.reduce((a, b) => (b.revenue < a.revenue ? b : a))
     : null;
 
-  const cancelled = input.orders.filter((o) => o.status === "cancelled").length;
-  const cancelRate = input.orders.length > 0 ? cancelled / input.orders.length : 0;
+  /* Voids leave this figure entirely, numerator and denominator both.
+     
+     The month's cancellation rate is read as "how often did we let a
+     customer down". A ticket punched twice on a Tuesday let nobody down
+     and was never an order the shop took, so counting it in either half
+     answers a different question than the one being asked. */
+  const real = input.orders.filter((o) => !o.voidedAt);
+  const cancelled = real.filter(wasCalledOff).length;
+  const cancelRate = real.length > 0 ? cancelled / real.length : 0;
 
   const withProfit = input.dishes.map((d) => ({
     ...d,

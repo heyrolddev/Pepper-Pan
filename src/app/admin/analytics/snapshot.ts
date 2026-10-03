@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { wasCalledOff } from "@/lib/order-void";
 import type { ShopSnapshot } from "@/lib/marketing-analyst";
 import { tallySales, type SoldLine } from "@/lib/sales-tally";
 
@@ -27,6 +28,8 @@ type OrderRow = {
   created_at: string;
   date: string;
   status: string;
+  /** Struck out as a wrong entry. Not a cancellation — see `lib/order-void`. */
+  voided_at: string | null;
   fulfillment: string;
   revenue: number;
   delivery_fee: number | null;
@@ -53,7 +56,7 @@ export async function buildSnapshot(): Promise<ShopSnapshot> {
     supabase
       .from("orders")
       .select(
-        "id, customer_id, created_at, date, status, fulfillment, revenue, delivery_fee, payment_status, payment_method"
+        "id, customer_id, created_at, date, status, fulfillment, revenue, delivery_fee, payment_status, payment_method, voided_at"
       )
       .gte("date", d60),
     supabase
@@ -143,10 +146,18 @@ export async function buildSnapshot(): Promise<ShopSnapshot> {
     orders: {
       last30: last30.length,
       prior30: prior30.length,
-      cancelRate:
-        orders.length > 0
-          ? Math.round((orders.filter((o) => o.status === "cancelled").length / orders.length) * 100)
-          : 0,
+      /* Voids are left out of both halves of this fraction.
+         
+         This figure is read as a service problem — orders the shop lost —
+         so a cashier who double-punched a ticket must not move it. The
+         denominator drops them too: a till entry that never happened is
+         not an order the shop took. */
+      cancelRate: (() => {
+        const real = orders.filter((o) => !o.voided_at);
+        return real.length > 0
+          ? Math.round((real.filter(wasCalledOff).length / real.length) * 100)
+          : 0;
+      })(),
     },
     fulfillment: {
       pickup: last30.filter((o) => o.fulfillment === "pickup").length,

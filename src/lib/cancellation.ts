@@ -7,12 +7,19 @@
  * server all have to agree on the list — and because a reason nobody can
  * group is a reason nobody can count later.
  */
+/**
+ * Reasons a REAL order fell through — and nothing else.
+ *
+ * "Rung up wrong" and "Duplicate order" used to sit in this list, and they
+ * were never cancellations: nobody wanted that food and no customer was let
+ * down. They were the till being wrong. Both moved to `VOID_REASONS` in
+ * `order-void.ts`, which is what keeps a double-punched ticket out of the
+ * cancellation rate the owner reads as a service problem.
+ */
 export const CANCEL_REASONS = [
   "Customer changed their mind",
   "Never collected",
   "Ran out of an ingredient",
-  "Rung up wrong",
-  "Duplicate order",
   "Kitchen couldn't make it",
 ] as const;
 

@@ -1,5 +1,6 @@
 import "server-only";
 import { orderLabel } from "@/lib/tickets";
+import { isVoided } from "@/lib/order-void";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { newestFirst } from "@/lib/ledger-order";
 import { shopToday } from "@/lib/format-date";
@@ -687,7 +688,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
         ? supabase
             .from("orders")
             .select(
-              "id, ticket, date, revenue, status, contact_name, logged_by, tag, cancelled_by, created_at"
+              "id, ticket, date, revenue, status, contact_name, logged_by, tag, cancelled_by, voided_at, created_at"
             )
             .gte("date", pot.from)
             .eq("payment_method", pot.method)
@@ -707,6 +708,7 @@ export async function loadMoney(): Promise<MoneyPicture> {
     logged_by: string | null;
     tag: string | null;
     cancelled_by: string | null;
+    voided_at: string | null;
     created_at: string;
   };
 
@@ -763,8 +765,12 @@ export async function loadMoney(): Promise<MoneyPicture> {
             /* "cancelled — nothing collected" rather than "cancelled",
                because the number beside it is the order's value and the one
                thing the reader must not conclude is that it left the pot. */
+            /* A void says so, because the two are read differently at
+               closing. "Cancelled" invites the owner to ask what happened
+               to a customer; "voided" says the till was corrected and
+               there is nobody to ask about. */
             note:
-              `${what} cancelled` +
+              `${what} ${isVoided(o) ? "voided" : "cancelled"}` +
               (o.cancelled_by && cancellerName.has(o.cancelled_by)
                 ? ` by ${cancellerName.get(o.cancelled_by)}`
                 : "") +
