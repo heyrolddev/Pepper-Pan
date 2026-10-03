@@ -17,6 +17,7 @@ import {
 import { WasteForm } from "@/components/waste-form";
 import { WasteHistory } from "@/components/waste-history";
 import { StockAccuracy } from "@/components/stock-accuracy";
+import { AdminDialog } from "@/components/admin-dialog";
 import type { Wastable } from "@/lib/waste-lines";
 import {
   AddBatchButton,
@@ -101,6 +102,12 @@ export type ExpiringRow = {
 type Editing =
   | { kind: "new" }
   | { kind: "waste" }
+  /* Looking back, rather than writing. In the same union as the forms
+     because they are the same thing to this screen — one dialog open at a
+     time — and keeping a second piece of state for "is a report showing"
+     is how two of them end up on top of each other. */
+  | { kind: "waste-history" }
+  | { kind: "stock-accuracy" }
   | { kind: "edit" | "restock" | "count"; row: StockRow }
   | {
       kind: "produce" | "recipe" | "batch-history" | "batch-edit" | "batch-count";
@@ -139,6 +146,34 @@ export type BatchRow = {
  * is nearly gone. They don't see what it costs: supplier prices are the
  * owner's.
  */
+
+/**
+ * A button that opens a report rather than a form.
+ *
+ * Deliberately not styled like "Log waste" or "+ Add an ingredient". Those
+ * two write to the shop; these two only look. Same shape, quieter fill, and
+ * an icon — so the eye can tell at a glance which buttons change something
+ * and which just answer a question, without reading either label.
+ */
+function ReviewButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-2xl bg-cream-50 px-4 py-2.5 text-sm font-bold text-ink-800/75 ring-1 ring-ink-950/10 transition-colors hover:bg-ink-950 hover:text-cream-50"
+    >
+      <span aria-hidden>{icon}</span>
+      {label}
+    </button>
+  );
+}
 
 /** Stock against its reorder level, as one glanceable bar. */
 function StockBar({ stock, reorder }: { stock: number; reorder: number }) {
@@ -241,10 +276,6 @@ export function InventoryView({
   const [query, setQuery] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
   const [editing, setEditing] = useState<Editing>(null);
-  /* Folded by default. Unfolding is what triggers the read, so a visit that
-     never asks about the bin never pays for the query. */
-  const [wasteOpen, setWasteOpen] = useState(false);
-  const [countsOpen, setCountsOpen] = useState(false);
 
   // Offered as suggestions rather than a fixed list: the shop's own units and
   // tags are the right vocabulary, and a dropdown of ours would just be one
@@ -403,6 +434,34 @@ export function InventoryView({
             What&apos;s on the shelf, what&apos;s running out, and the sauces and
             marinades you make in bulk. Selling now takes stock off the shelf.
           </p>
+
+          {/* ---- the two questions asked about the past ----
+
+              Both were folded sections at the foot of this page, which put
+              them below every shelf and every batch — a scroll nobody makes
+              during service and nobody remembers at closing. The shop's two
+              best leak reports were the hardest things on the screen to
+              reach.
+
+              Buttons, at the top, opening the same dialog the forms use: one
+              place to look, one way out, and the read still only happens when
+              somebody asks for it. Set apart from the action buttons on the
+              right because these two change nothing — they answer. */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <ReviewButton
+              icon="🗑"
+              label="What went in the bin"
+              onClick={() => setEditing({ kind: "waste-history" })}
+            />
+            {/* Owner or manager only: a count's value is a cost figure. */}
+            {canSeeCosts && (
+              <ReviewButton
+                icon="📉"
+                label="What the counts say is missing"
+                onClick={() => setEditing({ kind: "stock-accuracy" })}
+              />
+            )}
+          </div>
         </div>
         <div className="flex shrink-0 gap-2">
           <button
@@ -1097,81 +1156,26 @@ export function InventoryView({
         </div>
       )}
 
-      {/* ---- what went in the bin ----
-
-          Folded, and at the bottom, because it is a question asked weekly
-          rather than a thing worked from during service — the top of this
-          page belongs to what is running out right now. Unfolding it is what
-          triggers the read, so a page nobody asks about the bin on never
-          pays for the query. */}
-      <section className="rounded-3xl bg-cream-50 p-5 ring-1 ring-ink-950/10 sm:p-6">
-        <button
-          onClick={() => setWasteOpen((v) => !v)}
-          aria-expanded={wasteOpen}
-          className="flex w-full items-center justify-between gap-3 text-left"
+      {editing?.kind === "waste-history" && (
+        <AdminDialog
+          wide
+          title="What went in the bin"
+          subtitle="Every line logged, over any stretch of days — spoilage and staff meals counted apart, because only one of them is a problem."
+          onClose={() => setEditing(null)}
         >
-          <span className="min-w-0">
-            <span className="block font-display text-xl font-black text-ink-950">
-              What went in the bin
-            </span>
-            <span className="mt-0.5 block text-sm text-ink-800/60">
-              Every line logged, over any stretch of days — spoilage and staff
-              meals counted apart, because only one of them is a problem.
-            </span>
-          </span>
-          <span
-            aria-hidden
-            className={`shrink-0 rounded-full bg-ink-950/5 px-3 py-2 text-xs font-black text-ink-800/60 transition-transform ${
-              wasteOpen ? "rotate-180" : ""
-            }`}
-          >
-            ▾
-          </span>
-        </button>
-        {wasteOpen && (
-          <div className="mt-5">
-            <WasteHistory today={today} />
-          </div>
-        )}
-      </section>
+          <WasteHistory today={today} />
+        </AdminDialog>
+      )}
 
-      {/* ---- what the counts say is missing ----
-
-          Beside the bin and not inside it, because they are different
-          questions with different answers: waste is what the shop KNOWS it
-          threw away, and this is what it cannot account for. Owner only —
-          a count's value is a cost figure. */}
-      {canSeeCosts && (
-        <section className="rounded-3xl bg-cream-50 p-5 ring-1 ring-ink-950/10 sm:p-6">
-          <button
-            onClick={() => setCountsOpen((v) => !v)}
-            aria-expanded={countsOpen}
-            className="flex w-full items-center justify-between gap-3 text-left"
-          >
-            <span className="min-w-0">
-              <span className="block font-display text-xl font-black text-ink-950">
-                What the counts say is missing
-              </span>
-              <span className="mt-0.5 block text-sm text-ink-800/60">
-                Every recount since the shop opened, and what the shortfalls cost
-                — measured against what you sold in the same days.
-              </span>
-            </span>
-            <span
-              aria-hidden
-              className={`shrink-0 rounded-full bg-ink-950/5 px-3 py-2 text-xs font-black text-ink-800/60 transition-transform ${
-                countsOpen ? "rotate-180" : ""
-              }`}
-            >
-              ▾
-            </span>
-          </button>
-          {countsOpen && (
-            <div className="mt-5">
-              <StockAccuracy today={today} />
-            </div>
-          )}
-        </section>
+      {editing?.kind === "stock-accuracy" && canSeeCosts && (
+        <AdminDialog
+          wide
+          title="What the counts say is missing"
+          subtitle="Every recount since the shop opened, and what the shortfalls cost — measured against what you sold in the same days."
+          onClose={() => setEditing(null)}
+        >
+          <StockAccuracy today={today} />
+        </AdminDialog>
       )}
 
       {/* Keyed on the row so opening a second ingredient's form resets every
