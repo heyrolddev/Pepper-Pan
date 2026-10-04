@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useDialog } from "@/lib/dialog";
@@ -44,7 +43,6 @@ export function SignOutButton({
   /** How the trigger is styled. The dialog never changes. */
   variant?: "nav" | "rail" | "block" | "menu";
 }) {
-  const router = useRouter();
   const [asking, setAsking] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -59,12 +57,55 @@ export function SignOutButton({
    * exactly one click, so it is fetched on exactly that click. The extra
    * round trip lands inside the time the confirm dialog is already open.
    */
+  /**
+   * Signing out, and finishing the job whatever Supabase says.
+   *
+   * ── The bug this replaces ────────────────────────────────────────────
+   *
+   * It used to be four lines with no catch and no way back: set the button
+   * to "Signing out…", await `signOut()`, refresh. If that await REJECTED —
+   * and it rejects routinely, with `AuthSessionMissingError` when the
+   * session has already lapsed, or any network error on a stall's
+   * connection — the component was left with `signingOut` stuck true, the
+   * dialog still open, both buttons disabled and nothing on screen saying
+   * why. The customer presses "Yes, sign out" again and again and the page
+   * does nothing at all. That is exactly what was reported.
+   *
+   * Three things fix it, and all three are needed:
+   *
+   * `scope: "local"` — the default asks the server to revoke the refresh
+   * token everywhere, which is the part that fails when the session is
+   * already gone or the network is bad. Clearing this browser is what the
+   * person actually asked for, and it cannot fail for either reason.
+   *
+   * The catch — a sign-out that errors must still sign you out. There is no
+   * state in which the right answer is to leave somebody signed in because
+   * a token could not be revoked; the local session is gone either way.
+   *
+   * A full navigation rather than `router.refresh()` — the cookies are
+   * cleared by the client, and only a real request makes the server read
+   * them again. A refresh re-renders from a router cache that still
+   * believes in the old session, which is how a signed-out person keeps
+   * seeing their own name in the header.
+   *
+   * `replace` rather than `assign`, and an absolute URL rather than "/":
+   * replace keeps the signed-in page out of the back button, where the
+   * browser would otherwise restore it whole from its own cache — a
+   * signed-out account page one tap away is the worst version of this bug,
+   * not a smaller one.
+   */
   async function confirm() {
     setSigningOut(true);
-    const { createClient } = await import("@/lib/supabase/client");
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.refresh();
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      await createClient().auth.signOut({ scope: "local" });
+    } catch {
+      // Nothing to report and nothing to decide: the session is being
+      // thrown away on this device regardless, and the navigation below is
+      // what makes that true on screen.
+    }
+    setAsking(false);
+    window.location.replace(window.location.origin);
   }
 
   const triggerClass =

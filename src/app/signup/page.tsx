@@ -4,6 +4,7 @@ import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isPhoneTaken } from "@/app/signup/phone-check";
 import { PageHeader } from "@/components/page-header";
 import { PasswordField } from "@/components/password-field";
 import { fieldClass, labelClass, submitClass, errorClass } from "@/lib/form-styles";
@@ -40,6 +41,18 @@ function SignupForm() {
     setError(null);
     setAlreadyRegistered(false);
 
+    /* Asked before the account is attempted, so a number that is already
+       taken comes back as a sentence rather than as "Database error saving
+       new user" — which is what the unique index looks like from the
+       outside, because it refuses inside a trigger on auth.users. */
+    if (phone.trim() && (await isPhoneTaken(phone))) {
+      setSubmitting(false);
+      setError(
+        "That mobile number is already on an account. Sign in instead, or use the number you want this account reached on."
+      );
+      return;
+    }
+
     const supabase = createClient();
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -55,6 +68,16 @@ function SignupForm() {
     if (error) {
       if (/already registered|already exists/i.test(error.message)) {
         setAlreadyRegistered(true);
+        return;
+      }
+      /* The index refuses inside `handle_new_user`, so Supabase reports it
+         as a database error rather than as anything about a phone number.
+         The check above catches almost every case; this catches the race
+         where two people submit the same number at once. */
+      if (/database error|duplicate key|profiles_one_account_per_phone/i.test(error.message)) {
+        setError(
+          "That mobile number is already on an account. Sign in instead, or use the number you want this account reached on."
+        );
         return;
       }
       setError(error.message);
