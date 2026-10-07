@@ -1,4 +1,6 @@
 import { getViewer, isStaff } from "@/lib/auth";
+import { listBranches } from "@/lib/branches-server";
+import { onlyBranch, scopeBranch } from "@/lib/branch-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CounterTill, type CounterMeal } from "@/components/counter-till";
 import { shopToday } from "@/lib/format-date";
@@ -47,12 +49,18 @@ export default async function AdminCounterPage() {
     // What this till has already taken today, so whoever is on the counter can
     // see their own shift adding up rather than having to leave for the
     // dashboard and come back.
-    supabase
-      .from("orders")
-      .select("revenue")
-      .eq("tag", "walk-in")
-      .eq("date", shopToday())
-      .neq("status", "cancelled"),
+    /* This till's own takings, not the whole business's. A cashier at the
+       booth watching Apalit's counter add up would be reading somebody
+       else's shift. */
+    onlyBranch(
+      supabase
+        .from("orders")
+        .select("revenue")
+        .eq("tag", "walk-in")
+        .eq("date", shopToday())
+        .neq("status", "cancelled"),
+      await scopeBranch(viewer)
+    ),
     supabase
       .from("menu_categories")
       .select("name, colour, sort_order")
@@ -144,6 +152,20 @@ export default async function AdminCounterPage() {
   // that only ever surfaces as an argument at the counter.
   const addOns = await loadModifiers(supabase, makeable);
 
+  /* Which dishes each branch offers. Sent with the meals rather than used
+     to filter them here, because the branch is chosen on the DEVICE: the
+     owner switching the till from Apalit to the booth has to see the booth's
+     menu without the page being fetched again. */
+  const { data: offeredRows } = await supabase
+    .from("meal_branches")
+    .select("meal_id, branch_id");
+  const branchesByMeal = new Map<string, string[]>();
+  for (const r of (offeredRows ?? []) as { meal_id: string; branch_id: string }[]) {
+    const list = branchesByMeal.get(r.meal_id) ?? [];
+    list.push(r.branch_id);
+    branchesByMeal.set(r.meal_id, list);
+  }
+
   const rows: CounterMeal[] = ((meals ?? []) as (CounterMeal & {
     product_id: string | null;
   })[])
@@ -157,6 +179,7 @@ export default async function AdminCounterPage() {
       // read a ticket without reading every name to the end.
       code: m.code ?? null,
       groups: groupsFor(m.id, m.product_id, addOns.byMeal, addOns.byProduct),
+      branchIds: branchesByMeal.get(m.id) ?? [],
     }))
     .filter(
     // Sold out is sold out at the counter too — the whole point of 86ing
@@ -171,6 +194,11 @@ export default async function AdminCounterPage() {
   );
   const salesToday = (today ?? []).length;
 
+  // The places this till could be selling for. Two rows; read once here
+  // rather than inside the client component, which has no database.
+  const branches = await listBranches();
+
+
   return (
     <CounterTill
       known={categories}
@@ -182,6 +210,8 @@ export default async function AdminCounterPage() {
       nutritionByMeal={nutritionByMeal}
       showNutrition={settingsRow?.show_nutrition === true}
       promos={counterPromos}
+      branches={branches}
+      pinnedBranch={viewer!.profile?.branch_id ?? null}
     />
   );
 }

@@ -37,7 +37,27 @@ export async function askHq(question: string): Promise<Answer> {
     return { text: noMatchReply(q), numbers: null, where: null, matched: false };
   }
 
-  const numbers = topic.numbers ? await explain(topic.numbers) : null;
+  /* The figures are the nice half, not the answer.
+     
+     `explain` reads the shop's own numbers out of Supabase, and that read
+     can fail for reasons that have nothing to do with the question — a
+     dropped connection on a stall's network is the usual one. It used to be
+     awaited bare, so a failed read rejected the whole server action and the
+     page recorded "Load failed". The widget lives in the ROOT layout, so
+     that error was filed against whatever page the person happened to be
+     on: it showed up in the error log as a fault on /admin/counter, which
+     is a screen that has nothing to do with it and would have been
+     investigated as if it did.
+     
+     The explanation is still worth giving without its figures. */
+  let numbers = null;
+  if (topic.numbers) {
+    try {
+      numbers = await explain(topic.numbers);
+    } catch (e) {
+      console.error(`[ask] numbers for ${topic.id}: ${String(e)}`);
+    }
+  }
   const lead = opener(q, topic);
 
   return {

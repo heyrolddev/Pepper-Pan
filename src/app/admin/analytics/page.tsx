@@ -5,6 +5,7 @@ import { AnalysisPanel } from "@/components/analysis-panel";
 import { SalesOutlook } from "@/components/sales-outlook";
 import { PastDaysPanel } from "@/components/past-days-panel";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { onlyBranch, scopeBranch } from "@/lib/branch-scope";
 import { usualCostPct } from "@/lib/past-days";
 import { salesOutlook } from "@/lib/forecast-server";
 import { buildSnapshot } from "./snapshot";
@@ -38,17 +39,27 @@ async function loadPastDayContext(): Promise<{
     const supabase = createAdminClient();
     const since = new Date();
     since.setDate(since.getDate() - 90);
+    /* The usual cost of a sale, for the branch being looked at. Blending
+       two branches here would quote Apalit's food cost to the booth, whose
+       prepped items are costed differently. */
+    const pinned = await scopeBranch();
     const [{ data: recent }, { count }] = await Promise.all([
-      supabase
-        .from("orders")
-        .select("revenue, cogs")
-        .eq("status", "completed")
-        .eq("is_backfill", false)
-        .gte("date", since.toISOString().slice(0, 10)),
-      supabase
-        .from("orders")
-        .select("id", { count: "exact", head: true })
-        .eq("is_backfill", true),
+      onlyBranch(
+        supabase
+          .from("orders")
+          .select("revenue, cogs")
+          .eq("status", "completed")
+          .eq("is_backfill", false)
+          .gte("date", since.toISOString().slice(0, 10)),
+        pinned
+      ),
+      onlyBranch(
+        supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("is_backfill", true),
+        pinned
+      ),
     ]);
     const rows = (recent ?? []) as { revenue: number | null; cogs: number | null }[];
     const revenue = rows.reduce((sum, r) => sum + (Number(r.revenue) || 0), 0);

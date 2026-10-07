@@ -1,6 +1,7 @@
 import { can, getViewer } from "@/lib/auth";
 import { SHOP_ROLES } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { listBranches } from "@/lib/branches-server";
 import { shiftLength } from "@/lib/shifts-server";
 import { drawerFor } from "@/lib/drawer";
 import { StaffView, type Person, type ShiftReport } from "@/components/staff-view";
@@ -17,6 +18,7 @@ type ProfileRow = {
   phone: string | null;
   role: string;
   created_at: string;
+  branch_id: string | null;
 };
 
 export default async function AdminStaffPage() {
@@ -37,7 +39,7 @@ export default async function AdminStaffPage() {
   const [{ data: profiles }, { data: shifts }, { data: log }, devices] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, full_name, phone, role, created_at")
+      .select("id, full_name, phone, role, created_at, branch_id")
       .in("role", [...SHOP_ROLES, "customer"])
       .order("created_at", { ascending: false }),
     supabase
@@ -214,6 +216,7 @@ export default async function AdminStaffPage() {
       name: p.full_name,
       phone: p.phone,
       role: p.role as Person["role"],
+      branchId: p.branch_id ?? null,
       joined: p.created_at,
       onShift: shiftRows.some((s) => s.staff_id === p.id && s.ended_at === null),
       shiftsWorked: shiftRows.filter((s) => s.staff_id === p.id).length,
@@ -227,6 +230,7 @@ export default async function AdminStaffPage() {
       name: p.full_name,
       phone: p.phone,
       role: "customer",
+      branchId: p.branch_id ?? null,
       joined: p.created_at,
       onShift: false,
       shiftsWorked: 0,
@@ -251,6 +255,7 @@ export default async function AdminStaffPage() {
         candidates={candidates}
         reports={reports}
         ownerId={viewer?.profile?.id ?? ""}
+        branches={await listBranches()}
       />
       <DeviceRequests devices={deviceEntries} />
     </div>

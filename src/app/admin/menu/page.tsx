@@ -9,6 +9,7 @@ import { NutritionStatus } from "@/components/nutrition-status";
 import { rolloutOf } from "@/lib/nutrition-rollout";
 import { MenuWorkspace } from "@/components/menu-workspace";
 import { MenuAvailability } from "@/components/menu-availability";
+import { listBranches } from "@/lib/branches-server";
 import { NewMealForm } from "@/components/new-meal-form";
 import { TakeoutMergePanel } from "@/components/takeout-merge-panel";
 import { TakeoutPurgePanel } from "@/components/takeout-purge-panel";
@@ -184,6 +185,18 @@ export default async function AdminMenuPage() {
     };
   });
   const categories = (catRows ?? []) as MenuCategory[];
+
+  /* Which branches offer which dish. Two small reads rather than a join on
+     the meals query, because the menu query above is already doing enough
+     and this is a two-column table. */
+  const branches = await listBranches();
+  const { data: offeredRows } = await supabase
+    .from("meal_branches")
+    .select("meal_id, branch_id");
+  const offeredAt: Record<string, string[]> = {};
+  for (const r of (offeredRows ?? []) as { meal_id: string; branch_id: string }[]) {
+    (offeredAt[r.meal_id] ??= []).push(r.branch_id);
+  }
 
   // Members are read off the dishes rather than held on the group, for the
   // same reason the customer's menu reads the options off them: one place
@@ -362,13 +375,21 @@ export default async function AdminMenuPage() {
       )}
 
       {canEdit ? (
-        <MenuWorkspace meals={meals} categories={categories} counts={counts} />
+        <MenuWorkspace
+          meals={meals}
+          categories={categories}
+          counts={counts}
+          branches={branches}
+          offeredAt={offeredAt}
+        />
       ) : (
         // Prices stripped on the server, not just left unrendered. Props to a
         // client component are serialised into the page, so a price that is
         // merely not displayed is still a price sitting in the HTML.
         <MenuAvailability
           meals={meals.map((m) => ({ ...m, price: 0, description: null }))}
+          branches={branches}
+          offeredAt={offeredAt}
         />
       )}
     </div>

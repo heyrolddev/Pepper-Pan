@@ -11,6 +11,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { ShopStatusBanner } from "@/components/shop-status-banner";
 import { countActiveOrders, getViewer, isStaff } from "@/lib/auth";
 import { AskWidget } from "@/components/ask-widget";
+import { AuthLinkNotice } from "@/components/auth-link-notice";
 import { getChatSettings } from "@/lib/chat-settings";
 import { SHOP, siteUrl } from "@/lib/site";
 import { ShopChrome } from "@/components/shop-chrome";
@@ -234,6 +235,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               activeOrders={activeOrders}
             />
           </ShopChrome>
+
+          {/* Why a failed sign-in link gets its own place, above the page:
+              Supabase chooses where to drop somebody whose reset link did
+              not work, and that is the project's Site URL — usually the
+              homepage, which otherwise renders its ordinary self and
+              acknowledges nothing. The customer then clicks the same dead
+              link again. It renders nothing at all on an ordinary visit. */}
+          <AuthLinkNotice />
 
           {children}
 

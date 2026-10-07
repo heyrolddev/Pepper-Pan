@@ -2911,57 +2911,59 @@ begin
   create temp table if not exists restore_pos(pos int, tbl text) on commit drop;
   delete from restore_pos;
   insert into restore_pos(pos, tbl) values
-  (0,'settings'),
-  (1,'shop_settings'),
-  (2,'shop_hours'),
-  (3,'shop_closures'),
-  (4,'delivery_settings'),
-  (5,'payment_settings'),
-  (6,'profiles'),
-  (7,'ingredients'),
-  (8,'ingredient_lots'),
-  (9,'batches'),
-  (10,'batch_ingredients'),
-  (11,'menu_categories'),
-  (12,'menu_products'),
-  (13,'meals'),
-  (14,'chat_settings'),
-  (15,'meal_ingredients'),
-  (16,'meal_components'),
-  (17,'meal_packaging'),
-  (18,'order_packaging'),
-  (19,'modifier_groups'),
-  (20,'modifier_options'),
-  (21,'modifier_option_prices'),
-  (22,'meal_modifier_groups'),
-  (23,'product_modifier_groups'),
-  (24,'suppliers'),
-  (25,'supplier_prices'),
-  (26,'staff_shifts'),
-  (27,'orders'),
-  (28,'order_lines'),
-  (29,'order_line_extras'),
-  (30,'promos'),
-  (31,'promo_redemptions'),
-  (32,'purchase_log'),
-  (33,'consumption_log'),
-  (34,'waste_log'),
-  (35,'cash_ledger'),
-  (36,'receivables'),
-  (37,'cycle_counts'),
-  (38,'oe_templates'),
-  (39,'fixed_costs'),
-  (40,'monthly_bills'),
-  (41,'assets'),
-  (42,'supplier_debts'),
-  (43,'running_costs'),
-  (44,'marketing_campaigns'),
-  (45,'reviews'),
-  (46,'chat_threads'),
-  (47,'chat_messages'),
-  (48,'faq_entries'),
-  (49,'activity_log'),
-  (50,'announcements');
+  (0,'branches'),
+  (1,'settings'),
+  (2,'shop_settings'),
+  (3,'shop_hours'),
+  (4,'shop_closures'),
+  (5,'delivery_settings'),
+  (6,'payment_settings'),
+  (7,'profiles'),
+  (8,'ingredients'),
+  (9,'ingredient_lots'),
+  (10,'batches'),
+  (11,'batch_ingredients'),
+  (12,'menu_categories'),
+  (13,'menu_products'),
+  (14,'meals'),
+  (15,'chat_settings'),
+  (16,'meal_branches'),
+  (17,'meal_ingredients'),
+  (18,'meal_components'),
+  (19,'meal_packaging'),
+  (20,'order_packaging'),
+  (21,'modifier_groups'),
+  (22,'modifier_options'),
+  (23,'modifier_option_prices'),
+  (24,'meal_modifier_groups'),
+  (25,'product_modifier_groups'),
+  (26,'suppliers'),
+  (27,'supplier_prices'),
+  (28,'staff_shifts'),
+  (29,'orders'),
+  (30,'order_lines'),
+  (31,'order_line_extras'),
+  (32,'promos'),
+  (33,'promo_redemptions'),
+  (34,'purchase_log'),
+  (35,'consumption_log'),
+  (36,'waste_log'),
+  (37,'cash_ledger'),
+  (38,'receivables'),
+  (39,'cycle_counts'),
+  (40,'oe_templates'),
+  (41,'fixed_costs'),
+  (42,'monthly_bills'),
+  (43,'assets'),
+  (44,'supplier_debts'),
+  (45,'running_costs'),
+  (46,'marketing_campaigns'),
+  (47,'reviews'),
+  (48,'chat_threads'),
+  (49,'chat_messages'),
+  (50,'faq_entries'),
+  (51,'activity_log'),
+  (52,'announcements');
 
   select string_agg(format('%%s (at %%s) needs %%s (at %%s)',
                            c.relname, cp.pos, p.relname, pp.pos), ', ')
@@ -3326,4 +3328,61 @@ begin
     raise exception 'FAIL: the shift rewrote a supplier price';
   end if;
   raise notice 'staff see % price(s) and changed none of them', seen;
+end $$;
+
+\echo '--- every table says where it stands on the branch question ---'
+/* The standing version of the check 0078 introduced.
+ *
+ * 0078 asserts it at the moment it runs, which catches nothing added
+ * afterwards — `meal_branches` arrived in 0080 and that check had long
+ * since passed. Here it runs after EVERY migration, every time, so a table
+ * added in 0081 fails on the day it is added.
+ *
+ * The question it forces is the one that matters: do this table's rows
+ * belong to a branch? A table that never answers silently means "the whole
+ * business", which is right for the menu and wrong for the cash drawer, and
+ * nothing else in the system would ever mention it. */
+do $$
+declare
+  v_missing text[] := '{}';
+  v_wrong text[] := '{}';
+  r record;
+begin
+  for r in
+    select c.table_name::text as t
+      from information_schema.tables c
+     where c.table_schema = 'public' and c.table_type = 'BASE TABLE'
+  loop
+    if not exists (select 1 from branch_table_ledger() l where l.tbl = r.t) then
+      v_missing := array_append(v_missing, r.t);
+    end if;
+  end loop;
+
+  if array_length(v_missing, 1) > 0 then
+    raise exception
+      'FAIL: % is in no branch list. Add it to branch_table_ledger() as scoped, pending or shared.',
+      array_to_string(v_missing, ', ');
+  end if;
+
+  for r in select l.tbl, l.standing from branch_table_ledger() l loop
+    if r.standing = 'scoped' and not exists (
+      select 1 from information_schema.columns
+       where table_schema = 'public' and table_name = r.tbl and column_name = 'branch_id'
+    ) then
+      v_wrong := array_append(v_wrong, r.tbl || ' is listed scoped but has no branch_id');
+    end if;
+    if r.standing = 'pending' and exists (
+      select 1 from information_schema.columns
+       where table_schema = 'public' and table_name = r.tbl and column_name = 'branch_id'
+    ) then
+      v_wrong := array_append(v_wrong, r.tbl || ' has branch_id but is still listed pending');
+    end if;
+  end loop;
+
+  if array_length(v_wrong, 1) > 0 then
+    raise exception 'FAIL: the branch ledger disagrees with the schema — %',
+      array_to_string(v_wrong, '; ');
+  end if;
+
+  raise notice 'every table stands somewhere, and the ledger matches the schema';
 end $$;

@@ -36,6 +36,8 @@ import { changeFor, tenderSuggestions } from "@/lib/till";
 import { hqTitle } from "@/lib/hq-theme";
 import { ticketOf } from "@/lib/tickets";
 import { ReceiptPrinter } from "@/components/receipt-printer";
+import { TillBranchBar, useTillBranch } from "@/components/till-branch-bar";
+import { type Branch } from "@/lib/branches";
 import { PrinterReady } from "@/components/printer-ready";
 import { printSale } from "@/lib/printer-store";
 import {
@@ -81,6 +83,8 @@ export type CounterMeal = {
   groups?: ModifierGroup[];
   /** The kitchen's shorthand — "C1". Printed on the receipt for the cook. */
   code?: string | null;
+  /** Which branches offer this dish. Empty means nobody has answered yet. */
+  branchIds?: string[];
 };
 
 /**
@@ -118,6 +122,8 @@ export function CounterTill({
   nutritionByMeal = {},
   showNutrition = false,
   promos = [],
+  branches = [],
+  pinnedBranch = null,
 }: {
   meals: CounterMeal[];
   loadError: string | null;
@@ -136,6 +142,10 @@ export function CounterTill({
   nutritionByMeal?: Record<string, Nutrition>;
   /** The owner's switch. Off keeps calories off the paper as well. */
   showNutrition?: boolean;
+  /** Where this shop sells. Empty while there is only one place. */
+  branches?: Branch[];
+  /** The cashier's own branch, or null for somebody who roams. */
+  pinnedBranch?: string | null;
   /**
    * The discounts the cashier may apply, as the OWNER defined them.
    *
@@ -146,6 +156,25 @@ export function CounterTill({
    */
   promos?: Promo[];
 }) {
+  /* Which branch this till is selling for. Settled before anything else on
+     this screen, because every sale written below carries it. */
+  const { branchId, choose, choices, locked } = useTillBranch(branches, pinnedBranch);
+
+  /* Only what this branch offers. The booth's menu is shorter than Apalit's
+     and may carry a dish Apalit does not — a till showing a dish the kitchen
+     beside it cannot make is a till that takes an order nobody can fill.
+
+     Empty `branchIds` means a dish nobody has answered for yet, which
+     happens only between a migration and the owner ticking a box; showing it
+     is the safer of the two wrongs. */
+  const onMenu = useMemo(
+    () =>
+      meals.filter(
+        (m) => m.branchIds === undefined || m.branchIds.length === 0 || m.branchIds.includes(branchId)
+      ),
+    [meals, branchId]
+  );
+
   const [ticket, setTicket] = useState<Ticket>({});
   /** The dish whose add-ons are being picked. Null when nothing is open. */
   const [choosing, setChoosing] = useState<CounterMeal | null>(null);
@@ -197,7 +226,7 @@ export function CounterTill({
   // the TILES were still in whatever order the query returned, which is by
   // name. So the two screens agreed about where the Drinks pill was and
   // disagreed about everything under it. Both now read the one list.
-  const order = useMemo(() => categoriesUsed(meals, known), [meals, known]);
+  const order = useMemo(() => categoriesUsed(onMenu, known), [onMenu, known]);
   const categories = useMemo(() => ["All", ...order], [order]);
 
   /**
@@ -206,7 +235,7 @@ export function CounterTill({
    * disagree about what colour Drinks is.
    */
   const palette = useMemo(() => paletteFor(order, colours), [order, colours]);
-  const sorted = useMemo(() => orderForMenu(meals, order), [meals, order]);
+  const sorted = useMemo(() => orderForMenu(onMenu, order), [onMenu, order]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -496,6 +525,7 @@ export function CounterTill({
         dineIn,
         note,
         customerName: customer,
+        branchId,
       });
       // Checked against null rather than truthiness: an error type of
       // `string` includes "", so a plain `if (result.error)` doesn't narrow
@@ -584,6 +614,17 @@ export function CounterTill({
           </p>
         </div>
       </div>
+
+      {/* Where this sale is going, above everything it could be confused
+          with. A cashier who cannot see which branch the till is set to has
+          no way to notice the morning somebody hands them the wrong tablet,
+          and a whole night's takings lands at the wrong shop. */}
+      <TillBranchBar
+        branchId={branchId}
+        choices={choices}
+        locked={locked}
+        onChoose={choose}
+      />
 
       {/* Before the till, because it is the thing to do before the till — and
           because a strip that only appears once something is wrong is a strip
@@ -761,7 +802,7 @@ export function CounterTill({
 
           {shown.length === 0 ? (
             <p className="rounded-2xl border-2 border-dashed border-brand-300 bg-cream-100 p-6 text-sm text-ink-800/70">
-              Nothing here. {meals.length === 0 && "Every dish is marked sold out."}
+              Nothing here. {onMenu.length === 0 && "Nothing is offered at this branch yet."}
             </p>
           ) : (
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
